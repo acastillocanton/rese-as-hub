@@ -1,0 +1,2226 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>ReseñaHub — Gestión interna de reseñas</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg: #F5F5F7;
+    --surface: #FFFFFF;
+    --surface-2: #FAFAFB;
+    --line: #E5E5EA;
+    --line-strong: #D2D2D7;
+    --ink: #1D1D1F;
+    --ink-2: #515154;
+    --ink-3: #6E6E73;
+    --ink-4: #86868B;
+    --ink-5: #AEAEB2;
+    --ok: #2D7D46;
+    --ok-bg: #E8F0EB;
+    --warn-bg: #F4ECDB;
+    --warn: #8A6A1E;
+    --gold: #B58A2C;
+    --ios-bg: #F2F2F7;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-lg: 20px;
+    --shadow-card: 0 1px 0 rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.04);
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+    --font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin:0; padding:0; background:#EDEDF0; color:var(--ink); font-family:var(--font-text); -webkit-font-smoothing:antialiased; }
+  body{ letter-spacing:-0.01em; }
+
+  /* Top nav for switching screens (replaces the design-canvas wrapper) */
+  .nav{
+    position:sticky; top:0; z-index:50;
+    background:rgba(237,237,240,0.85);
+    backdrop-filter:saturate(180%) blur(20px);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{
+    max-width:1440px; margin:0 auto;
+    display:flex; align-items:center; gap:18px;
+    padding:10px 20px;
+  }
+  .nav-brand{
+    display:flex; align-items:center; gap:10px;
+    font-weight:600; font-size:14px; letter-spacing:-0.015em;
+  }
+  .nav-brand .logo{
+    width:24px; height:24px; border-radius:7px;
+    background:#1D1D1F; color:#fff;
+    display:grid; place-items:center; font-weight:700; font-size:12px;
+  }
+  .nav-tabs{
+    display:flex; gap:2px; padding:3px;
+    background:#E2E2E7; border-radius:9px;
+    margin-left:8px;
+  }
+  .nav-tab{
+    padding:6px 12px; border-radius:7px;
+    font-size:12.5px; font-weight:500; color:var(--ink-3);
+    cursor:pointer; user-select:none;
+    border:none; background:transparent; font-family:inherit;
+    letter-spacing:-0.005em;
+  }
+  .nav-tab.active{ background:var(--surface); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,0.08); }
+  .nav-meta{ margin-left:auto; color:var(--ink-4); font-size:12px; }
+
+  /* Stage container: faithful to the 1440-wide design */
+  .stage{
+    max-width:1440px; margin:0 auto;
+    padding:18px 20px 40px;
+  }
+  .artboard{
+    width:var(--ab-w, 1440px);
+    height:var(--ab-h, 1024px);
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:16px;
+    overflow:hidden;
+    box-shadow:0 1px 0 rgba(0,0,0,0.03), 0 14px 40px -20px rgba(0,0,0,0.18);
+    margin:0 auto;
+  }
+  /* Light horizontal scroll when viewport < 1440 */
+  @media (max-width: 1480px){
+    .stage{ padding:18px 0 40px; overflow-x:auto; }
+  }
+
+  /* tiny utilities used across screens */
+  .h-rule{ height:1px; background:var(--line); width:100%; }
+  .mono{ font-family:var(--font-mono); }
+  .tabular{ font-variant-numeric:tabular-nums; }
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:3px 8px; border-radius:999px;
+    font-size:11px; font-weight:500; color:var(--ink-3);
+    background:#F2F2F4; border:1px solid var(--line);
+  }
+  .pill.ok{ background:var(--ok-bg); color:var(--ok); border-color:transparent; }
+  .pill.warn{ background:var(--warn-bg); color:var(--warn); border-color:transparent; }
+  .dot{ width:6px; height:6px; border-radius:999px; background:currentColor; display:inline-block; }
+  button{ font:inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<!-- ============================================================
+     SHARED PRIMITIVES
+============================================================ -->
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+
+/* ---------- Layout ---------- */
+
+function Frame({ children }){
+  return (
+    <div style={{
+      width:'100%', height:'100%',
+      background:'var(--bg)',
+      color:'var(--ink)',
+      display:'flex',
+      fontFamily:'var(--font-text)',
+      letterSpacing:'-0.01em',
+      overflow:'hidden'
+    }}>{children}</div>
+  );
+}
+
+function Sidebar({ active='dashboard' }){
+  const items = [
+    { id:'dashboard', label:'Dashboard',   icon:'◧' },
+    { id:'team',      label:'Comerciales', icon:'◔' },
+    { id:'reviews',   label:'Reseñas',     icon:'☆' },
+    { id:'branches',  label:'Sucursales',  icon:'⌂' },
+    { id:'goals',     label:'Objetivos',   icon:'◐' },
+    { id:'settings',  label:'Ajustes',     icon:'◇' },
+  ];
+  return (
+    <aside style={{
+      width:232, flexShrink:0,
+      background:'var(--bg)',
+      borderRight:'1px solid var(--line)',
+      padding:'20px 14px',
+      display:'flex', flexDirection:'column', gap:22
+    }}>
+      <div style={{display:'flex', alignItems:'center', gap:10, padding:'4px 8px'}}>
+        <div style={{
+          width:26, height:26, borderRadius:8,
+          background:'#1D1D1F', color:'#fff',
+          display:'grid', placeItems:'center',
+          fontSize:13, fontWeight:700, letterSpacing:'-0.02em'
+        }}>r</div>
+        <div style={{fontWeight:600, fontSize:14, letterSpacing:'-0.015em'}}>ReseñaHub</div>
+      </div>
+
+      <div style={{display:'flex', flexDirection:'column', gap:2}}>
+        {items.map(it => {
+          const on = it.id === active;
+          return (
+            <div key={it.id} style={{
+              display:'flex', alignItems:'center', gap:10,
+              padding:'7px 10px', borderRadius:8,
+              background: on ? 'rgba(0,0,0,0.05)' : 'transparent',
+              color: on ? 'var(--ink)' : 'var(--ink-3)',
+              fontSize:13.5, fontWeight: on ? 600 : 500,
+              cursor:'pointer'
+            }}>
+              <span style={{width:18, textAlign:'center', color:'var(--ink-4)', fontSize:13}}>{it.icon}</span>
+              <span>{it.label}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{marginTop:'auto', display:'flex', alignItems:'center', gap:10, padding:'8px 8px', borderTop:'1px solid var(--line)', paddingTop:14}}>
+        <Avatar name="Laura Méndez" size={28} />
+        <div style={{lineHeight:1.15}}>
+          <div style={{fontSize:13, fontWeight:600}}>Laura Méndez</div>
+          <div style={{fontSize:11.5, color:'var(--ink-4)'}}>Admin · Grupo Habitar</div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function Topbar({ title, subtitle, range='Este mes', right }){
+  return (
+    <header style={{
+      padding:'18px 32px 14px',
+      borderBottom:'1px solid var(--line)',
+      display:'flex', alignItems:'flex-end', justifyContent:'space-between',
+      background:'var(--bg)'
+    }}>
+      <div>
+        <div style={{display:'flex', alignItems:'center', gap:10, color:'var(--ink-4)', fontSize:12, letterSpacing:'-0.005em'}}>
+          <span>Grupo Habitar</span>
+          <span style={{opacity:.5}}>›</span>
+          <span>{title}</span>
+        </div>
+        <h1 style={{
+          margin:'4px 0 0',
+          fontFamily:'var(--font-display)',
+          fontSize:26, fontWeight:600, letterSpacing:'-0.025em'
+        }}>{subtitle || title}</h1>
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:10}}>
+        <DateRange value={range} />
+        {right}
+      </div>
+    </header>
+  );
+}
+
+function DateRange({ value='Este mes' }){
+  return (
+    <div style={{
+      display:'inline-flex', alignItems:'center', gap:8,
+      padding:'7px 12px',
+      background:'var(--surface)',
+      border:'1px solid var(--line-strong)',
+      borderRadius:9,
+      fontSize:13, fontWeight:500
+    }}>
+      <span style={{color:'var(--ink-4)'}}>{'◴'}</span>
+      <span>{value}</span>
+      <span style={{color:'var(--ink-4)', marginLeft:4, fontSize:10}}>▾</span>
+    </div>
+  );
+}
+
+function GhostBtn({ children, primary }){
+  return (
+    <button style={{
+      padding:'7px 12px',
+      border:'1px solid var(--line-strong)',
+      background: primary ? 'var(--ink)' : 'var(--surface)',
+      color: primary ? '#fff' : 'var(--ink)',
+      borderRadius:9,
+      fontSize:13, fontWeight:500,
+      cursor:'pointer'
+    }}>{children}</button>
+  );
+}
+
+/* ---------- Cards & stats ---------- */
+
+function Card({ children, padding=20, style={} }){
+  return (
+    <div style={{
+      background:'var(--surface)',
+      border:'1px solid var(--line)',
+      borderRadius:'var(--radius)',
+      padding,
+      boxShadow:'var(--shadow-card)',
+      ...style
+    }}>{children}</div>
+  );
+}
+
+function Stat({ label, value, sub, delta, deltaTone='ok', big=false }){
+  const toneColor = deltaTone === 'ok' ? 'var(--ok)' : deltaTone === 'warn' ? 'var(--warn)' : 'var(--ink-3)';
+  return (
+    <Card>
+      <div style={{fontSize:12.5, color:'var(--ink-3)', fontWeight:500, letterSpacing:'-0.005em'}}>{label}</div>
+      <div style={{
+        marginTop:8,
+        fontFamily:'var(--font-display)',
+        fontWeight:600, letterSpacing:'-0.03em',
+        fontSize: big ? 38 : 32,
+        fontVariantNumeric:'tabular-nums', lineHeight:1
+      }}>{value}</div>
+      <div style={{marginTop:10, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
+        <div style={{fontSize:12, color:'var(--ink-4)'}}>{sub}</div>
+        {delta != null && delta !== '' && (
+          <div style={{fontSize:12, color:toneColor, fontWeight:500, fontVariantNumeric:'tabular-nums'}}>
+            {delta}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ---------- Sparkline & Bars ---------- */
+
+function Sparkline({ data, width=120, height=32, stroke='var(--ink-2)' }){
+  const min = Math.min(...data), max = Math.max(...data);
+  const span = max - min || 1;
+  const pts = data.map((v,i) => {
+    const x = (i/(data.length-1)) * width;
+    const y = height - ((v-min)/span) * (height-4) - 2;
+    return [x,y];
+  });
+  const d = pts.map((p,i) => (i?'L':'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const last = pts[pts.length-1];
+  return (
+    <svg width={width} height={height}>
+      <path d={d} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx={last[0]} cy={last[1]} r="2.5" fill={stroke} />
+    </svg>
+  );
+}
+
+function MonthBars({ data, labels, height=200, highlight=null }){
+  const max = Math.max(...data);
+  return (
+    <div style={{display:'flex', alignItems:'flex-end', gap:8, height, padding:'0 4px'}}>
+      {data.map((v,i) => {
+        const h = (v/max) * (height-28);
+        const isHi = highlight === i;
+        return (
+          <div key={i} style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:8}}>
+            <div style={{fontSize:10.5, color: isHi ? 'var(--ink)' : 'var(--ink-4)', fontVariantNumeric:'tabular-nums', fontWeight: isHi?600:400}}>{v}</div>
+            <div style={{
+              width:'100%', height:h, minHeight:2,
+              background: isHi ? 'var(--ink)' : '#D6D6DB',
+              borderRadius:4,
+              transition:'background .2s'
+            }}/>
+            <div style={{fontSize:10.5, color:'var(--ink-4)', textTransform:'uppercase', letterSpacing:'0.05em'}}>{labels[i]}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AreaChart({ enviados, conseguidos, labels, height=210 }){
+  const w = 760;
+  const h = height;
+  const padL = 28, padR = 12, padT = 14, padB = 22;
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+  const max = Math.max(...enviados, ...conseguidos);
+  const niceMax = Math.ceil(max/10)*10;
+  const xOf = i => padL + (i/(enviados.length-1)) * innerW;
+  const yOf = v => padT + innerH - (v/niceMax) * innerH;
+  const path = (arr) => arr.map((v,i) => (i?'L':'M') + xOf(i).toFixed(1) + ' ' + yOf(v).toFixed(1)).join(' ');
+  const area = (arr) => path(arr) + ` L ${xOf(arr.length-1)} ${padT+innerH} L ${xOf(0)} ${padT+innerH} Z`;
+  const ticks = [0, niceMax/2, niceMax];
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{width:'100%', height:'auto', display:'block'}}>
+      <defs>
+        <linearGradient id="g-cons" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#1D1D1F" stopOpacity="0.10"/>
+          <stop offset="100%" stopColor="#1D1D1F" stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      {ticks.map((t,i) => (
+        <g key={i}>
+          <line x1={padL} x2={w-padR} y1={yOf(t)} y2={yOf(t)} stroke="#E5E5EA" strokeDasharray="2 4"/>
+          <text x={padL-8} y={yOf(t)+3} textAnchor="end" fontSize="10" fill="#86868B" fontFamily="var(--font-mono)">{t}</text>
+        </g>
+      ))}
+      {labels.map((l,i) => (
+        <text key={i} x={xOf(i)} y={h-6} textAnchor="middle" fontSize="10" fill="#86868B">{l}</text>
+      ))}
+      <path d={area(conseguidos)} fill="url(#g-cons)" />
+      <path d={path(enviados)} fill="none" stroke="#AEAEB2" strokeWidth="1.3" strokeDasharray="3 3"/>
+      <path d={path(conseguidos)} fill="none" stroke="#1D1D1F" strokeWidth="1.6"/>
+      {conseguidos.map((v,i) => (
+        <circle key={i} cx={xOf(i)} cy={yOf(v)} r="2.5" fill="#1D1D1F"/>
+      ))}
+    </svg>
+  );
+}
+
+/* ---------- Stars & misc ---------- */
+
+function Stars({ value=5, size=12, color='var(--ink-2)', muted='var(--line-strong)' }){
+  return (
+    <span style={{display:'inline-flex', gap:1}}>
+      {[1,2,3,4,5].map(i => (
+        <span key={i} style={{fontSize:size, color: i<=value ? color : muted, lineHeight:1}}>★</span>
+      ))}
+    </span>
+  );
+}
+
+function Avatar({ name='', size=36, color }){
+  const initials = name.split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase();
+  const hashes = ['#D2D2D7','#C7C7CC','#BCBCC1','#B0B0B6','#A6A6AB','#9C9CA1'];
+  const h = hashes[(name.charCodeAt(0) || 65) % hashes.length];
+  return (
+    <div style={{
+      width:size, height:size, borderRadius:999,
+      background: color || h,
+      color:'#3C3C43',
+      display:'grid', placeItems:'center',
+      fontWeight:600, fontSize:size*0.36,
+      letterSpacing:'-0.02em',
+      flexShrink:0
+    }}>{initials}</div>
+  );
+}
+
+function Progress({ value, max=100, height=4, tone='ink' }){
+  const pct = Math.min(100, (value/max)*100);
+  const fg = tone === 'ok' ? 'var(--ok)' : 'var(--ink)';
+  return (
+    <div style={{height, background:'#E5E5EA', borderRadius:999, overflow:'hidden'}}>
+      <div style={{width: pct+'%', height:'100%', background:fg, borderRadius:999}}/>
+    </div>
+  );
+}
+
+function Seg({ options, value, onChange }){
+  return (
+    <div style={{
+      display:'inline-flex', padding:2,
+      background:'#EBEBF0', borderRadius:9,
+      fontSize:12, fontWeight:500
+    }}>
+      {options.map(o => (
+        <div key={o} onClick={() => onChange && onChange(o)} style={{
+          padding:'5px 11px', borderRadius:7, cursor:'pointer',
+          background: value===o ? 'var(--surface)' : 'transparent',
+          boxShadow: value===o ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+          color: value===o ? 'var(--ink)' : 'var(--ink-3)'
+        }}>{o}</div>
+      ))}
+    </div>
+  );
+}
+
+function Badge({ children }){
+  return (
+    <span style={{
+      display:'inline-flex', alignItems:'center', gap:6,
+      padding:'5px 9px', borderRadius:7,
+      background:'var(--surface-2)', border:'1px solid var(--line)',
+      fontSize:11.5, color:'var(--ink-2)', fontWeight:500
+    }}>
+      <span style={{width:5, height:5, borderRadius:999, background:'var(--ink-3)'}}/>
+      {children}
+    </span>
+  );
+}
+
+function QRPlaceholder(){
+  const cells = useMemo(() => {
+    const seed = 42;
+    const rnd = (n) => ((Math.sin(seed*n*97.13)+1)/2);
+    const out = [];
+    for(let y=0;y<13;y++){
+      for(let x=0;x<13;x++){
+        const corner = (x<3&&y<3)||(x>9&&y<3)||(x<3&&y>9);
+        const center = x>=5&&x<=7&&y>=5&&y<=7;
+        out.push({x,y,on: corner || center ? true : rnd(y*13+x) > 0.55});
+      }
+    }
+    return out;
+  }, []);
+  const cs = 8, pad = 6;
+  const size = 13*cs + pad*2;
+  return (
+    <div style={{padding:10, border:'1px solid var(--line-strong)', borderRadius:10, background:'#fff'}}>
+      <svg width={size} height={size} style={{display:'block'}}>
+        <rect width={size} height={size} fill="#fff"/>
+        {cells.map((c,i) => c.on && (
+          <rect key={i} x={pad + c.x*cs} y={pad + c.y*cs} width={cs} height={cs} fill="#1D1D1F"/>
+        ))}
+      </svg>
+      <div style={{textAlign:'center', fontSize:10.5, color:'var(--ink-4)', marginTop:6, fontFamily:'var(--font-mono)'}}>c/carla-ruiz</div>
+    </div>
+  );
+}
+
+function Ring({ value, max, size=120 }){
+  const r = size/2 - 8;
+  const c = 2 * Math.PI * r;
+  const pct = Math.min(1, value/max);
+  return (
+    <svg width={size} height={size} style={{display:'block'}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#E5E5EA" strokeWidth="6"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1D1D1F" strokeWidth="6"
+        strokeDasharray={`${c*pct} ${c}`}
+        strokeDashoffset={c*0.25}
+        transform={`rotate(-90 ${size/2} ${size/2})`}
+        style={{strokeLinecap:'round'}}
+      />
+      <text x={size/2} y={size/2-2} textAnchor="middle" fontSize="22" fontWeight="600" fill="#1D1D1F" fontFamily="var(--font-display)" style={{letterSpacing:'-0.02em'}}>
+        {Math.round(pct*100)}%
+      </text>
+      <text x={size/2} y={size/2+16} textAnchor="middle" fontSize="10.5" fill="#86868B" style={{textTransform:'uppercase', letterSpacing:'0.05em'}}>
+        objetivo
+      </text>
+    </svg>
+  );
+}
+
+function Evidence({ label, detail, weight }){
+  return (
+    <div style={{
+      padding:'10px 12px',
+      border:'1px solid var(--line)',
+      borderRadius:10,
+      background:'var(--surface-2)'
+    }}>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
+        <span style={{fontSize:12.5, fontWeight:600}}>{label}</span>
+        <span style={{fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-4)'}}>{weight}</span>
+      </div>
+      <div style={{marginTop:4, fontSize:12, color:'var(--ink-3)', lineHeight:1.5}}>{detail}</div>
+    </div>
+  );
+}
+
+/* ---------- Shared data ---------- */
+
+const TEAM = [
+  { id:1, name:'Carla Ruiz',      role:'Senior Sales',     branch:'Madrid · Chamberí',  team:'Norte',  reviews:87, sent:102, avg:4.9, goal:90, delta:'+12', avatar:'#CFCFD4' },
+  { id:2, name:'Mateo Salgado',   role:'Sales',            branch:'Madrid · Centro',    team:'Norte',  reviews:74, sent:96,  avg:4.8, goal:80, delta:'+9',  avatar:'#C7C7CC' },
+  { id:3, name:'Lucía Vega',      role:'Senior Sales',     branch:'Valencia · Patacona',team:'Levante',reviews:71, sent:88,  avg:4.9, goal:80, delta:'+7',  avatar:'#BFBFC4' },
+  { id:4, name:'Tomás Iglesias',  role:'Sales',            branch:'Madrid · Centro',    team:'Norte',  reviews:62, sent:95,  avg:4.6, goal:80, delta:'+2',  avatar:'#C7C7CC' },
+  { id:5, name:'Noa Herrero',     role:'Sales',            branch:'Sevilla · Triana',   team:'Sur',    reviews:58, sent:71,  avg:4.8, goal:70, delta:'+5',  avatar:'#CFCFD4' },
+  { id:6, name:'Bruno Castaño',   role:'Junior Sales',     branch:'Valencia · Patacona',team:'Levante',reviews:41, sent:64,  avg:4.5, goal:60, delta:'-3',  avatar:'#BFBFC4' },
+  { id:7, name:'Inés Olivares',   role:'Sales',            branch:'Málaga · Limonar',   team:'Sur',    reviews:39, sent:58,  avg:4.7, goal:60, delta:'+1',  avatar:'#C7C7CC' },
+  { id:8, name:'Pablo Domínguez', role:'Junior Sales',     branch:'Sevilla · Triana',   team:'Sur',    reviews:27, sent:49,  avg:4.4, goal:50, delta:'-6',  avatar:'#CFCFD4' },
+];
+
+const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+const RECENT = [
+  { id:'r1', name:'Andrea Pinto',    time:'hace 12 min', stars:5, sales:'Carla Ruiz',     text:'Visita al piso piloto de Residencial Almagro impecable. Carla nos explicó cada detalle del plano y los acabados.', verified:true },
+  { id:'r2', name:'Familia Soriano', time:'hace 38 min', stars:5, sales:'Mateo Salgado',  text:'Atención de diez. Nos enseñó tres tipologías diferentes sin prisa y resolvió cada duda.', verified:true },
+  { id:'r3', name:'Jorge Mas',       time:'hace 1 h',    stars:4, sales:'Tomás Iglesias', text:'Muy correcto. Hubiéramos preferido más información de la financiación, pero todo cumplido.', verified:true },
+  { id:'r4', name:'Marta Llamas',    time:'hace 2 h',    stars:5, sales:'Lucía Vega',     text:'Lucía es un encanto. Visitamos el piso piloto de Patacona en Valencia y nos lo pintó tal cual lo imaginábamos.', verified:true },
+  { id:'r5', name:'Diego Carranza',  time:'hace 3 h',    stars:5, sales:'Noa Herrero',    text:'Sevilla, Triana. Salimos con la maqueta clara y un dossier muy completo.', verified:false, pending:true },
+];
+
+const SERIES_SENT     = [128, 142, 151, 160, 178, 196, 208, 192, 215, 234, 251, 268];
+const SERIES_VERIFIED = [ 86,  97, 106, 115, 132, 148, 162, 151, 174, 191, 208, 227];
+
+/* Expose to other script blocks */
+Object.assign(window, {
+  Frame, Sidebar, Topbar, DateRange, GhostBtn,
+  Card, Stat, Sparkline, MonthBars, AreaChart,
+  Stars, Avatar, Progress, Seg, Badge,
+  QRPlaceholder, Ring, Evidence,
+  TEAM, MONTHS, RECENT, SERIES_SENT, SERIES_VERIFIED
+});
+</script>
+
+<!-- ============================================================
+     SCREEN 01 — ADMIN DASHBOARD
+============================================================ -->
+<script type="text/babel">
+const {
+  Frame, Sidebar, Topbar, GhostBtn,
+  Card, Stat, Sparkline, AreaChart,
+  Stars, Avatar, Progress, Seg,
+  TEAM, MONTHS, RECENT, SERIES_SENT, SERIES_VERIFIED
+} = window;
+
+function AdminDashboard(){
+  return (
+    <Frame>
+      <Sidebar active="dashboard" />
+      <main style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden'}}>
+        <Topbar
+          title="Dashboard"
+          subtitle="Dashboard general"
+          range="Este mes · mayo"
+          right={<>
+            <Seg options={['Hoy','Semana','Mes','Año']} value="Mes" onChange={()=>{}} />
+            <GhostBtn>Exportar</GhostBtn>
+            <GhostBtn primary>Invitar comercial</GhostBtn>
+          </>}
+        />
+
+        <div style={{flex:1, padding:'24px 32px 32px', overflow:'auto'}}>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:16}}>
+            <Stat label="Reseñas totales" value="459" sub="vs 387 el mes pasado" delta="+18,6%" />
+            <Stat label="Conversión enlace → reseña" value="78,4%" sub="585 enlaces · 459 reseñas" delta="+4,1 pp" />
+            <Stat label="Valoración media" value="4,82" sub="sobre 5 · 459 valoraciones" delta="+0,07" />
+            <Stat label="Pendientes de verificar" value="14" sub="detectando vía Google Business" delta="−6" deltaTone="ok" />
+          </div>
+
+          <div style={{display:'grid', gridTemplateColumns:'1.85fr 1fr', gap:16, marginTop:16}}>
+            <Card>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Evolución temporal</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Enlaces enviados vs. reseñas verificadas</div>
+                </div>
+                <div style={{display:'flex', gap:14, fontSize:12, color:'var(--ink-3)', alignItems:'center'}}>
+                  <span style={{display:'inline-flex', alignItems:'center', gap:6}}>
+                    <span style={{width:14, height:0, borderTop:'1.5px dashed #AEAEB2'}}/> Enlaces enviados
+                  </span>
+                  <span style={{display:'inline-flex', alignItems:'center', gap:6}}>
+                    <span style={{width:14, height:0, borderTop:'1.5px solid #1D1D1F'}}/> Verificadas
+                  </span>
+                </div>
+              </div>
+              <div style={{marginTop:12}}>
+                <AreaChart enviados={SERIES_SENT} conseguidos={SERIES_VERIFIED} labels={MONTHS} height={230}/>
+              </div>
+            </Card>
+
+            <Card>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Objetivos · mayo</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Equipo en conjunto</div>
+                </div>
+                <span className="pill ok"><span className="dot"/>En ritmo</span>
+              </div>
+
+              <div style={{marginTop:18}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
+                  <span style={{fontSize:13, color:'var(--ink-3)'}}>Reseñas verificadas</span>
+                  <span style={{fontSize:13, fontWeight:600, fontVariantNumeric:'tabular-nums'}}>459 / 520</span>
+                </div>
+                <div style={{marginTop:8}}><Progress value={459} max={520} /></div>
+                <div style={{marginTop:6, fontSize:11.5, color:'var(--ink-4)'}}>88% · faltan 61 en 11 días</div>
+              </div>
+
+              <div style={{marginTop:18}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
+                  <span style={{fontSize:13, color:'var(--ink-3)'}}>Conversión objetivo</span>
+                  <span style={{fontSize:13, fontWeight:600, fontVariantNumeric:'tabular-nums'}}>78,4 / 75%</span>
+                </div>
+                <div style={{marginTop:8}}><Progress value={104} max={100} tone="ok" /></div>
+                <div style={{marginTop:6, fontSize:11.5, color:'var(--ok)'}}>Superado · +3,4 puntos</div>
+              </div>
+
+              <div style={{marginTop:18}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
+                  <span style={{fontSize:13, color:'var(--ink-3)'}}>Valoración media</span>
+                  <span style={{fontSize:13, fontWeight:600, fontVariantNumeric:'tabular-nums'}}>4,82 / 4,70</span>
+                </div>
+                <div style={{marginTop:8}}><Progress value={4.82-3} max={4.7-3} tone="ok" /></div>
+                <div style={{marginTop:6, fontSize:11.5, color:'var(--ok)'}}>Superado · +0,12</div>
+              </div>
+            </Card>
+          </div>
+
+          <div style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:16, marginTop:16}}>
+            <Card padding={0}>
+              <div style={{padding:'18px 22px 12px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Ranking</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Leaderboard del mes</div>
+                </div>
+                <div style={{display:'flex', gap:8, alignItems:'center', fontSize:12, color:'var(--ink-3)'}}>
+                  <span>Ordenar por</span>
+                  <Seg options={['Reseñas','Conversión','Estrellas']} value="Reseñas" onChange={()=>{}} />
+                </div>
+              </div>
+              <div style={{padding:'4px 22px 14px'}}>
+                <div style={{display:'grid', gridTemplateColumns:'28px 1.6fr 1fr 0.8fr 0.8fr 0.8fr 100px', gap:14, padding:'8px 0', fontSize:11, color:'var(--ink-4)', textTransform:'uppercase', letterSpacing:'0.04em', borderBottom:'1px solid var(--line)'}}>
+                  <span>#</span>
+                  <span>Comercial</span>
+                  <span>Sucursal</span>
+                  <span style={{textAlign:'right'}}>Reseñas</span>
+                  <span style={{textAlign:'right'}}>Conv.</span>
+                  <span style={{textAlign:'right'}}>★</span>
+                  <span style={{textAlign:'right'}}>Tendencia</span>
+                </div>
+                {TEAM.map((p,i) => (
+                  <div key={p.id} style={{
+                    display:'grid', gridTemplateColumns:'28px 1.6fr 1fr 0.8fr 0.8fr 0.8fr 100px',
+                    gap:14, padding:'12px 0', alignItems:'center',
+                    borderBottom: i===TEAM.length-1 ? 'none' : '1px solid var(--line)',
+                    fontSize:13.5
+                  }}>
+                    <span style={{fontVariantNumeric:'tabular-nums', color: i<3 ? 'var(--ink)' : 'var(--ink-4)', fontWeight: i<3?600:500}}>{(i+1).toString().padStart(2,'0')}</span>
+                    <div style={{display:'flex', alignItems:'center', gap:10, minWidth:0}}>
+                      <Avatar name={p.name} size={28} color={p.avatar}/>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:600, letterSpacing:'-0.005em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{p.name}</div>
+                        <div style={{fontSize:11.5, color:'var(--ink-4)'}}>{p.role}</div>
+                      </div>
+                    </div>
+                    <span style={{color:'var(--ink-3)', fontSize:12.5}}>{p.branch}</span>
+                    <span style={{textAlign:'right', fontVariantNumeric:'tabular-nums', fontWeight:600}}>{p.reviews}</span>
+                    <span style={{textAlign:'right', fontVariantNumeric:'tabular-nums', color:'var(--ink-3)'}}>{Math.round(p.reviews/p.sent*100)}%</span>
+                    <span style={{textAlign:'right', fontVariantNumeric:'tabular-nums'}}>{p.avg.toString().replace('.',',')}</span>
+                    <div style={{display:'flex', justifyContent:'flex-end'}}>
+                      <Sparkline data={[3,5,4,7,6,9,8, p.reviews/8]} width={84} height={22} stroke={p.delta.startsWith('-') ? '#9C9CA1' : 'var(--ink-2)'}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card padding={0}>
+              <div style={{padding:'18px 22px 12px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Actividad</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Reseñas recientes</div>
+                </div>
+                <span className="pill"><span className="dot" style={{color:'#34C759'}}/>en vivo</span>
+              </div>
+              <div style={{padding:'0 22px 12px'}}>
+                {RECENT.map((r,i) => (
+                  <div key={r.id} style={{padding:'14px 0', borderTop:'1px solid var(--line)'}}>
+                    <div style={{display:'flex', alignItems:'center', gap:10}}>
+                      <Avatar name={r.name} size={26}/>
+                      <div style={{display:'flex', flexDirection:'column', minWidth:0, flex:1}}>
+                        <div style={{display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:8}}>
+                          <span style={{fontSize:13.5, fontWeight:600}}>{r.name}</span>
+                          <span style={{fontSize:11.5, color:'var(--ink-4)'}}>{r.time}</span>
+                        </div>
+                        <div style={{display:'flex', alignItems:'center', gap:8, marginTop:2}}>
+                          <Stars value={r.stars} size={11}/>
+                          <span style={{fontSize:11.5, color:'var(--ink-4)'}}>· para {r.sales}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p style={{margin:'8px 0 8px', fontSize:13, color:'var(--ink-2)', lineHeight:1.5}}>{r.text}</p>
+                    <div>
+                      {r.verified
+                        ? <span className="pill ok"><span className="dot"/>Verificada en Google</span>
+                        : <span className="pill warn"><span className="dot"/>Pendiente · detectando…</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          <div style={{marginTop:16}}>
+            <Card>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Sucursales</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Rendimiento por piso piloto</div>
+                </div>
+                <Seg options={['Resumen','Detalle']} value="Resumen" onChange={()=>{}} />
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:16}}>
+                {[
+                  { name:'Madrid · Chamberí',   reviews:142, conv:'82%', stars:'4,9', dev:'+14%' },
+                  { name:'Madrid · Centro',     reviews:128, conv:'76%', stars:'4,7', dev:'+9%'  },
+                  { name:'Valencia · Patacona', reviews:112, conv:'81%', stars:'4,8', dev:'+11%' },
+                  { name:'Sevilla · Triana',    reviews: 77, conv:'70%', stars:'4,6', dev:'+3%'  },
+                ].map(b => (
+                  <div key={b.name} style={{padding:'12px 14px', border:'1px solid var(--line)', borderRadius:'var(--radius-sm)', background:'var(--surface-2)'}}>
+                    <div style={{fontSize:12, color:'var(--ink-3)', fontWeight:500}}>{b.name}</div>
+                    <div style={{display:'flex', alignItems:'baseline', gap:8, marginTop:6}}>
+                      <span style={{fontSize:24, fontWeight:600, letterSpacing:'-0.02em', fontVariantNumeric:'tabular-nums'}}>{b.reviews}</span>
+                      <span style={{fontSize:12, color:'var(--ok)'}}>{b.dev}</span>
+                    </div>
+                    <div style={{marginTop:8, display:'flex', justifyContent:'space-between', fontSize:11.5, color:'var(--ink-4)'}}>
+                      <span>Conv. {b.conv}</span>
+                      <span>★ {b.stars}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+      </main>
+    </Frame>
+  );
+}
+
+window.AdminDashboard = AdminDashboard;
+</script>
+
+<!-- ============================================================
+     SCREEN 02 — SALESPERSON PROFILE (admin view)
+============================================================ -->
+<script type="text/babel">
+const {
+  Frame, Sidebar, Topbar, GhostBtn,
+  Card, MonthBars,
+  Stars, Avatar, Progress, Seg, Badge,
+  QRPlaceholder,
+  MONTHS
+} = window;
+
+function SalespersonProfile(){
+  const person = {
+    name:'Carla Ruiz',
+    role:'Senior Sales · Residencial Almagro',
+    branch:'Madrid · Chamberí',
+    team:'Equipo Norte',
+    email:'carla.ruiz@grupohabitar.es',
+    phone:'+34 612 884 219',
+    joined:'desde feb 2023',
+    slug:'reseñahub.es/c/carla-ruiz',
+    reviews:87, sent:102, avg:4.9, goal:90
+  };
+
+  const reviews = [
+    { id:1, name:'Andrea Pinto',    when:'hoy · 12:48',  stars:5, text:'Visita al piso piloto impecable. Carla nos explicó cada detalle del plano y los acabados. Volvimos con todas las preguntas resueltas y reservamos la semana siguiente.', verified:true },
+    { id:2, name:'Beatriz Llorente',when:'hoy · 09:12',  stars:5, text:'Trato exquisito. Nos sentamos con calma a repasar la financiación y nos enseñó el dúplex incluso fuera de horario.', verified:true },
+    { id:3, name:'Javier Soto',     when:'ayer · 18:34', stars:5, text:'Conocemos Chamberí desde hace años y aún así Carla nos descubrió detalles del proyecto que no habríamos visto. Muy recomendable.', verified:true },
+    { id:4, name:'Familia Ortuño',  when:'ayer · 11:02', stars:4, text:'Buena atención, el dossier técnico llegó tarde pero acabó resolviéndose. La visita en sí, perfecta.', verified:true },
+    { id:5, name:'Núria Sender',    when:'13 may',       stars:5, text:'Recomiendo el piso piloto y especialmente a Carla. Acabamos el café con la maqueta sobre la mesa.', verified:true },
+  ];
+
+  return (
+    <Frame>
+      <Sidebar active="team" />
+      <main style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden'}}>
+        <Topbar
+          title="Comerciales · Carla Ruiz"
+          subtitle="Ficha del comercial"
+          range="Este mes · mayo"
+          right={<>
+            <GhostBtn>Editar ficha</GhostBtn>
+            <GhostBtn>Suspender</GhostBtn>
+            <GhostBtn primary>Compartir enlace</GhostBtn>
+          </>}
+        />
+
+        <div style={{flex:1, padding:'24px 32px 32px', overflow:'auto'}}>
+          <Card padding={24}>
+            <div style={{display:'grid', gridTemplateColumns:'auto 1fr auto', gap:28, alignItems:'center'}}>
+              <div style={{position:'relative'}}>
+                <Avatar name={person.name} size={88} color="#C7C7CC"/>
+                <span className="pill ok" style={{position:'absolute', bottom:-6, right:-6}}><span className="dot"/>activa</span>
+              </div>
+              <div>
+                <div style={{display:'flex', alignItems:'center', gap:10}}>
+                  <h2 style={{margin:0, fontFamily:'var(--font-display)', fontSize:24, fontWeight:600, letterSpacing:'-0.025em'}}>{person.name}</h2>
+                  <span className="pill"><span style={{color:'var(--gold)'}}>◆</span>Top performer</span>
+                  <span className="pill">3 meses seguidos #1</span>
+                </div>
+                <div style={{marginTop:4, color:'var(--ink-3)', fontSize:13.5}}>{person.role}</div>
+                <div style={{marginTop:14, display:'flex', gap:24, fontSize:12.5, color:'var(--ink-3)'}}>
+                  <span><span style={{color:'var(--ink-4)'}}>Sucursal</span> &nbsp; {person.branch}</span>
+                  <span><span style={{color:'var(--ink-4)'}}>Equipo</span> &nbsp; {person.team}</span>
+                  <span><span style={{color:'var(--ink-4)'}}>Alta</span> &nbsp; {person.joined}</span>
+                </div>
+                <div style={{marginTop:8, display:'flex', gap:24, fontSize:12.5, color:'var(--ink-3)'}}>
+                  <span><span style={{color:'var(--ink-4)'}}>Email</span> &nbsp; {person.email}</span>
+                  <span><span style={{color:'var(--ink-4)'}}>Teléfono</span> &nbsp; {person.phone}</span>
+                </div>
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'repeat(4,auto)', gap:24, paddingLeft:24, borderLeft:'1px solid var(--line)'}}>
+                {[
+                  ['Reseñas','87','este mes'],
+                  ['Conversión','85%','102 enlaces'],
+                  ['Estrellas','4,9','★★★★★'],
+                  ['Ranking','#1','de 24'],
+                ].map((k,i) => (
+                  <div key={i}>
+                    <div style={{fontSize:11, color:'var(--ink-4)', textTransform:'uppercase', letterSpacing:'0.04em'}}>{k[0]}</div>
+                    <div style={{fontFamily:'var(--font-display)', fontSize:24, fontWeight:600, fontVariantNumeric:'tabular-nums', letterSpacing:'-0.02em', marginTop:4}}>{k[1]}</div>
+                    <div style={{fontSize:11.5, color:'var(--ink-4)', marginTop:2}}>{k[2]}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          <div style={{display:'grid', gridTemplateColumns:'1.65fr 1fr', gap:16, marginTop:16}}>
+            <div style={{display:'flex', flexDirection:'column', gap:16}}>
+              <Card>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                  <div>
+                    <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Histórico personal</div>
+                    <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Reseñas verificadas por mes</div>
+                  </div>
+                  <Seg options={['12m','6m','3m']} value="12m" onChange={()=>{}} />
+                </div>
+                <div style={{marginTop:14}}>
+                  <MonthBars
+                    data={[42, 48, 51, 55, 61, 64, 70, 66, 73, 79, 81, 87]}
+                    labels={MONTHS}
+                    height={180}
+                    highlight={11}
+                  />
+                </div>
+              </Card>
+
+              <Card padding={0}>
+                <div style={{padding:'18px 22px 12px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <div>
+                    <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Histórico</div>
+                    <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Reseñas verificadas (87)</div>
+                  </div>
+                  <div style={{display:'flex', gap:10, alignItems:'center', fontSize:12, color:'var(--ink-3)'}}>
+                    <Seg options={['Todas','5★','4★','≤3★']} value="Todas" onChange={()=>{}} />
+                  </div>
+                </div>
+                {reviews.map((r) => (
+                  <div key={r.id} style={{padding:'14px 22px', borderTop:'1px solid var(--line)'}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
+                      <div style={{display:'flex', alignItems:'center', gap:10}}>
+                        <Avatar name={r.name} size={26}/>
+                        <span style={{fontSize:13.5, fontWeight:600}}>{r.name}</span>
+                        <Stars value={r.stars} size={11}/>
+                      </div>
+                      <span style={{fontSize:11.5, color:'var(--ink-4)'}}>{r.when}</span>
+                    </div>
+                    <p style={{margin:'8px 0 10px', fontSize:13, color:'var(--ink-2)', lineHeight:1.55}}>{r.text}</p>
+                    <div style={{display:'flex', gap:8}}>
+                      <span className="pill ok"><span className="dot"/>Verificada en Google</span>
+                      <span className="pill">Cliente del piso piloto · 04 may</span>
+                    </div>
+                  </div>
+                ))}
+                <div style={{padding:'14px 22px', borderTop:'1px solid var(--line)', textAlign:'center'}}>
+                  <span style={{fontSize:12.5, color:'var(--ink-3)', cursor:'pointer'}}>Ver las 82 restantes →</span>
+                </div>
+              </Card>
+            </div>
+
+            <div style={{display:'flex', flexDirection:'column', gap:16}}>
+              <Card>
+                <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Enlace personal</div>
+                <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Para compartir con clientes</div>
+                <div style={{display:'grid', gridTemplateColumns:'1fr auto', gap:14, alignItems:'center', marginTop:14}}>
+                  <div>
+                    <div style={{
+                      padding:'10px 12px',
+                      border:'1px solid var(--line-strong)',
+                      borderRadius:9,
+                      background:'var(--surface-2)',
+                      fontFamily:'var(--font-mono)', fontSize:12.5, color:'var(--ink-2)',
+                      display:'flex', justifyContent:'space-between', alignItems:'center'
+                    }}>
+                      <span>{person.slug}</span>
+                      <span style={{fontSize:11, color:'var(--ink-4)', textTransform:'uppercase', letterSpacing:'0.05em'}}>copiar</span>
+                    </div>
+                    <div style={{marginTop:10, display:'flex', gap:8}}>
+                      <GhostBtn>WhatsApp</GhostBtn>
+                      <GhostBtn>Email</GhostBtn>
+                      <GhostBtn>SMS</GhostBtn>
+                    </div>
+                    <div style={{marginTop:14, fontSize:12, color:'var(--ink-4)', lineHeight:1.5}}>
+                      Al abrirlo, el cliente va directamente a la ficha de Google Business. La aplicación detecta automáticamente la reseña y la asocia a Carla.
+                    </div>
+                  </div>
+                  <QRPlaceholder />
+                </div>
+              </Card>
+
+              <Card>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                  <div>
+                    <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Objetivo de mayo</div>
+                    <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>87 / 90 reseñas</div>
+                  </div>
+                  <span className="pill ok"><span className="dot"/>97% alcanzado</span>
+                </div>
+                <div style={{marginTop:14}}><Progress value={87} max={90} /></div>
+                <div style={{marginTop:8, fontSize:12, color:'var(--ink-4)'}}>Faltan 3 reseñas en 11 días. Ritmo de cierre 0,3/día — objetivo asegurado.</div>
+
+                <div style={{marginTop:18, paddingTop:14, borderTop:'1px solid var(--line)'}}>
+                  <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Logros</div>
+                  <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
+                    <Badge>3 meses seguidos #1</Badge>
+                    <Badge>50 reseñas 5★ seguidas</Badge>
+                    <Badge>Cierre &lt; 24h</Badge>
+                    <Badge>Embajadora Chamberí</Badge>
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Actividad reciente</div>
+                <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Últimos eventos</div>
+                <div style={{marginTop:14, display:'flex', flexDirection:'column', gap:0}}>
+                  {[
+                    ['hace 12 min','Reseña verificada de Andrea Pinto · 5★'],
+                    ['hace 38 min','Enlace enviado a Familia Soriano vía WhatsApp'],
+                    ['hace 2 h',   'Reseña verificada de Marta Llamas · 5★'],
+                    ['hoy 09:12',  'Reseña verificada de Beatriz Llorente · 5★'],
+                    ['ayer',       '4 enlaces enviados tras visita guiada'],
+                    ['12 may',     'Objetivo mensual al 50%'],
+                  ].map((e,i) => (
+                    <div key={i} style={{display:'grid', gridTemplateColumns:'14px 1fr', gap:12, padding:'10px 0', borderTop:'1px solid var(--line)'}}>
+                      <div style={{display:'flex', justifyContent:'center'}}>
+                        <span style={{width:6, height:6, borderRadius:999, background:'var(--ink-5)', marginTop:7}}/>
+                      </div>
+                      <div>
+                        <div style={{fontSize:11.5, color:'var(--ink-4)'}}>{e[0]}</div>
+                        <div style={{fontSize:13, color:'var(--ink-2)', marginTop:1}}>{e[1]}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </main>
+    </Frame>
+  );
+}
+
+window.SalespersonProfile = SalespersonProfile;
+</script>
+
+<!-- ============================================================
+     SCREEN 03 — SALESPERSON SELF VIEW
+============================================================ -->
+<script type="text/babel">
+const {
+  Frame, Topbar, GhostBtn, DateRange,
+  Card, MonthBars,
+  Stars, Avatar, Seg,
+  QRPlaceholder, Ring
+} = window;
+
+function SalespersonSelf(){
+  const me = {
+    name:'Mateo Salgado',
+    role:'Sales · Residencial Almagro',
+    slug:'reseñahub.es/c/mateo-salgado',
+  };
+
+  return (
+    <Frame>
+      <aside style={{
+        width:232, flexShrink:0,
+        background:'var(--bg)',
+        borderRight:'1px solid var(--line)',
+        padding:'20px 14px',
+        display:'flex', flexDirection:'column', gap:22
+      }}>
+        <div style={{display:'flex', alignItems:'center', gap:10, padding:'4px 8px'}}>
+          <div style={{
+            width:26, height:26, borderRadius:8,
+            background:'#1D1D1F', color:'#fff',
+            display:'grid', placeItems:'center',
+            fontSize:13, fontWeight:700
+          }}>r</div>
+          <div style={{fontWeight:600, fontSize:14, letterSpacing:'-0.015em'}}>ReseñaHub</div>
+        </div>
+        <div style={{display:'flex', flexDirection:'column', gap:2}}>
+          {[
+            ['Mi panel', true],
+            ['Mi enlace', false],
+            ['Mis reseñas', false],
+            ['Objetivos', false],
+            ['Ranking', false],
+          ].map(([l,on]) => (
+            <div key={l} style={{
+              padding:'7px 10px', borderRadius:8,
+              background: on ? 'rgba(0,0,0,0.05)' : 'transparent',
+              color: on ? 'var(--ink)' : 'var(--ink-3)',
+              fontSize:13.5, fontWeight: on?600:500, cursor:'pointer'
+            }}>{l}</div>
+          ))}
+        </div>
+        <div style={{marginTop:'auto', display:'flex', alignItems:'center', gap:10, padding:'8px 8px', borderTop:'1px solid var(--line)', paddingTop:14}}>
+          <Avatar name={me.name} size={28}/>
+          <div style={{lineHeight:1.15}}>
+            <div style={{fontSize:13, fontWeight:600}}>{me.name}</div>
+            <div style={{fontSize:11.5, color:'var(--ink-4)'}}>Comercial · Madrid Centro</div>
+          </div>
+        </div>
+      </aside>
+
+      <main style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden'}}>
+        <Topbar
+          title="Mi panel"
+          subtitle="Buenos días, Mateo"
+          range="Este mes · mayo"
+          right={<>
+            <DateRange value="Mes actual"/>
+            <GhostBtn primary>Compartir mi enlace</GhostBtn>
+          </>}
+        />
+
+        <div style={{flex:1, padding:'24px 32px 32px', overflow:'auto'}}>
+          <Card padding={28}>
+            <div style={{display:'grid', gridTemplateColumns:'1.2fr 1fr', gap:32, alignItems:'center'}}>
+              <div>
+                <div style={{fontSize:13, color:'var(--ink-3)'}}>Llevas en mayo</div>
+                <div style={{display:'flex', alignItems:'baseline', gap:14, marginTop:6}}>
+                  <span style={{fontFamily:'var(--font-display)', fontSize:64, fontWeight:600, letterSpacing:'-0.035em', lineHeight:1, fontVariantNumeric:'tabular-nums'}}>74</span>
+                  <span style={{fontSize:16, color:'var(--ink-3)'}}>reseñas verificadas</span>
+                  <span className="pill ok" style={{marginLeft:8}}><span className="dot"/>+9 vs. abril</span>
+                </div>
+                <div style={{marginTop:18, display:'flex', gap:32, color:'var(--ink-3)', fontSize:13}}>
+                  <span><span style={{color:'var(--ink-4)'}}>Conversión</span> &nbsp;<b style={{color:'var(--ink)'}}>77%</b></span>
+                  <span><span style={{color:'var(--ink-4)'}}>Estrellas</span> &nbsp;<b style={{color:'var(--ink)'}}>4,8</b></span>
+                  <span><span style={{color:'var(--ink-4)'}}>Ranking</span> &nbsp;<b style={{color:'var(--ink)'}}>#2 de 24</b></span>
+                </div>
+              </div>
+
+              <div style={{display:'flex', alignItems:'center', gap:24}}>
+                <Ring value={74} max={80} size={140} />
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)'}}>Objetivo mensual</div>
+                  <div style={{fontSize:24, fontWeight:600, letterSpacing:'-0.02em', marginTop:4, fontVariantNumeric:'tabular-nums'}}>74 / 80</div>
+                  <div style={{marginTop:6, fontSize:12.5, color:'var(--ink-4)', lineHeight:1.5, maxWidth:240}}>
+                    Faltan <b style={{color:'var(--ink)'}}>6 reseñas</b> en 11 días. Con tu ritmo actual cierras objetivo el <b style={{color:'var(--ink)'}}>23 de mayo</b>.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:16, marginTop:16}}>
+            <Card padding={24}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Tu enlace personal</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Para enviar a clientes tras la visita</div>
+                </div>
+                <span className="pill ok"><span className="dot"/>Activo</span>
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'1fr auto', gap:18, alignItems:'center', marginTop:18}}>
+                <div>
+                  <div style={{
+                    padding:'14px 14px',
+                    border:'1px solid var(--line-strong)',
+                    borderRadius:10,
+                    background:'var(--surface-2)',
+                    display:'flex', justifyContent:'space-between', alignItems:'center', gap:10
+                  }}>
+                    <span style={{fontFamily:'var(--font-mono)', fontSize:13.5, color:'var(--ink-2)'}}>{me.slug}</span>
+                    <GhostBtn>Copiar</GhostBtn>
+                  </div>
+                  <div style={{marginTop:12, display:'flex', gap:8, flexWrap:'wrap'}}>
+                    <GhostBtn primary>WhatsApp</GhostBtn>
+                    <GhostBtn>Email</GhostBtn>
+                    <GhostBtn>SMS</GhostBtn>
+                    <GhostBtn>QR para imprimir</GhostBtn>
+                  </div>
+                  <div style={{marginTop:14, fontSize:12.5, color:'var(--ink-4)', lineHeight:1.55, maxWidth:520}}>
+                    Cuando el cliente lo abra, irá a la ficha de Google Business de Residencial Almagro. La aplicación detecta su reseña automáticamente y te la suma — sin que tengas que hacer nada más.
+                  </div>
+                </div>
+                <QRPlaceholder />
+              </div>
+            </Card>
+
+            <Card>
+              <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Consejos</div>
+              <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Para subir tu conversión</div>
+              <div style={{marginTop:14, display:'flex', flexDirection:'column', gap:0}}>
+                {[
+                  ['1','Envía el enlace en las primeras 2 horas tras la visita — la conversión cae a la mitad pasado un día.'],
+                  ['2','El WhatsApp convierte 2,3× mejor que el email para clientes que ya visitaron piso piloto.'],
+                  ['3','Comparte el QR impreso en el dossier que entregas al final de la visita.'],
+                ].map((c,i) => (
+                  <div key={i} style={{display:'grid', gridTemplateColumns:'auto 1fr', gap:12, padding:'10px 0', borderTop:'1px solid var(--line)'}}>
+                    <span style={{
+                      width:22, height:22, borderRadius:7,
+                      background:'var(--surface-2)', border:'1px solid var(--line)',
+                      display:'grid', placeItems:'center',
+                      fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-3)'
+                    }}>{c[0]}</span>
+                    <div style={{fontSize:13, color:'var(--ink-2)', lineHeight:1.5}}>{c[1]}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          <div style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:16, marginTop:16}}>
+            <Card>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Tu evolución</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Reseñas verificadas por mes</div>
+                </div>
+                <Seg options={['12m','6m','3m']} value="6m" onChange={()=>{}}/>
+              </div>
+              <div style={{marginTop:14}}>
+                <MonthBars
+                  data={[51,55,59,62,65,74]}
+                  labels={['Dic','Ene','Feb','Mar','Abr','May']}
+                  height={180}
+                  highlight={5}
+                />
+              </div>
+            </Card>
+
+            <Card padding={0}>
+              <div style={{padding:'18px 22px 8px'}}>
+                <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Últimas reseñas</div>
+                <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Esta semana</div>
+              </div>
+              {[
+                { n:'Familia Soriano', s:5, t:'Atención de diez. Nos enseñó tres tipologías sin prisa.', when:'hace 38 min' },
+                { n:'Jorge Mas',       s:4, t:'Muy correcto. Volveremos con la financiación cerrada.', when:'hace 1 h' },
+                { n:'Cristina Aller',  s:5, t:'Mateo nos cuidó del primer minuto al último.', when:'ayer' },
+                { n:'Pareja Hidalgo',  s:5, t:'Salimos con la maqueta y el plano marcado.', when:'14 may' },
+              ].map((r,i) => (
+                <div key={i} style={{padding:'12px 22px', borderTop:'1px solid var(--line)'}}>
+                  <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+                    <div style={{display:'flex', alignItems:'center', gap:10}}>
+                      <Avatar name={r.n} size={24}/>
+                      <span style={{fontSize:13, fontWeight:600}}>{r.n}</span>
+                      <Stars value={r.s} size={11}/>
+                    </div>
+                    <span style={{fontSize:11.5, color:'var(--ink-4)'}}>{r.when}</span>
+                  </div>
+                  <p style={{margin:'6px 0 0', fontSize:13, color:'var(--ink-2)', lineHeight:1.5}}>{r.t}</p>
+                </div>
+              ))}
+              <div style={{padding:'12px 22px', borderTop:'1px solid var(--line)', textAlign:'center'}}>
+                <span style={{fontSize:12.5, color:'var(--ink-3)', cursor:'pointer'}}>Ver todas mis reseñas →</span>
+              </div>
+            </Card>
+          </div>
+
+          <div style={{display:'grid', gridTemplateColumns:'1.4fr 1fr', gap:16, marginTop:16}}>
+            <Card>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Tu posición</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Ranking del mes</div>
+                </div>
+                <span className="pill"><span className="dot"/>Visible solo para ti y tu manager</span>
+              </div>
+              <div style={{marginTop:14, display:'flex', flexDirection:'column', gap:0}}>
+                {[
+                  ['1','Carla Ruiz','Chamberí','87'],
+                  ['2','Mateo Salgado','Madrid Centro','74'],
+                  ['3','Lucía Vega','Patacona','71'],
+                  ['4','Tomás Iglesias','Madrid Centro','62'],
+                ].map((row,i) => {
+                  const isMe = row[1] === 'Mateo Salgado';
+                  return (
+                    <div key={i} style={{
+                      display:'grid', gridTemplateColumns:'32px 1fr auto auto', gap:14,
+                      padding:'12px 12px', borderRadius:10,
+                      background: isMe ? '#F0F0F2' : 'transparent',
+                      alignItems:'center'
+                    }}>
+                      <span style={{fontFamily:'var(--font-mono)', fontSize:13, color:'var(--ink-4)'}}>{row[0]}</span>
+                      <div style={{display:'flex', alignItems:'center', gap:10}}>
+                        <Avatar name={row[1]} size={26}/>
+                        <span style={{fontSize:13.5, fontWeight: isMe?700:600}}>{row[1]}{isMe ? <span style={{color:'var(--ink-4)', fontWeight:400}}> · tú</span> : ''}</span>
+                      </div>
+                      <span style={{fontSize:12.5, color:'var(--ink-4)'}}>{row[2]}</span>
+                      <span style={{fontFamily:'var(--font-mono)', fontWeight:600, fontVariantNumeric:'tabular-nums'}}>{row[3]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{marginTop:6, padding:'10px 12px', fontSize:12, color:'var(--ink-3)', borderTop:'1px solid var(--line)'}}>
+                Estás a <b style={{color:'var(--ink)'}}>13 reseñas</b> del #1. Mantén tu ritmo y cerrarás el mes en posición <b style={{color:'var(--ink)'}}>#1 o #2</b>.
+              </div>
+            </Card>
+
+            <Card>
+              <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Logros</div>
+              <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Insignias conseguidas</div>
+              <div style={{marginTop:16, display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
+                {[
+                  ['Racha 10', 'reseñas seguidas 5★'],
+                  ['Maratón', '60 reseñas en un mes'],
+                  ['Cierre 24h', 'media bajo 1 día'],
+                  ['Veterano', '1 año en plataforma'],
+                  ['Embajador', 'Madrid Centro'],
+                  ['+2 por desbloquear', null],
+                ].map((b,i) => (
+                  <div key={i} style={{
+                    padding:'12px 10px',
+                    border:'1px solid var(--line)',
+                    borderRadius:10,
+                    background: i===5 ? 'transparent' : 'var(--surface-2)',
+                    textAlign:'center',
+                    opacity: i===5 ? 0.55 : 1
+                  }}>
+                    <div style={{
+                      width:30, height:30, margin:'0 auto 8px',
+                      borderRadius:999,
+                      background: i===5 ? 'transparent' : '#E5E5EA',
+                      border: i===5 ? '1px dashed var(--line-strong)' : 'none',
+                      display:'grid', placeItems:'center',
+                      color:'var(--ink-3)', fontSize:13
+                    }}>{i===5 ? '+' : '◆'}</div>
+                    <div style={{fontSize:12, fontWeight:600}}>{b[0]}</div>
+                    {b[1] && <div style={{fontSize:10.5, color:'var(--ink-4)', marginTop:2}}>{b[1]}</div>}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+      </main>
+    </Frame>
+  );
+}
+
+window.SalespersonSelf = SalespersonSelf;
+</script>
+
+<!-- ============================================================
+     SCREEN 04 — VERIFICATION ENGINE
+============================================================ -->
+<script type="text/babel">
+const {
+  Frame, Sidebar, Topbar, GhostBtn,
+  Card, Stat,
+  Stars, Avatar, Seg,
+  Evidence
+} = window;
+
+function VerificationScreen(){
+  const steps = [
+    { k:'detected', label:'Reseña detectada',      time:'13:42:08', detail:'Google Business · Residencial Almagro' },
+    { k:'parsed',   label:'Contenido analizado',   time:'13:42:09', detail:'Idioma ES · 5★ · Andrea Pinto' },
+    { k:'matched',  label:'Atribuida al comercial',time:'13:42:10', detail:'Carla Ruiz · confianza 98%' },
+    { k:'counted',  label:'Sumada al dashboard',   time:'13:42:10', detail:'Total Carla: 86 → 87 · Sucursal: 141 → 142' },
+  ];
+
+  const feed = [
+    { t:'13:42:10', who:'Andrea Pinto',    sales:'Carla Ruiz',     stars:5, conf:98, state:'counted' },
+    { t:'13:38:54', who:'Familia Soriano', sales:'Mateo Salgado',  stars:5, conf:96, state:'counted' },
+    { t:'13:31:02', who:'Jorge Mas',       sales:'Tomás Iglesias', stars:4, conf:91, state:'counted' },
+    { t:'13:14:47', who:'Marta Llamas',    sales:'Lucía Vega',     stars:5, conf:97, state:'counted' },
+    { t:'12:58:21', who:'Diego Carranza',  sales:'Noa Herrero',    stars:5, conf:74, state:'pending', note:'ventana visita 48 h' },
+    { t:'12:41:33', who:'Anónimo',         sales:'—',              stars:5, conf:38, state:'unmatched', note:'sin enlace previo · revisar' },
+    { t:'12:22:09', who:'Sara Bertrán',    sales:'Inés Olivares',  stars:5, conf:99, state:'counted' },
+  ];
+
+  return (
+    <Frame>
+      <Sidebar active="reviews" />
+      <main style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden'}}>
+        <Topbar
+          title="Reseñas · Verificación"
+          subtitle="Motor de verificación"
+          range="Últimas 24 h"
+          right={<>
+            <span className="pill ok"><span className="dot"/>Sincronizando con Google · cada 90 s</span>
+            <GhostBtn>Forzar sincronización</GhostBtn>
+            <GhostBtn>Configurar</GhostBtn>
+          </>}
+        />
+
+        <div style={{flex:1, padding:'24px 32px 32px', overflow:'auto'}}>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:16}}>
+            <Stat label="Detectadas hoy" value="38" sub="vs 31 ayer" delta="+7" />
+            <Stat label="Verificadas auto" value="36" sub="94,7% sin intervención" delta="" />
+            <Stat label="Confianza media" value="96%" sub="de las atribuciones automáticas" delta="" />
+            <Stat label="Tiempo medio detección" value="2,4 s" sub="desde publicación en Google" delta="−0,3 s" />
+          </div>
+
+          <div style={{display:'grid', gridTemplateColumns:'1.3fr 1fr', gap:16, marginTop:16}}>
+            <Card>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Verificación en curso · más reciente</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Andrea Pinto · 5★ · Residencial Almagro</div>
+                </div>
+                <span className="pill ok"><span className="dot"/>completada en 2,1 s</span>
+              </div>
+
+              <div style={{
+                marginTop:16,
+                padding:'14px 16px',
+                border:'1px solid var(--line)',
+                borderRadius:10,
+                background:'var(--surface-2)'
+              }}>
+                <div style={{display:'flex', alignItems:'center', gap:10}}>
+                  <Avatar name="Andrea Pinto" size={28} />
+                  <div>
+                    <div style={{fontSize:13.5, fontWeight:600}}>Andrea Pinto</div>
+                    <div style={{display:'flex', alignItems:'center', gap:8, marginTop:2}}>
+                      <Stars value={5} size={11}/>
+                      <span style={{fontSize:11.5, color:'var(--ink-4)'}}>publicada en Google · hoy 13:42</span>
+                    </div>
+                  </div>
+                  <span style={{marginLeft:'auto', fontSize:11, color:'var(--ink-4)', fontFamily:'var(--font-mono)'}}>#GR-49813</span>
+                </div>
+                <p style={{margin:'10px 0 0', fontSize:13, color:'var(--ink-2)', lineHeight:1.55}}>
+                  «Visita al piso piloto de Residencial Almagro impecable. Carla nos explicó cada detalle del plano y los acabados. Volvimos con todas las preguntas resueltas y reservamos la semana siguiente.»
+                </p>
+              </div>
+
+              <div style={{marginTop:18}}>
+                <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Pipeline silencioso</div>
+                <div style={{display:'flex', flexDirection:'column'}}>
+                  {steps.map((s,i) => {
+                    const last = i===steps.length-1;
+                    return (
+                      <div key={s.k} style={{display:'grid', gridTemplateColumns:'18px 1fr auto', gap:14, paddingBottom: last?0:14, position:'relative'}}>
+                        {!last && (
+                          <div style={{position:'absolute', left:8, top:18, bottom:0, width:1, background:'var(--line-strong)'}}/>
+                        )}
+                        <div style={{
+                          width:16, height:16, marginTop:2, borderRadius:999,
+                          background:'var(--ok)', color:'#fff',
+                          display:'grid', placeItems:'center',
+                          fontSize:10, fontWeight:700
+                        }}>✓</div>
+                        <div>
+                          <div style={{fontSize:13.5, fontWeight:600}}>{s.label}</div>
+                          <div style={{fontSize:12, color:'var(--ink-3)', marginTop:2}}>{s.detail}</div>
+                        </div>
+                        <div style={{fontFamily:'var(--font-mono)', fontSize:11.5, color:'var(--ink-4)', marginTop:2}}>{s.time}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{marginTop:18, paddingTop:16, borderTop:'1px solid var(--line)'}}>
+                <div style={{fontSize:13, fontWeight:600, marginBottom:10}}>Evidencias del cruce</div>
+                <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:10}}>
+                  <Evidence label="Enlace visitado" detail="reseñahub.es/c/carla-ruiz · 04 may 17:32" weight="40%" />
+                  <Evidence label="Ventana temporal" detail="Reseña a 11 días de la visita · dentro de ventana" weight="20%" />
+                  <Evidence label="Sucursal" detail="Google Business: Residencial Almagro · Chamberí" weight="20%" />
+                  <Evidence label="Mención del comercial" detail="«Carla nos explicó…» — coincide con perfil" weight="18%" />
+                </div>
+                <div style={{marginTop:14, padding:'10px 12px', background:'var(--surface-2)', border:'1px solid var(--line)', borderRadius:10, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <span style={{fontSize:12.5, color:'var(--ink-3)'}}>Confianza combinada</span>
+                  <div style={{display:'flex', alignItems:'center', gap:10}}>
+                    <div style={{width:200, height:6, background:'#E5E5EA', borderRadius:999, overflow:'hidden'}}>
+                      <div style={{width:'98%', height:'100%', background:'var(--ok)'}}/>
+                    </div>
+                    <span style={{fontFamily:'var(--font-mono)', fontWeight:600, fontVariantNumeric:'tabular-nums'}}>98%</span>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card padding={0}>
+              <div style={{padding:'18px 22px 12px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Cola del motor</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Verificaciones recientes</div>
+                </div>
+                <Seg options={['Todas','Auto','Pendientes','Sin asignar']} value="Todas" onChange={()=>{}}/>
+              </div>
+
+              <div style={{padding:'0 22px 14px'}}>
+                {feed.map((f,i) => {
+                  const tone = f.state==='counted' ? 'ok' : f.state==='pending' ? 'warn' : 'unm';
+                  const label = f.state==='counted' ? 'Contabilizada' : f.state==='pending' ? 'Esperando ventana' : 'Sin asignar';
+                  const dotColor = tone==='ok' ? 'var(--ok)' : tone==='warn' ? 'var(--warn)' : 'var(--ink-4)';
+                  return (
+                    <div key={i} style={{padding:'14px 0', borderTop:'1px solid var(--line)'}}>
+                      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
+                        <div style={{display:'flex', alignItems:'center', gap:10, minWidth:0}}>
+                          <span style={{width:10, height:10, borderRadius:999, background:dotColor, flexShrink:0}}/>
+                          <span style={{fontFamily:'var(--font-mono)', fontSize:11.5, color:'var(--ink-4)'}}>{f.t}</span>
+                          <span style={{fontSize:13, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{f.who}</span>
+                          <Stars value={f.stars} size={10}/>
+                        </div>
+                        <span style={{fontFamily:'var(--font-mono)', fontSize:11.5, color:'var(--ink-3)', fontVariantNumeric:'tabular-nums'}}>{f.conf}%</span>
+                      </div>
+                      <div style={{marginTop:6, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, fontSize:12, color:'var(--ink-3)'}}>
+                        <span>→ {f.sales}</span>
+                        <span style={{
+                          fontSize:11, fontWeight:500,
+                          color: tone==='ok' ? 'var(--ok)' : tone==='warn' ? 'var(--warn)' : 'var(--ink-4)'
+                        }}>{label}{f.note ? ` · ${f.note}` : ''}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{padding:'12px 22px', borderTop:'1px solid var(--line)', display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:12, color:'var(--ink-4)'}}>
+                <span>14 pendientes · 2 sin asignar en últimas 24 h</span>
+                <span style={{cursor:'pointer', color:'var(--ink-3)'}}>Ver todas →</span>
+              </div>
+            </Card>
+          </div>
+
+          <div style={{marginTop:16}}>
+            <Card>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:13, color:'var(--ink-3)', fontWeight:500}}>Reglas activas</div>
+                  <div style={{fontSize:18, fontWeight:600, marginTop:4, letterSpacing:'-0.02em'}}>Cómo se atribuye una reseña</div>
+                </div>
+                <GhostBtn>Editar reglas</GhostBtn>
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14}}>
+                {[
+                  ['Ventana de atribución','30 días desde la apertura del enlace personal.'],
+                  ['Múltiples enlaces','Se atribuye al último enlace abierto por el cliente.'],
+                  ['Sin enlace previo','Queda en bandeja "Sin asignar" para revisión manual.'],
+                  ['Reseñas ≤ 3★','Se notifican al manager de sucursal en tiempo real.'],
+                ].map((r,i) => (
+                  <div key={i} style={{padding:'12px 14px', border:'1px solid var(--line)', borderRadius:10, background:'var(--surface-2)'}}>
+                    <div style={{fontSize:12.5, fontWeight:600}}>{r[0]}</div>
+                    <div style={{marginTop:6, fontSize:12, color:'var(--ink-3)', lineHeight:1.5}}>{r[1]}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+      </main>
+    </Frame>
+  );
+}
+
+window.VerificationScreen = VerificationScreen;
+</script>
+
+<!-- ============================================================
+     SCREEN 05 — SALESPEOPLE LIST (admin · gestión)
+============================================================ -->
+<script type="text/babel">
+const {
+  Frame, Sidebar, Topbar, GhostBtn,
+  Card,
+  Avatar, Progress, Seg,
+  TEAM
+} = window;
+
+function SalespeopleList(){
+  const ALL = [
+    ...TEAM,
+    { id:9,  name:'Sergio Aparicio', role:'Sales',        branch:'Madrid · Chamberí',   team:'Norte',   reviews:34, sent:52, avg:4.6, goal:50, delta:'-1', avatar:'#C7C7CC', status:'paused' },
+    { id:10, name:'Aitana Ferrer',   role:'Junior Sales', branch:'Valencia · Patacona', team:'Levante', reviews:0,  sent:0,  avg:0,   goal:30, delta:'—',  avatar:'#CFCFD4', status:'invited' },
+    { id:11, name:'David Mora',      role:'Sales',        branch:'Málaga · Limonar',    team:'Sur',     reviews:36, sent:51, avg:4.7, goal:50, delta:'+2', avatar:'#BFBFC4', status:'active' },
+  ];
+
+  return (
+    <Frame>
+      <Sidebar active="team" />
+      <main style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden', position:'relative'}}>
+        <Topbar
+          title="Comerciales"
+          subtitle="Gestión de comerciales"
+          range="11 sucursales · 24 personas"
+          right={<>
+            <GhostBtn>Exportar CSV</GhostBtn>
+            <GhostBtn primary>+ Invitar comercial</GhostBtn>
+          </>}
+        />
+
+        <div style={{padding:'18px 32px 0', display:'flex', gap:10, alignItems:'center'}}>
+          <SearchField placeholder="Buscar por nombre, email o sucursal…" />
+          <FilterPill label="Sucursal" value="Todas (11)" />
+          <FilterPill label="Equipo" value="Todos" />
+          <FilterPill label="Estado" value="Activos · 22" />
+          <FilterPill label="Ordenar" value="Reseñas · este mes" />
+          <div style={{marginLeft:'auto', display:'flex', gap:8, alignItems:'center'}}>
+            <Seg options={['Tabla','Tarjetas']} value="Tabla" onChange={()=>{}}/>
+          </div>
+        </div>
+
+        <div style={{flex:1, padding:'18px 32px 32px', overflow:'auto'}}>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:16}}>
+            <MiniStat label="Total" value="24" sub="comerciales en plantilla"/>
+            <MiniStat label="Activos" value="22" sub="con enlace en circulación"/>
+            <MiniStat label="Pausados" value="1" sub={'sin actividad > 30 días'}/>
+            <MiniStat label="Invitados" value="1" sub="pendientes de aceptar"/>
+            <MiniStat label="Reseñas este mes" value="459" sub="de los 24"/>
+          </div>
+
+          <Card padding={0} style={{marginTop:16}}>
+            <div style={{
+              padding:'12px 22px',
+              borderBottom:'1px solid var(--line)',
+              display:'grid',
+              gridTemplateColumns:'24px 2fr 1.4fr 0.8fr 0.8fr 0.8fr 0.8fr 110px 32px',
+              gap:14,
+              fontSize:11, color:'var(--ink-4)', textTransform:'uppercase', letterSpacing:'0.04em'
+            }}>
+              <span><input type="checkbox" aria-label="Seleccionar todo" style={{accentColor:'#1D1D1F'}}/></span>
+              <span>Comercial</span>
+              <span>Sucursal · Equipo</span>
+              <span style={{textAlign:'right'}}>Reseñas</span>
+              <span style={{textAlign:'right'}}>Conv.</span>
+              <span style={{textAlign:'right'}}>★</span>
+              <span style={{textAlign:'right'}}>Objetivo</span>
+              <span>Estado</span>
+              <span></span>
+            </div>
+            {ALL.map((p,i) => (
+              <SalespeopleRow key={p.id} p={p} last={i===ALL.length-1}/>
+            ))}
+          </Card>
+
+          <div style={{marginTop:14, display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:12.5, color:'var(--ink-3)'}}>
+            <span>Mostrando 11 de 24</span>
+            <div style={{display:'flex', gap:6}}>
+              <GhostBtn>‹ Anterior</GhostBtn>
+              <GhostBtn>Siguiente ›</GhostBtn>
+            </div>
+          </div>
+        </div>
+
+        <InviteModal />
+      </main>
+    </Frame>
+  );
+}
+
+function slugify(s){
+  return s.toLowerCase()
+    .replace(/[áéíóú]/g, m => ({á:'a',é:'e',í:'i',ó:'o',ú:'u'}[m]))
+    .replace(/\s+/g,'-');
+}
+
+function SalespeopleRow({ p, last }){
+  const conv = p.sent ? Math.round(p.reviews/p.sent*100) : 0;
+  const statusMeta = {
+    active:  { label:'Activa',   tone:'ok'   },
+    paused:  { label:'Pausada',  tone:'warn' },
+    invited: { label:'Invitada', tone:'neu'  },
+  }[p.status || 'active'];
+  return (
+    <div style={{
+      padding:'14px 22px',
+      borderBottom: last ? 'none' : '1px solid var(--line)',
+      display:'grid',
+      gridTemplateColumns:'24px 2fr 1.4fr 0.8fr 0.8fr 0.8fr 0.8fr 110px 32px',
+      gap:14,
+      alignItems:'center',
+      fontSize:13.5
+    }}>
+      <span><input type="checkbox" aria-label={`Seleccionar ${p.name}`} style={{accentColor:'#1D1D1F'}}/></span>
+      <div style={{display:'flex', alignItems:'center', gap:12, minWidth:0}}>
+        <Avatar name={p.name} size={32} color={p.avatar}/>
+        <div style={{minWidth:0}}>
+          <div style={{fontWeight:600, letterSpacing:'-0.005em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'}}>{p.name}</div>
+          <div style={{fontSize:11.5, color:'var(--ink-4)', fontFamily:'var(--font-mono)'}}>reseñahub.es/c/{slugify(p.name)}</div>
+        </div>
+      </div>
+      <div>
+        <div style={{fontSize:13, color:'var(--ink-2)'}}>{p.branch}</div>
+        <div style={{fontSize:11.5, color:'var(--ink-4)'}}>{p.team}</div>
+      </div>
+      <span style={{textAlign:'right', fontVariantNumeric:'tabular-nums', fontWeight:600}}>{p.reviews || '—'}</span>
+      <span style={{textAlign:'right', fontVariantNumeric:'tabular-nums', color:'var(--ink-3)'}}>{p.sent ? conv+'%' : '—'}</span>
+      <span style={{textAlign:'right', fontVariantNumeric:'tabular-nums'}}>{p.avg ? p.avg.toString().replace('.',',') : '—'}</span>
+      <div style={{textAlign:'right'}}>
+        <div style={{fontSize:12, color:'var(--ink-3)', fontVariantNumeric:'tabular-nums'}}>{p.reviews}/{p.goal}</div>
+        <div style={{marginTop:4, width:80, marginLeft:'auto'}}>
+          <Progress value={Math.min(p.reviews, p.goal)} max={p.goal}/>
+        </div>
+      </div>
+      <span className={`pill ${statusMeta.tone === 'ok' ? 'ok' : statusMeta.tone === 'warn' ? 'warn' : ''}`}>
+        <span className="dot"/>{statusMeta.label}
+      </span>
+      <button aria-label={`Más acciones para ${p.name}`} style={{
+        background:'transparent', border:'none', cursor:'pointer',
+        color:'var(--ink-4)', fontSize:18, letterSpacing:'-0.05em', padding:0
+      }}>···</button>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, sub }){
+  return (
+    <Card padding={16}>
+      <div style={{fontSize:11.5, color:'var(--ink-4)', textTransform:'uppercase', letterSpacing:'0.04em', fontWeight:500}}>{label}</div>
+      <div style={{
+        marginTop:6, fontFamily:'var(--font-display)',
+        fontWeight:600, letterSpacing:'-0.025em',
+        fontSize:24, fontVariantNumeric:'tabular-nums', lineHeight:1
+      }}>{value}</div>
+      <div style={{marginTop:6, fontSize:11.5, color:'var(--ink-4)'}}>{sub}</div>
+    </Card>
+  );
+}
+
+function SearchField({ placeholder }){
+  return (
+    <div style={{
+      flex:1, maxWidth:420,
+      display:'flex', alignItems:'center', gap:8,
+      padding:'8px 12px',
+      background:'var(--surface)',
+      border:'1px solid var(--line-strong)',
+      borderRadius:9, fontSize:13
+    }}>
+      <span aria-hidden="true" style={{color:'var(--ink-4)'}}>⌕</span>
+      <span style={{color:'var(--ink-4)'}}>{placeholder}</span>
+      <span style={{marginLeft:'auto', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-4)', padding:'1px 5px', border:'1px solid var(--line)', borderRadius:4}}>⌘K</span>
+    </div>
+  );
+}
+
+function FilterPill({ label, value }){
+  return (
+    <div style={{
+      display:'inline-flex', alignItems:'center', gap:6,
+      padding:'7px 11px',
+      background:'var(--surface)',
+      border:'1px solid var(--line-strong)',
+      borderRadius:9, fontSize:13
+    }}>
+      <span style={{color:'var(--ink-4)'}}>{label}</span>
+      <span style={{fontWeight:500}}>{value}</span>
+      <span aria-hidden="true" style={{color:'var(--ink-4)', fontSize:10, marginLeft:2}}>▾</span>
+    </div>
+  );
+}
+
+function InviteModal(){
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="invite-modal-title" style={{
+      position:'absolute', inset:0, zIndex:20,
+      background:'rgba(20,20,22,0.32)',
+      backdropFilter:'blur(2px)',
+      WebkitBackdropFilter:'blur(2px)',
+      display:'flex', alignItems:'center', justifyContent:'center'
+    }}>
+      <div style={{
+        width:480, background:'var(--surface)',
+        border:'1px solid var(--line)',
+        borderRadius:18,
+        boxShadow:'0 24px 60px rgba(0,0,0,0.18), 0 8px 20px rgba(0,0,0,0.08)',
+        overflow:'hidden'
+      }}>
+        <div style={{padding:'20px 22px 14px', borderBottom:'1px solid var(--line)'}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+            <div>
+              <div style={{fontSize:12.5, color:'var(--ink-3)', fontWeight:500}}>Nuevo comercial</div>
+              <div id="invite-modal-title" style={{fontFamily:'var(--font-display)', fontSize:20, fontWeight:600, letterSpacing:'-0.025em', marginTop:2}}>Invitar a la plataforma</div>
+            </div>
+            <button aria-label="Cerrar" style={{
+              background:'transparent', border:'none', cursor:'pointer',
+              fontSize:20, color:'var(--ink-4)', lineHeight:1, marginTop:-2, padding:0
+            }}>×</button>
+          </div>
+          <div style={{marginTop:8, fontSize:12.5, color:'var(--ink-3)', lineHeight:1.5}}>
+            Se generará un enlace personal único y un acceso al panel. La persona recibe un email para terminar el alta.
+          </div>
+        </div>
+
+        <div style={{padding:'18px 22px', display:'flex', flexDirection:'column', gap:14}}>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <FormField label="Nombre" value="Aitana"/>
+            <FormField label="Apellidos" value="Ferrer Llopis"/>
+          </div>
+          <FormField label="Email" value="aitana.ferrer@grupohabitar.es" mono/>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <FormField label="Cargo" value="Junior Sales"/>
+            <FormField label="Teléfono (opcional)" value="—" muted/>
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+            <FormSelect label="Sucursal" value="Valencia · Patacona"/>
+            <FormSelect label="Equipo" value="Levante"/>
+          </div>
+          <FormSelect label="Objetivo mensual sugerido" value="30 reseñas (primer mes · ajustable luego)"/>
+          <div style={{
+            padding:'10px 12px',
+            background:'var(--surface-2)',
+            border:'1px solid var(--line)',
+            borderRadius:10
+          }}>
+            <div style={{fontSize:11.5, color:'var(--ink-4)', textTransform:'uppercase', letterSpacing:'0.04em'}}>Enlace que se generará</div>
+            <div style={{marginTop:6, fontFamily:'var(--font-mono)', fontSize:12.5, color:'var(--ink)'}}>reseñahub.es/c/aitana-ferrer</div>
+          </div>
+        </div>
+
+        <div style={{padding:'14px 22px', borderTop:'1px solid var(--line)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+          <span style={{fontSize:11.5, color:'var(--ink-4)'}}>El comercial recibirá el correo en menos de 1 min.</span>
+          <div style={{display:'flex', gap:8}}>
+            <GhostBtn>Cancelar</GhostBtn>
+            <GhostBtn primary>Enviar invitación</GhostBtn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FormField({ label, value, mono, muted }){
+  return (
+    <div>
+      <div style={{fontSize:11.5, color:'var(--ink-4)', textTransform:'uppercase', letterSpacing:'0.04em', marginBottom:6}}>{label}</div>
+      <div style={{
+        padding:'9px 12px',
+        background:'var(--surface)',
+        border:'1px solid var(--line-strong)',
+        borderRadius:9,
+        fontSize:13,
+        fontFamily: mono ? 'var(--font-mono)' : 'inherit',
+        color: muted ? 'var(--ink-4)' : 'var(--ink)'
+      }}>{value}</div>
+    </div>
+  );
+}
+
+function FormSelect({ label, value }){
+  return (
+    <div>
+      <div style={{fontSize:11.5, color:'var(--ink-4)', textTransform:'uppercase', letterSpacing:'0.04em', marginBottom:6}}>{label}</div>
+      <div style={{
+        padding:'9px 12px',
+        background:'var(--surface)',
+        border:'1px solid var(--line-strong)',
+        borderRadius:9,
+        fontSize:13,
+        display:'flex', justifyContent:'space-between', alignItems:'center'
+      }}>
+        <span>{value}</span>
+        <span aria-hidden="true" style={{color:'var(--ink-4)', fontSize:10}}>▾</span>
+      </div>
+    </div>
+  );
+}
+
+window.SalespeopleList = SalespeopleList;
+</script>
+
+<!-- ============================================================
+     SCREEN 06 — SALESPERSON MOBILE (iOS frame + home)
+============================================================ -->
+<script type="text/babel">
+const {
+  Avatar, Stars
+} = window;
+
+/* iOS device frame — subset of ios-frame.jsx (only what mobile.jsx uses) */
+function IOSStatusBar({ dark=false, time='9:41' }){
+  const c = dark ? '#fff' : '#000';
+  return (
+    <div style={{
+      display:'flex', gap:154, alignItems:'center', justifyContent:'center',
+      padding:'21px 24px 19px', boxSizing:'border-box',
+      position:'relative', zIndex:20, width:'100%'
+    }}>
+      <div style={{flex:1, height:22, display:'flex', alignItems:'center', justifyContent:'center', paddingTop:1.5}}>
+        <span style={{
+          fontFamily:'var(--font-text)', fontWeight:590,
+          fontSize:17, lineHeight:'22px', color:c
+        }}>{time}</span>
+      </div>
+      <div style={{flex:1, height:22, display:'flex', alignItems:'center', justifyContent:'center', gap:7, paddingTop:1, paddingRight:1}}>
+        <svg width="19" height="12" viewBox="0 0 19 12" aria-hidden="true">
+          <rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill={c}/>
+          <rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill={c}/>
+          <rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill={c}/>
+          <rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill={c}/>
+        </svg>
+        <svg width="17" height="12" viewBox="0 0 17 12" aria-hidden="true">
+          <path d="M8.5 3.2C10.8 3.2 12.9 4.1 14.4 5.6L15.5 4.5C13.7 2.7 11.2 1.5 8.5 1.5C5.8 1.5 3.3 2.7 1.5 4.5L2.6 5.6C4.1 4.1 6.2 3.2 8.5 3.2Z" fill={c}/>
+          <path d="M8.5 6.8C9.9 6.8 11.1 7.3 12 8.2L13.1 7.1C11.8 5.9 10.2 5.1 8.5 5.1C6.8 5.1 5.2 5.9 3.9 7.1L5 8.2C5.9 7.3 7.1 6.8 8.5 6.8Z" fill={c}/>
+          <circle cx="8.5" cy="10.5" r="1.5" fill={c}/>
+        </svg>
+        <svg width="27" height="13" viewBox="0 0 27 13" aria-hidden="true">
+          <rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke={c} strokeOpacity="0.35" fill="none"/>
+          <rect x="2" y="2" width="20" height="9" rx="2" fill={c}/>
+          <path d="M25 4.5V8.5C25.8 8.2 26.5 7.2 26.5 6.5C26.5 5.8 25.8 4.8 25 4.5Z" fill={c} fillOpacity="0.4"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function IOSDevice({ children, width=402, height=874, dark=false }){
+  return (
+    <div style={{
+      width, height, borderRadius:48, overflow:'hidden',
+      position:'relative', background: dark ? '#000' : 'var(--ios-bg)',
+      boxShadow:'0 40px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.12)',
+      fontFamily:'var(--font-text)',
+      WebkitFontSmoothing:'antialiased'
+    }}>
+      <div style={{
+        position:'absolute', top:11, left:'50%', transform:'translateX(-50%)',
+        width:126, height:37, borderRadius:24, background:'#000', zIndex:50
+      }}/>
+      <div style={{position:'absolute', top:0, left:0, right:0, zIndex:10}}>
+        <IOSStatusBar dark={dark}/>
+      </div>
+      <div style={{height:'100%', display:'flex', flexDirection:'column'}}>
+        <div style={{flex:1, overflow:'auto'}}>{children}</div>
+      </div>
+      <div style={{
+        position:'absolute', bottom:0, left:0, right:0, zIndex:60,
+        height:34, display:'flex', justifyContent:'center', alignItems:'flex-end',
+        paddingBottom:8, pointerEvents:'none'
+      }}>
+        <div style={{
+          width:139, height:5, borderRadius:100,
+          background: dark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.25)'
+        }}/>
+      </div>
+    </div>
+  );
+}
+
+function SalespersonMobile(){
+  return (
+    <div style={{
+      width:'100%', height:'100%',
+      background:'#E8E8EC',
+      display:'flex', alignItems:'center', justifyContent:'center',
+      padding:32
+    }}>
+      <IOSDevice width={402} height={874}>
+        <MobileHome />
+      </IOSDevice>
+    </div>
+  );
+}
+
+function MobileHome(){
+  return (
+    <div style={{
+      height:'100%',
+      background:'var(--ios-bg)',
+      display:'flex', flexDirection:'column',
+      fontFamily:'var(--font-text)',
+      color:'var(--ink)'
+    }}>
+      <div style={{height:60}}/>
+
+      <div style={{padding:'4px 20px 14px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <div>
+          <div style={{fontSize:13, color:'var(--ink-3)'}}>Mateo, buenos días</div>
+          <div style={{fontFamily:'var(--font-display)', fontSize:28, fontWeight:700, letterSpacing:'-0.025em', lineHeight:1.1, marginTop:2}}>Tu panel</div>
+        </div>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <BellPill count={3}/>
+          <Avatar name="Mateo Salgado" size={36} color="#C7C7CC"/>
+        </div>
+      </div>
+
+      <div style={{flex:1, overflow:'auto', padding:'0 16px 90px'}}>
+        <div style={{
+          background:'var(--ink)',
+          color:'#fff',
+          borderRadius:22,
+          padding:'18px 18px 16px',
+          position:'relative',
+          overflow:'hidden'
+        }}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <span style={{fontSize:12, color:'rgba(255,255,255,0.6)', textTransform:'uppercase', letterSpacing:'0.05em'}}>Mayo</span>
+            <span style={{
+              fontSize:11.5, color:'#fff',
+              padding:'3px 8px',
+              background:'rgba(255,255,255,0.12)',
+              borderRadius:999
+            }}>#2 del ranking</span>
+          </div>
+          <div style={{display:'flex', alignItems:'baseline', gap:10, marginTop:14}}>
+            <span style={{fontFamily:'var(--font-display)', fontSize:64, fontWeight:600, letterSpacing:'-0.04em', lineHeight:1, fontVariantNumeric:'tabular-nums'}}>74</span>
+            <span style={{fontSize:14, color:'rgba(255,255,255,0.65)'}}>de 80 reseñas</span>
+          </div>
+          <div style={{marginTop:14, height:5, borderRadius:999, background:'rgba(255,255,255,0.16)', overflow:'hidden'}}>
+            <div style={{width:'92%', height:'100%', background:'#fff', borderRadius:999}}/>
+          </div>
+          <div style={{marginTop:10, display:'flex', justifyContent:'space-between', fontSize:12, color:'rgba(255,255,255,0.65)'}}>
+            <span>92% del objetivo</span>
+            <span>Faltan 6 · ritmo 0,6/día</span>
+          </div>
+        </div>
+
+        <div style={{
+          marginTop:14,
+          background:'#fff',
+          borderRadius:18,
+          padding:'16px 16px 14px',
+          boxShadow:'0 1px 2px rgba(0,0,0,0.04)'
+        }}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <span style={{fontSize:12.5, color:'var(--ink-3)', fontWeight:500}}>Tu enlace personal</span>
+            <span style={{
+              display:'inline-flex', alignItems:'center', gap:6,
+              padding:'2px 8px', borderRadius:999,
+              background:'var(--ok-bg)', color:'var(--ok)',
+              fontSize:11, fontWeight:500
+            }}>
+              <span style={{width:5, height:5, borderRadius:999, background:'var(--ok)'}}/>
+              activo
+            </span>
+          </div>
+          <div style={{
+            marginTop:10,
+            padding:'12px 14px',
+            background:'var(--ios-bg)',
+            borderRadius:12,
+            fontFamily:'var(--font-mono)',
+            fontSize:13, color:'var(--ink)',
+            display:'flex', justifyContent:'space-between', alignItems:'center'
+          }}>
+            <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>reseñahub.es/c/mateo-salgado</span>
+            <span aria-hidden="true" style={{color:'var(--ink-4)', fontSize:14, marginLeft:8}}>⎘</span>
+          </div>
+
+          <div style={{marginTop:12, display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+            <MobileBtn primary>WhatsApp</MobileBtn>
+            <MobileBtn>Compartir</MobileBtn>
+          </div>
+          <div style={{marginTop:8, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8}}>
+            <MobileBtn small>Email</MobileBtn>
+            <MobileBtn small>SMS</MobileBtn>
+            <MobileBtn small>QR</MobileBtn>
+          </div>
+        </div>
+
+        <div style={{marginTop:18}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', padding:'0 4px'}}>
+            <span style={{fontSize:13, color:'var(--ink-3)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.04em'}}>Hoy</span>
+            <span style={{fontSize:12, color:'var(--ink-4)'}}>20 mayo</span>
+          </div>
+          <div style={{marginTop:10, display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10}}>
+            <MobileTile big="3" label="Reseñas nuevas" tone="ok"/>
+            <MobileTile big="5" label="Enlaces enviados"/>
+            <MobileTile big="5,0" label="Estrellas hoy"/>
+          </div>
+        </div>
+
+        <div style={{marginTop:20}}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', padding:'0 4px'}}>
+            <span style={{fontSize:13, color:'var(--ink-3)', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.04em'}}>Últimas reseñas</span>
+            <span style={{fontSize:12, color:'var(--ink-4)'}}>ver todas</span>
+          </div>
+          <div style={{marginTop:10, background:'#fff', borderRadius:18, overflow:'hidden'}}>
+            {[
+              { n:'Familia Soriano', s:5, t:'Atención de diez. Nos enseñó tres tipologías sin prisa.', when:'hace 38 min' },
+              { n:'Jorge Mas',       s:4, t:'Muy correcto. Volveremos con la financiación cerrada.',  when:'hace 1 h' },
+              { n:'Cristina Aller',  s:5, t:'Mateo nos cuidó del primer minuto al último.',           when:'ayer' },
+            ].map((r,i) => (
+              <div key={i} style={{
+                padding:'14px 16px',
+                borderTop: i===0 ? 'none' : '1px solid var(--line)'
+              }}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                  <div style={{display:'flex', alignItems:'center', gap:10}}>
+                    <Avatar name={r.n} size={28}/>
+                    <div>
+                      <div style={{fontSize:13.5, fontWeight:600}}>{r.n}</div>
+                      <Stars value={r.s} size={11}/>
+                    </div>
+                  </div>
+                  <span style={{fontSize:11.5, color:'var(--ink-4)'}}>{r.when}</span>
+                </div>
+                <p style={{margin:'8px 0 0', fontSize:13, color:'var(--ink-2)', lineHeight:1.45}}>{r.t}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{
+          marginTop:18,
+          padding:'14px 16px',
+          background:'#fff',
+          borderRadius:18,
+          display:'flex', gap:12,
+          alignItems:'flex-start',
+          boxShadow:'0 1px 2px rgba(0,0,0,0.04)'
+        }}>
+          <div aria-hidden="true" style={{
+            width:32, height:32, borderRadius:10,
+            background:'var(--ios-bg)',
+            display:'grid', placeItems:'center',
+            flexShrink:0, color:'var(--ink-3)'
+          }}>◇</div>
+          <div>
+            <div style={{fontSize:13, fontWeight:600}}>Envía el enlace cuanto antes</div>
+            <div style={{marginTop:3, fontSize:12.5, color:'var(--ink-3)', lineHeight:1.5}}>
+              Las reseñas pedidas en las primeras 2 h tras la visita convierten <b style={{color:'var(--ink)'}}>2,3×</b> mejor.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <MobileTabBar />
+    </div>
+  );
+}
+
+function BellPill({ count }){
+  return (
+    <div aria-label={`Notificaciones${count ? ', '+count+' sin leer' : ''}`} style={{
+      position:'relative',
+      width:36, height:36, borderRadius:999,
+      background:'#fff',
+      display:'grid', placeItems:'center',
+      color:'var(--ink-2)',
+      boxShadow:'0 1px 2px rgba(0,0,0,0.05)'
+    }}>
+      <span aria-hidden="true" style={{fontSize:16}}>♪</span>
+      {count > 0 && (
+        <span style={{
+          position:'absolute', top:-2, right:-2,
+          minWidth:16, height:16, padding:'0 4px',
+          borderRadius:999, background:'var(--ink)', color:'#fff',
+          fontSize:10, fontWeight:600,
+          display:'grid', placeItems:'center',
+          border:'2px solid var(--ios-bg)'
+        }}>{count}</span>
+      )}
+    </div>
+  );
+}
+
+function MobileBtn({ children, primary, small }){
+  return (
+    <button style={{
+      width:'100%',
+      padding: small ? '9px 0' : '13px 0',
+      borderRadius:12,
+      border: primary ? 'none' : '1px solid var(--line-strong)',
+      background: primary ? 'var(--ink)' : '#fff',
+      color: primary ? '#fff' : 'var(--ink)',
+      fontSize: small ? 13 : 14.5, fontWeight:600,
+      letterSpacing:'-0.01em',
+      cursor:'pointer'
+    }}>{children}</button>
+  );
+}
+
+function MobileTile({ big, label, tone }){
+  const accent = tone === 'ok' ? 'var(--ok)' : 'var(--ink)';
+  return (
+    <div style={{
+      padding:'14px 12px',
+      background:'#fff',
+      borderRadius:14,
+      boxShadow:'0 1px 2px rgba(0,0,0,0.04)'
+    }}>
+      <div style={{
+        fontFamily:'var(--font-display)',
+        fontSize:26, fontWeight:600,
+        letterSpacing:'-0.025em',
+        fontVariantNumeric:'tabular-nums',
+        color:accent, lineHeight:1
+      }}>{big}</div>
+      <div style={{marginTop:6, fontSize:11.5, color:'var(--ink-3)', lineHeight:1.3}}>{label}</div>
+    </div>
+  );
+}
+
+function MobileTabBar(){
+  const items = [
+    ['Panel',   '◧', true],
+    ['Enlace',  '⊕', false],
+    ['Reseñas', '★', false],
+    ['Ranking', '◑', false],
+  ];
+  return (
+    <nav aria-label="Navegación principal" style={{
+      borderTop:'1px solid var(--line)',
+      background:'rgba(248,248,250,0.92)',
+      backdropFilter:'blur(20px)',
+      WebkitBackdropFilter:'blur(20px)',
+      padding:'10px 12px 30px',
+      display:'flex', justifyContent:'space-around'
+    }}>
+      {items.map(([l,icon,on],i) => (
+        <div key={i} aria-current={on ? 'page' : undefined} style={{
+          display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+          color: on ? 'var(--ink)' : 'var(--ink-4)',
+          fontWeight: on ? 600 : 500
+        }}>
+          <span aria-hidden="true" style={{fontSize:18}}>{icon}</span>
+          <span style={{fontSize:10.5}}>{l}</span>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+window.SalespersonMobile = SalespersonMobile;
+</script>
+
+<!-- ============================================================
+     APP — top nav + screen switcher
+============================================================ -->
+<script type="text/babel">
+const { useState } = React;
+const {
+  AdminDashboard, SalespeopleList, SalespersonProfile,
+  SalespersonSelf, SalespersonMobile, VerificationScreen
+} = window;
+
+const SCREENS = [
+  { id:'dashboard',    label:'Dashboard',       Component:AdminDashboard,     w:1440, h:1024 },
+  { id:'list',         label:'Comerciales',     Component:SalespeopleList,    w:1440, h:1024 },
+  { id:'profile',      label:'Ficha comercial', Component:SalespersonProfile, w:1440, h:1024 },
+  { id:'self',         label:'Vista comercial', Component:SalespersonSelf,    w:1440, h:1024 },
+  { id:'mobile',       label:'Vista móvil',     Component:SalespersonMobile,  w:580,  h:1024 },
+  { id:'verification', label:'Verificación',    Component:VerificationScreen, w:1440, h:1024 },
+];
+
+function App(){
+  const [active, setActive] = useState(SCREENS[0].id);
+  const current = SCREENS.find(s => s.id === active) || SCREENS[0];
+  const Active = current.Component;
+  return (
+    <div>
+      <div className="nav">
+        <div className="nav-inner">
+          <div className="nav-brand">
+            <span className="logo">r</span>
+            <span>ReseñaHub</span>
+          </div>
+          <div className="nav-tabs" role="tablist">
+            {SCREENS.map(s => (
+              <button
+                key={s.id}
+                role="tab"
+                aria-selected={active===s.id}
+                className={'nav-tab' + (active===s.id ? ' active' : '')}
+                onClick={() => setActive(s.id)}
+              >{s.label}</button>
+            ))}
+          </div>
+          <div className="nav-meta">Grupo Habitar · interno</div>
+        </div>
+      </div>
+
+      <div className="stage">
+        <div className="artboard" style={{'--ab-w': current.w+'px', '--ab-h': current.h+'px'}}>
+          <Active />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# next
+.next
+out
+next-env.d.ts
+
+# production
+build
+dist
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# design package source (keep tracked? — for now ignore the zip/tar)
+_design_package/ReseñaHub.zip
+_design_package/design.tar
+
+# editor
+.vscode/
+.idea/

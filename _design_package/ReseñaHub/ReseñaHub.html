@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>ReseñaHub — Exploración</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg: #F5F5F7;
+    --surface: #FFFFFF;
+    --surface-2: #FAFAFB;
+    --line: #E5E5EA;
+    --line-strong: #D2D2D7;
+    --ink: #1D1D1F;
+    --ink-2: #515154;
+    --ink-3: #6E6E73;
+    --ink-4: #86868B;
+    --ink-5: #AEAEB2;
+    --ok: #2D7D46;       /* discreet verified green */
+    --ok-bg: #E8F0EB;
+    --warn-bg: #F4ECDB;
+    --warn: #8A6A1E;
+    --gold: #B58A2C;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-lg: 20px;
+    --shadow-card: 0 1px 0 rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.04);
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+    --font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin:0; padding:0; background: #EDEDF0; color: var(--ink); font-family: var(--font-text); -webkit-font-smoothing: antialiased; }
+  body{ letter-spacing: -0.01em; }
+
+  /* tiny utilities used across screens */
+  .h-rule{ height:1px; background: var(--line); width:100%; }
+  .mono{ font-family: var(--font-mono); }
+  .tabular{ font-variant-numeric: tabular-nums; }
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
+    padding: 3px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; color: var(--ink-3);
+    background: #F2F2F4; border: 1px solid var(--line);
+  }
+  .pill.ok{ background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+  .pill.warn{ background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+  .dot{ width:6px; height:6px; border-radius:999px; background: currentColor; display:inline-block; }
+  button{ font: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="screens/shared.jsx"></script>
+<script type="text/babel" src="screens/dashboard.jsx"></script>
+<script type="text/babel" src="screens/list.jsx"></script>
+<script type="text/babel" src="screens/profile.jsx"></script>
+<script type="text/babel" src="screens/self.jsx"></script>
+<script type="text/babel" src="screens/mobile.jsx"></script>
+<script type="text/babel" src="screens/verification.jsx"></script>
+<script type="text/babel" src="app.jsx"></script>
+</body>
+</html>
