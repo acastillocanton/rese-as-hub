@@ -49,8 +49,8 @@ Plan original en `~/.claude/plans/vamos-a-desarrollar-una-kind-lovelace.md`. Res
 | Pantalla | Estado |
 |---|---|
 | [`/dashboard`](app/(admin)/dashboard/page.tsx) | UI completa pero **usa `lib/demo-data.ts` hardcodeada** — no enchufada a Supabase |
-| [`/comerciales`](app/(admin)/comerciales/page.tsx) | ✅ DB real + invite + delete |
-| [`/comerciales/[slug]`](app/(admin)/comerciales/[slug]/page.tsx) | ❌ `ComingSoon` |
+| [`/comerciales`](app/(admin)/comerciales/page.tsx) | ✅ DB real + invite + delete + fila navegable |
+| [`/comerciales/[slug]`](app/(admin)/comerciales/[slug]/page.tsx) | ✅ ficha completa: datos editables (meta/ficha/status), KPIs (reseñas mes + visitas + clientes), lista de clientes con visitas y reseñas, sección reseñas con placeholder hasta Fase 4 |
 | [`/resenas/verificacion`](app/(admin)/resenas/verificacion/page.tsx) | ❌ `ComingSoon` |
 | [`/fichas`](app/(admin)/fichas/page.tsx) | ✅ lista + add + delete, **pero falta botón "Conectar OAuth"** |
 
@@ -113,8 +113,8 @@ curl -sS -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/admin/generate_link" \
 ### 4.3 `signInWithOtp` debe ir SIEMPRE en el cliente, no en server action
 [`app/login/LoginForm.tsx`](app/login/LoginForm.tsx) lo llama desde el browser. Razón histórica: con PKCE el verifier tenía que vivir en `document.cookie`. Con el flujo `token_hash` ya no aplica esa restricción, pero mantenerlo en el cliente preserva la UX (estado de envío, error inline, etc.).
 
-### 4.4 El `status` del comercial no se actualiza al primer login
-Tras `inviteSales`, el comercial queda con `status='invited'`. Hoy ningún sitio del código lo mueve a `'active'` cuando completa primer acceso. Operativo (no rompe nada) pero queda raro en el listado del admin.
+### 4.4 Status del comercial — auto-flip a `active` al primer login
+[`app/auth/confirm/route.ts`](app/auth/confirm/route.ts) hace un `UPDATE profiles SET status='active' WHERE id=user.id AND status='invited'` tras un `verifyOtp` exitoso. Esto cubre tanto magic-link como invite. `paused` se respeta (no se sobreescribe). El admin sigue pudiendo forzar el estado desde la ficha del comercial.
 
 ### 4.5 Hydration warning silenciado en `<html>`
 [`app/layout.tsx`](app/layout.tsx) usa `suppressHydrationWarning` en `<html>` porque alguna extensión del navegador (Dark Reader-style) inyecta `className="light"` antes de que React hidrate. No afecta lógica, solo silencia el warning del dev overlay.

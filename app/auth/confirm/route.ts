@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.verifyOtp({
+  const { data, error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
     type: type as EmailOtpType,
   });
@@ -43,6 +43,18 @@ export async function GET(request: NextRequest) {
     console.error("[auth/confirm] verifyOtp failed:", error);
     loginUrl.searchParams.set("error", "verify-failed");
     return NextResponse.redirect(loginUrl);
+  }
+
+  // First successful auth → flip status invited → active. Paused stays paused
+  // (it's a deliberate admin action), active stays active. RLS policy
+  // `profiles_self_update` permits the user to update their own row as long
+  // as `role` doesn't change, which we're not touching here.
+  if (data.user) {
+    await supabase
+      .from("profiles")
+      .update({ status: "active" } as never)
+      .eq("id", data.user.id)
+      .eq("status", "invited");
   }
 
   return NextResponse.redirect(new URL(safeNext, url.origin));

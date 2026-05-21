@@ -105,6 +105,43 @@ export async function inviteSales(input: InviteSalesInput): Promise<
   return { ok: true, inviteLink, email: parsed.data.email };
 }
 
+const updateSchema = z.object({
+  id: z.string().uuid(),
+  monthlyGoal: z.coerce.number().int().min(0).max(1000),
+  locationId: z.string().uuid("Selecciona una ficha."),
+  status: z.enum(["invited", "active", "paused"]),
+});
+
+export type UpdateSalesInput = z.input<typeof updateSchema>;
+
+export async function updateSales(input: UpdateSalesInput) {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const supabase = await createClient();
+  // RLS: only admin can update other profiles (middleware also gates this route).
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      monthly_goal: parsed.data.monthlyGoal,
+      location_id: parsed.data.locationId,
+      status: parsed.data.status,
+    } as never)
+    .eq("id", parsed.data.id)
+    .eq("role", "sales");
+
+  if (error) {
+    console.error("[comerciales] updateSales failed:", error);
+    return { ok: false as const, error: error.message };
+  }
+
+  revalidatePath("/comerciales");
+  revalidatePath(`/comerciales/${parsed.data.id}`);
+  return { ok: true as const };
+}
+
 export async function deleteSales(id: string) {
   if (!id) return { error: "Id inválido." };
   const supabase = await createClient();

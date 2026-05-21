@@ -1,30 +1,531 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
-import { GhostBtn } from "@/components/ui/GhostBtn";
-import { ComingSoon } from "@/components/ui/ComingSoon";
+import { Card } from "@/components/ui/Card";
+import { Stat } from "@/components/ui/Stat";
+import { Stars } from "@/components/ui/Stars";
+import { Avatar } from "@/components/ui/Avatar";
+import { createClient } from "@/lib/supabase/server";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import type { ProfileStatus } from "@/lib/supabase/types";
+import { DeleteSalesButton } from "../DeleteSalesButton";
+import { SalesEditCard } from "./SalesEditCard";
 
-type Params = Promise<{ slug: string }>;
+type PageProps = { params: Promise<{ slug: string }> };
 
-export default async function ComercialProfilePage({ params }: { params: Params }) {
+type SalesDetail = {
+  id: string;
+  full_name: string;
+  slug: string;
+  email: string | null;
+  phone: string | null;
+  monthly_goal: number;
+  status: ProfileStatus;
+  joined_at: string;
+  location_id: string | null;
+  location: { id: string; name: string } | null;
+};
+
+type ClientWithCounts = {
+  id: string;
+  full_name: string;
+  slug: string;
+  created_at: string;
+  visits: number;
+  reviews: number;
+};
+
+type ReviewRow = {
+  id: string;
+  author_name: string;
+  rating: number;
+  text: string | null;
+  google_created_at: string;
+  match_state: string;
+  match_confidence: number;
+  client_id: string | null;
+};
+
+export default async function ComercialDetallePage({ params }: PageProps) {
   const { slug } = await params;
+
+  if (!isSupabaseConfigured()) {
+    return (
+      <>
+        <Topbar
+          title="Detalle"
+          subtitle="Modo demo — sin base de datos"
+          breadcrumb="Comerciales"
+        />
+        <div style={{ padding: "24px 32px" }}>
+          <Card>
+            <div style={{ fontSize: 13, color: "var(--ink-3)" }}>
+              Configura Supabase para ver detalle real del comercial.
+            </div>
+          </Card>
+        </div>
+      </>
+    );
+  }
+
+  const supabase = await createClient();
+  const [salesRes, locsRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(
+        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, location_id, location:locations(id, name)",
+      )
+      .eq("slug", slug)
+      .eq("role", "sales")
+      .maybeSingle<SalesDetail>(),
+    supabase.from("locations").select("id, name").order("name"),
+  ]);
+
+  const sales = salesRes.data;
+  if (!sales) notFound();
+
+  const locations = (locsRes.data ?? []) as { id: string; name: string }[];
+
+  // Carga clientes + share_links + reviews en paralelo y agrega en JS.
+  const [clientsRes, sharesRes, reviewsRes] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("id, full_name, slug, created_at")
+      .eq("sales_id", sales.id)
+      .order("created_at", { ascending: false })
+      .returns<
+        { id: string; full_name: string; slug: string; created_at: string }[]
+      >(),
+    supabase
+      .from("share_links")
+      .select("client_id, opened_at")
+      .eq("sales_id", sales.id)
+      .returns<{ client_id: string | null; opened_at: string }[]>(),
+    supabase
+      .from("reviews")
+      .select(
+        "id, author_name, rating, text, google_created_at, match_state, match_confidence, client_id",
+      )
+      .eq("sales_id", sales.id)
+      .order("google_created_at", { ascending: false })
+      .returns<ReviewRow[]>(),
+  ]);
+
+  const clientsRaw = clientsRes.data ?? [];
+  const shares = sharesRes.data ?? [];
+  const reviews = reviewsRes.data ?? [];
+
+  // Agregados por cliente
+  const visitsByClient = new Map<string, number>();
+  for (const s of shares) {
+    if (!s.client_id) continue;
+    visitsByClient.set(s.client_id, (visitsByClient.get(s.client_id) ?? 0) + 1);
+  }
+  const reviewsByClient = new Map<string, number>();
+  for (const r of reviews) {
+    if (!r.client_id) continue;
+    reviewsByClient.set(r.client_id, (reviewsByClient.get(r.client_id) ?? 0) + 1);
+  }
+
+  const clients: ClientWithCounts[] = clientsRaw.map((c) => ({
+    ...c,
+    visits: visitsByClient.get(c.id) ?? 0,
+    reviews: reviewsByClient.get(c.id) ?? 0,
+  }));
+
+  // KPIs del mes en curso
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const reviewsThisMonth = reviews.filter(
+    (r) => r.google_created_at >= startOfMonth,
+  ).length;
+  const totalVisits = shares.length;
+  const lastVisitISO =
+    shares.length > 0
+      ? shares.reduce((max, s) => (s.opened_at > max ? s.opened_at : max), shares[0].opened_at)
+      : null;
+  const meta = sales.monthly_goal;
+  const pct = meta > 0 ? Math.round((reviewsThisMonth / meta) * 100) : 0;
+
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("es-ES", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  const fmtDateTime = (iso: string) =>
+    new Date(iso).toLocaleString("es-ES", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
   return (
     <>
       <Topbar
-        title={`Comerciales · ${slug}`}
-        subtitle="Ficha del comercial"
-        range="Este mes"
-        breadcrumb="Inseryal"
+        title={sales.full_name}
+        subtitle={`Comercial · ${sales.location?.name ?? "sin ficha"} · ${
+          sales.status === "active"
+            ? "Activo"
+            : sales.status === "paused"
+              ? "Pausado"
+              : "Invitado"
+        }`}
+        breadcrumb="Comerciales"
+        range=""
         right={
-          <>
-            <GhostBtn>Editar ficha</GhostBtn>
-            <GhostBtn>Suspender</GhostBtn>
-            <GhostBtn primary>Compartir enlace</GhostBtn>
-          </>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Link href="/comerciales" style={linkBtn}>
+              ← Todos
+            </Link>
+            <DeleteSalesButton
+              id={sales.id}
+              name={sales.full_name}
+              redirectTo="/comerciales"
+              variant="prominent"
+            />
+          </div>
         }
       />
-      <ComingSoon
-        title={`Ficha del comercial @${slug}`}
-        description="Hero con avatar y KPIs, gráfico de evolución mensual, histórico de reseñas verificadas, enlace personal + QR, objetivos y logros."
-      />
+
+      <div
+        style={{
+          flex: 1,
+          padding: "24px 32px 32px",
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 18,
+        }}
+      >
+        {/* Cabecera con avatar */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            padding: "4px 0 4px 4px",
+          }}
+        >
+          <Avatar name={sales.full_name} size={56} />
+          <div>
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 22,
+                fontWeight: 600,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              {sales.full_name}
+            </div>
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--ink-3)",
+                fontFamily: "var(--font-mono)",
+                marginTop: 2,
+              }}
+            >
+              /c/{sales.slug}
+            </div>
+          </div>
+        </div>
+
+        {/* Datos editables + KPIs */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1.2fr)",
+            gap: 18,
+          }}
+        >
+          <SalesEditCard
+            id={sales.id}
+            email={sales.email}
+            phone={sales.phone}
+            slug={sales.slug}
+            joinedAt={sales.joined_at}
+            locations={locations}
+            initial={{
+              locationId: sales.location_id,
+              monthlyGoal: sales.monthly_goal,
+              status: sales.status,
+            }}
+          />
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+            <Stat
+              label="Reseñas del mes"
+              value={`${reviewsThisMonth}/${meta}`}
+              sub={
+                reviewsThisMonth === 0
+                  ? "Aún sin reseñas este mes"
+                  : `${pct}% de la meta`
+              }
+              deltaTone={pct >= 100 ? "ok" : pct >= 60 ? "neutral" : "warn"}
+              delta={pct > 0 ? `${pct}%` : undefined}
+            />
+            <Stat
+              label="Visitas al enlace"
+              value={totalVisits.toString()}
+              sub={
+                lastVisitISO
+                  ? `Última · ${fmtDateTime(lastVisitISO)}`
+                  : "Aún sin visitas"
+              }
+            />
+            <Stat
+              label="Clientes registrados"
+              value={clients.length.toString()}
+              sub={
+                clients.length === 0
+                  ? "Sin clientes todavía"
+                  : `${clients.filter((c) => c.visits > 0).length} con visita`
+              }
+            />
+            <Stat
+              label="Reseñas totales"
+              value={reviews.length.toString()}
+              sub={
+                reviews.length === 0
+                  ? "Pendiente de sincronización"
+                  : `${reviews.filter((r) => r.match_state === "auto").length} automáticas`
+              }
+            />
+          </div>
+        </div>
+
+        {/* Clientes */}
+        <Card padding={0}>
+          <div
+            style={{
+              padding: "14px 22px",
+              borderBottom: "1px solid var(--line)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <div style={sectionLabel}>Clientes registrados ({clients.length})</div>
+            <span style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
+              Los registra el propio comercial desde su panel
+            </span>
+          </div>
+
+          {clients.length === 0 ? (
+            <div style={{ padding: "28px 22px" }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--ink-3)",
+                  lineHeight: 1.55,
+                  maxWidth: 560,
+                }}
+              >
+                Este comercial aún no ha registrado clientes. En cuanto añada uno
+                desde su pestaña <strong style={{ color: "var(--ink-2)" }}>Mis clientes</strong>,
+                aparecerá aquí con sus visitas y reseñas asociadas.
+              </div>
+            </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  padding: "10px 22px",
+                  borderBottom: "1px solid var(--line)",
+                  display: "grid",
+                  gridTemplateColumns: "2fr 0.8fr 0.8fr 1fr",
+                  gap: 14,
+                  fontSize: 11,
+                  color: "var(--ink-4)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                <span>Cliente</span>
+                <span style={{ textAlign: "right" }}>Visitas</span>
+                <span style={{ textAlign: "right" }}>Reseñas</span>
+                <span>Alta</span>
+              </div>
+              {clients.map((c, i) => (
+                <div
+                  key={c.id}
+                  style={{
+                    padding: "12px 22px",
+                    borderBottom: i === clients.length - 1 ? "none" : "1px solid var(--line)",
+                    display: "grid",
+                    gridTemplateColumns: "2fr 0.8fr 0.8fr 1fr",
+                    gap: 14,
+                    alignItems: "center",
+                    fontSize: 13.5,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, letterSpacing: "-0.005em" }}>
+                      {c.full_name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11.5,
+                        color: "var(--ink-4)",
+                        fontFamily: "var(--font-mono)",
+                      }}
+                    >
+                      /c/{sales.slug}/{c.slug}
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      textAlign: "right",
+                      fontVariantNumeric: "tabular-nums",
+                      color: c.visits > 0 ? "var(--ink)" : "var(--ink-4)",
+                    }}
+                  >
+                    {c.visits}
+                  </span>
+                  <span
+                    style={{
+                      textAlign: "right",
+                      fontVariantNumeric: "tabular-nums",
+                      color: c.reviews > 0 ? "var(--ink)" : "var(--ink-4)",
+                    }}
+                  >
+                    {c.reviews}
+                  </span>
+                  <span style={{ fontSize: 12.5, color: "var(--ink-4)" }}>
+                    {fmtDate(c.created_at)}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+        </Card>
+
+        {/* Reseñas atribuidas */}
+        <Card>
+          <div style={sectionLabel}>Reseñas atribuidas</div>
+          {reviews.length === 0 ? (
+            <div
+              style={{
+                marginTop: 14,
+                padding: "20px 18px",
+                border: "1px dashed var(--line-strong)",
+                borderRadius: 10,
+                background: "var(--surface-2)",
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: 16,
+                  fontWeight: 600,
+                  letterSpacing: "-0.015em",
+                  color: "var(--ink-2)",
+                }}
+              >
+                Aún sin reseñas atribuidas
+              </div>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  fontSize: 13,
+                  lineHeight: 1.55,
+                  color: "var(--ink-3)",
+                  maxWidth: 560,
+                }}
+              >
+                Cuando se conecte Google Business Profile (Fase 4 pendiente) y los
+                clientes dejen reseña, aparecerán aquí con su rating y el estado
+                del matching automático.
+                {totalVisits > 0 && (
+                  <>
+                    {" "}
+                    Mientras tanto, el enlace ya ha sido abierto{" "}
+                    <strong style={{ color: "var(--ink)" }}>{totalVisits}</strong>{" "}
+                    {totalVisits === 1 ? "vez" : "veces"}.
+                  </>
+                )}
+              </p>
+            </div>
+          ) : (
+            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+              {reviews.map((r) => (
+                <div
+                  key={r.id}
+                  style={{
+                    padding: "14px 16px",
+                    border: "1px solid var(--line)",
+                    borderRadius: 10,
+                    background: "var(--surface)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, letterSpacing: "-0.005em" }}>
+                      {r.author_name}
+                    </div>
+                    <Stars value={r.rating} />
+                  </div>
+                  {r.text && (
+                    <p
+                      style={{
+                        margin: "8px 0 0",
+                        fontSize: 13.5,
+                        lineHeight: 1.55,
+                        color: "var(--ink-2)",
+                      }}
+                    >
+                      {r.text}
+                    </p>
+                  )}
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      gap: 12,
+                      fontSize: 11.5,
+                      color: "var(--ink-4)",
+                    }}
+                  >
+                    <span>{fmtDate(r.google_created_at)}</span>
+                    <span>·</span>
+                    <span>
+                      Match {r.match_state} · confianza {r.match_confidence}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
     </>
   );
 }
+
+const sectionLabel: React.CSSProperties = {
+  fontSize: 11.5,
+  color: "var(--ink-4)",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  fontWeight: 600,
+};
+
+const linkBtn: React.CSSProperties = {
+  padding: "7px 12px",
+  background: "transparent",
+  border: "1px solid var(--line-strong)",
+  borderRadius: 9,
+  fontSize: 13,
+  color: "var(--ink-2)",
+  textDecoration: "none",
+  fontWeight: 500,
+};

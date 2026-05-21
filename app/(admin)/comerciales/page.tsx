@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
@@ -178,7 +179,17 @@ function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
         fontSize: 13.5,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+      <Link
+        href={`/comerciales/${s.slug}`}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          minWidth: 0,
+          textDecoration: "none",
+          color: "inherit",
+        }}
+      >
         <Avatar name={s.full_name} size={32} />
         <div style={{ minWidth: 0 }}>
           <div
@@ -188,6 +199,7 @@ function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
+              color: "var(--ink)",
             }}
           >
             {s.full_name}
@@ -205,7 +217,7 @@ function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
             /c/{s.slug}
           </div>
         </div>
-      </div>
+      </Link>
       <span
         style={{
           fontSize: 13,
