@@ -5,13 +5,18 @@ import { Card } from "@/components/ui/Card";
 import { Stat } from "@/components/ui/Stat";
 import { Stars } from "@/components/ui/Stars";
 import { Avatar } from "@/components/ui/Avatar";
+import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { parseRange, defaultShortcuts, isFullNaturalMonth } from "@/lib/date-range";
 import type { ProfileStatus } from "@/lib/supabase/types";
 import { DeleteSalesButton } from "../DeleteSalesButton";
 import { SalesEditCard } from "./SalesEditCard";
 
-type PageProps = { params: Promise<{ slug: string }> };
+type PageProps = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ from?: string; to?: string }>;
+};
 
 type SalesDetail = {
   id: string;
@@ -46,8 +51,12 @@ type ReviewRow = {
   client_id: string | null;
 };
 
-export default async function ComercialDetallePage({ params }: PageProps) {
+export default async function ComercialDetallePage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const sp = await searchParams;
+  const range = parseRange(sp.from, sp.to);
+  const isMonthRange = isFullNaturalMonth(range);
+  const shortcuts = defaultShortcuts();
 
   if (!isSupabaseConfigured()) {
     return (
@@ -100,6 +109,8 @@ export default async function ComercialDetallePage({ params }: PageProps) {
       .from("share_links")
       .select("client_id, opened_at")
       .eq("sales_id", sales.id)
+      .gte("opened_at", range.startIso)
+      .lt("opened_at", range.endIso)
       .returns<{ client_id: string | null; opened_at: string }[]>(),
     supabase
       .from("reviews")
@@ -107,6 +118,8 @@ export default async function ComercialDetallePage({ params }: PageProps) {
         "id, author_name, rating, text, google_created_at, match_state, match_confidence, client_id",
       )
       .eq("sales_id", sales.id)
+      .gte("google_created_at", range.startIso)
+      .lt("google_created_at", range.endIso)
       .order("google_created_at", { ascending: false })
       .returns<ReviewRow[]>(),
   ]);
@@ -133,19 +146,33 @@ export default async function ComercialDetallePage({ params }: PageProps) {
     reviews: reviewsByClient.get(c.id) ?? 0,
   }));
 
-  // KPIs del mes en curso
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const reviewsThisMonth = reviews.filter(
-    (r) => r.google_created_at >= startOfMonth,
-  ).length;
-  const totalVisits = shares.length;
+  // ─── KPIs del rango ────────────────────────────────────────────────────
+  // shares y reviews ya vienen filtrados por SQL al rango activo.
+  const visitsInRange = shares.length;
+  const reviewsCounted = reviews.filter((r) => r.match_state === "counted").length;
+  const reviewsPending = reviews.filter((r) => r.match_state === "pending").length;
+  const reviewsUnmatched = reviews.filter((r) => r.match_state === "unmatched").length;
+  const conversion =
+    visitsInRange > 0 ? Math.round((reviewsCounted / visitsInRange) * 100) : null;
+  const avgRating =
+    reviews.length > 0
+      ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+      : null;
   const lastVisitISO =
     shares.length > 0
       ? shares.reduce((max, s) => (s.opened_at > max ? s.opened_at : max), shares[0].opened_at)
       : null;
   const meta = sales.monthly_goal;
-  const pct = meta > 0 ? Math.round((reviewsThisMonth / meta) * 100) : 0;
+  // Solo tiene sentido comparar contra monthly_goal si el rango es un mes
+  // natural completo; si no, marcamos el ratio como null y avisamos en UI.
+  const pct = isMonthRange && meta > 0 ? Math.round((reviewsCounted / meta) * 100) : null;
+
+  // Querystring para los enlaces dependientes del rango (Excel, etc.).
+  const exportParams = new URLSearchParams({
+    sales_id: sales.id,
+    from: range.from,
+    to: range.to,
+  });
 
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString("es-ES", {
@@ -173,9 +200,18 @@ export default async function ComercialDetallePage({ params }: PageProps) {
               : "Invitado"
         }`}
         breadcrumb="Comerciales"
-        range=""
+        range={null}
         right={
-          <div style={{ display: "flex", gap: 8 }}>
+          <>
+            <RangePicker
+              from={range.from}
+              to={range.to}
+              label={range.label}
+              shortcuts={shortcuts}
+            />
+            <Link href={`/api/export/reviews?${exportParams.toString()}`} style={primaryBtn}>
+              Descargar Excel
+            </Link>
             <Link href="/comerciales" style={linkBtn}>
               ← Todos
             </Link>
@@ -185,7 +221,7 @@ export default async function ComercialDetallePage({ params }: PageProps) {
               redirectTo="/comerciales"
               variant="prominent"
             />
-          </div>
+          </>
         }
       />
 
@@ -257,41 +293,49 @@ export default async function ComercialDetallePage({ params }: PageProps) {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
             <Stat
-              label="Reseñas del mes"
-              value={`${reviewsThisMonth}/${meta}`}
-              sub={
-                reviewsThisMonth === 0
-                  ? "Aún sin reseñas este mes"
-                  : `${pct}% de la meta`
-              }
-              deltaTone={pct >= 100 ? "ok" : pct >= 60 ? "neutral" : "warn"}
-              delta={pct > 0 ? `${pct}%` : undefined}
-            />
-            <Stat
               label="Visitas al enlace"
-              value={totalVisits.toString()}
+              value={visitsInRange.toString()}
               sub={
                 lastVisitISO
                   ? `Última · ${fmtDateTime(lastVisitISO)}`
-                  : "Aún sin visitas"
+                  : `${range.label}`
               }
             />
             <Stat
-              label="Clientes registrados"
-              value={clients.length.toString()}
+              label="Reseñas atribuidas"
+              value={
+                isMonthRange
+                  ? `${reviewsCounted}/${meta}`
+                  : reviewsCounted.toString()
+              }
               sub={
-                clients.length === 0
-                  ? "Sin clientes todavía"
-                  : `${clients.filter((c) => c.visits > 0).length} con visita`
+                reviewsCounted === 0
+                  ? `Sin reseñas en ${range.label}`
+                  : isMonthRange
+                    ? `${pct}% del objetivo · ${reviewsPending} pendientes`
+                    : `${reviewsPending} pendientes · ${reviewsUnmatched} sin atribuir`
+              }
+              deltaTone={
+                pct === null ? undefined : pct >= 100 ? "ok" : pct >= 60 ? "neutral" : "warn"
+              }
+              delta={pct !== null && pct > 0 ? `${pct}%` : undefined}
+            />
+            <Stat
+              label="Conversión"
+              value={conversion !== null ? `${conversion}%` : "—"}
+              sub={
+                conversion === null
+                  ? "Sin visitas todavía"
+                  : "atribuidas ÷ visitas"
               }
             />
             <Stat
-              label="Reseñas totales"
-              value={reviews.length.toString()}
+              label="Valoración media"
+              value={avgRating !== null ? avgRating.toFixed(2).replace(".", ",") : "—"}
               sub={
-                reviews.length === 0
-                  ? "Pendiente de sincronización"
-                  : `${reviews.filter((r) => r.match_state === "auto").length} automáticas`
+                avgRating === null
+                  ? "Sin reseñas en el rango"
+                  : `sobre 5 · ${reviews.length} reseñas`
               }
             />
           </div>
@@ -310,7 +354,7 @@ export default async function ComercialDetallePage({ params }: PageProps) {
           >
             <div style={sectionLabel}>Clientes registrados ({clients.length})</div>
             <span style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
-              Los registra el propio comercial desde su panel
+              Visitas y reseñas del rango · {range.label}
             </span>
           </div>
 
@@ -405,7 +449,19 @@ export default async function ComercialDetallePage({ params }: PageProps) {
 
         {/* Reseñas atribuidas */}
         <Card>
-          <div style={sectionLabel}>Reseñas atribuidas</div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div style={sectionLabel}>Reseñas en {range.label}</div>
+            <span style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
+              {reviews.length} total · {reviewsCounted} atribuidas · {reviewsPending} pendientes
+            </span>
+          </div>
           {reviews.length === 0 ? (
             <div
               style={{
@@ -425,7 +481,7 @@ export default async function ComercialDetallePage({ params }: PageProps) {
                   color: "var(--ink-2)",
                 }}
               >
-                Aún sin reseñas atribuidas
+                Sin reseñas en {range.label}
               </div>
               <p
                 style={{
@@ -439,12 +495,12 @@ export default async function ComercialDetallePage({ params }: PageProps) {
                 Cuando se conecte Google Business Profile (Fase 4 pendiente) y los
                 clientes dejen reseña, aparecerán aquí con su rating y el estado
                 del matching automático.
-                {totalVisits > 0 && (
+                {visitsInRange > 0 && (
                   <>
                     {" "}
-                    Mientras tanto, el enlace ya ha sido abierto{" "}
-                    <strong style={{ color: "var(--ink)" }}>{totalVisits}</strong>{" "}
-                    {totalVisits === 1 ? "vez" : "veces"}.
+                    Mientras tanto, el enlace ha sido abierto{" "}
+                    <strong style={{ color: "var(--ink)" }}>{visitsInRange}</strong>{" "}
+                    {visitsInRange === 1 ? "vez" : "veces"} en este rango.
                   </>
                 )}
               </p>
@@ -528,4 +584,14 @@ const linkBtn: React.CSSProperties = {
   color: "var(--ink-2)",
   textDecoration: "none",
   fontWeight: 500,
+};
+
+const primaryBtn: React.CSSProperties = {
+  padding: "7px 12px",
+  background: "var(--ink)",
+  color: "#fff",
+  borderRadius: 9,
+  fontSize: 13,
+  fontWeight: 500,
+  textDecoration: "none",
 };
