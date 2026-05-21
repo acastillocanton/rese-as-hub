@@ -21,7 +21,11 @@ export type Database = {
           name: string;
           google_place_id: string | null;
           google_account_id: string | null;
+          google_location_resource: string | null;
+          google_account_email: string | null;
           oauth_status: OauthStatus;
+          oauth_last_sync_at: string | null;
+          oauth_last_sync_error: string | null;
           created_at: string;
         };
         Insert: {
@@ -29,7 +33,11 @@ export type Database = {
           name: string;
           google_place_id?: string | null;
           google_account_id?: string | null;
+          google_location_resource?: string | null;
+          google_account_email?: string | null;
           oauth_status?: OauthStatus;
+          oauth_last_sync_at?: string | null;
+          oauth_last_sync_error?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["locations"]["Insert"]>;

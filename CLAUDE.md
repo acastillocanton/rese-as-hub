@@ -52,7 +52,7 @@ Plan original en `~/.claude/plans/vamos-a-desarrollar-una-kind-lovelace.md`. Res
 | [`/comerciales`](app/(admin)/comerciales/page.tsx) | ✅ DB real + invite + delete + fila navegable |
 | [`/comerciales/[slug]`](app/(admin)/comerciales/[slug]/page.tsx) | ✅ ficha completa: datos editables (meta/ficha/status), KPIs (reseñas mes + visitas + clientes), lista de clientes con visitas y reseñas, sección reseñas con placeholder hasta Fase 4 |
 | [`/resenas/verificacion`](app/(admin)/resenas/verificacion/page.tsx) | ❌ `ComingSoon` |
-| [`/fichas`](app/(admin)/fichas/page.tsx) | ✅ lista + add + delete, **pero falta botón "Conectar OAuth"** |
+| [`/fichas`](app/(admin)/fichas/page.tsx) | ✅ lista + add + delete + botones Conectar/Desconectar Google + UI selección de Business Profile en `/fichas/[id]/conectar` |
 
 ### Fase 3 · Sales (comercial) — ✅ hecha (validada E2E el 2026-05-21)
 - [`/panel`](app/(sales)/panel/page.tsx) con datos reales del comercial logueado (KPIs propios, proyección ETA, enlace personal). Ranking aparcado como `ComingSoon` (requiere migración nueva).
@@ -60,16 +60,24 @@ Plan original en `~/.claude/plans/vamos-a-desarrollar-una-kind-lovelace.md`. Res
 - [`/clientes/[slug]`](app/(sales)/clientes/[slug]/page.tsx) detalle del cliente: datos, KPIs de visitas al enlace, bloque compartir reusado ([`ShareBlock`](app/(sales)/clientes/ShareBlock.tsx)), placeholder de reseñas atribuidas (mostrará lista real cuando entre Fase 4), botón eliminar con confirmación.
 - [`lib/messaging.ts`](lib/messaging.ts) con plantilla por defecto + helpers de deep-link.
 
-### Fase 4 · Google sync + matching — ❌ no empezado
-**Es el corazón del producto.** Sin esto, los comerciales no ven reseñas en su panel.
+### Fase 4 · Google sync + matching — ⚠️ código listo, pendiente setup Google Cloud
+**Es el corazón del producto.** Código entero implementado; falta credenciales reales en `.env.local` y aprobación de la Reviews API por parte de Google.
 
-A implementar:
-1. OAuth con Google Cloud (alta proyecto + activar Business Profile API + credenciales).
-2. `/api/google/oauth/callback` + botón "Conectar" en `/fichas`.
-3. `lib/google/business-profile.ts` (cliente API).
-4. `lib/matching/attribute-review.ts` (algoritmo de matching).
-5. Cron real en [`app/api/cron/sync-google-reviews/route.ts`](app/api/cron/sync-google-reviews/route.ts) (hoy es stub).
-6. `vercel.json` con el cron cada 10 min.
+Hecho:
+1. [`lib/google/business-profile.ts`](lib/google/business-profile.ts) — cliente API con refresh-token automático. Cubre OAuth, Account Management, Business Information y Reviews (v4 legacy).
+2. [`/api/google/oauth/start`](app/api/google/oauth/start/route.ts) — inicia consent con state CSRF en cookie.
+3. [`/api/google/oauth/callback`](app/api/google/oauth/callback/route.ts) — token swap, persiste en `location_secrets`, redirige a `/fichas/[id]/conectar`.
+4. [`/fichas/[id]/conectar`](app/(admin)/fichas/[id]/conectar/page.tsx) — UI que lista las cuentas + fichas de Google y deja al admin elegir cuál vincular. Pre-selecciona la que coincide por `google_place_id`.
+5. [`/fichas`](app/(admin)/fichas/page.tsx) — añadidos botones "Conectar Google" / "Desconectar" + banner de éxito/error + columna "Cuenta Google" con el email.
+6. [`lib/matching/attribute-review.ts`](lib/matching/attribute-review.ts) — algoritmo de atribución con ventana temporal (48h) + similitud de nombre. Thresholds: `AUTO_THRESHOLD=75` → counted, 40-75 → pending para verificación admin, <40 → unmatched.
+7. [`/api/cron/sync-google-reviews`](app/api/cron/sync-google-reviews/route.ts) — implementación real (no stub). Idempotente vía `unique (location_id, google_review_id)`. Devuelve summary JSON por ficha.
+8. [`vercel.json`](vercel.json) — schedule `*/10 * * * *`.
+
+Pendiente del usuario:
+- Aplicar migración [`004_google_oauth.sql`](supabase/migrations/004_google_oauth.sql) en Supabase.
+- Setup en Google Cloud Console: proyecto, habilitar Business Profile APIs, OAuth consent screen, credenciales OAuth 2.0 Web App, redirect URI `http://localhost:3000/api/google/oauth/callback`.
+- Rellenar `.env.local` con `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`.
+- ⚠️ La **Reviews API legacy v4** requiere aprobación explícita por Google ([formulario aquí](https://developers.google.com/my-business/content/prereqs#request-access)). Sin esa aprobación, el listado de cuentas/fichas (Account Management + Business Information) sí funciona; pero `listReviews` devuelve 403. Mientras tanto, el cron procesa todo lo demás y deja `oauth_last_sync_error` poblado.
 
 ### Fase 5 · Reviews manager (Raquel) — ❌ no empezado
 [`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) y [`/manager/export`](app/(manager)/manager/export/page.tsx) son `ComingSoon`. Endpoint `/api/export/reviews` con ExcelJS por hacer. Tiene sentido **post-Fase 4** (sin reseñas reales, no hay nada que exportar).

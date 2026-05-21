@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -6,16 +7,37 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { OauthStatus } from "@/lib/supabase/types";
 import { AddFichaButton } from "./AddFichaButton";
 import { DeleteFichaButton } from "./DeleteFichaButton";
+import { DisconnectGoogleButton } from "./DisconnectGoogleButton";
 
 type LocationRow = {
   id: string;
   name: string;
   google_place_id: string | null;
+  google_account_email: string | null;
   oauth_status: OauthStatus;
+  oauth_last_sync_at: string | null;
+  oauth_last_sync_error: string | null;
   created_at: string;
 };
 
-export default async function FichasPage() {
+type SearchParams = Promise<{ connected?: string; oauth_error?: string }>;
+
+const OAUTH_ERRORS: Record<string, string> = {
+  missing_params: "Faltaba el código de autorización de Google.",
+  state_mismatch: "La verificación de seguridad falló (state mismatch). Inténtalo otra vez.",
+  bad_state: "Estado de la cookie inválido.",
+  exchange_failed: "Google rechazó el intercambio de tokens. Revisa los datos en Google Cloud Console.",
+  no_tokens: "Aún no hay credenciales para esta ficha. Inicia la conexión de nuevo.",
+  access_denied: "Cancelaste el consent en Google.",
+};
+
+export default async function FichasPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const { connected, oauth_error: oauthError } = await searchParams;
+
   let locations: LocationRow[] = [];
   let dbError: string | null = null;
 
@@ -23,7 +45,9 @@ export default async function FichasPage() {
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("locations")
-      .select("id, name, google_place_id, oauth_status, created_at")
+      .select(
+        "id, name, google_place_id, google_account_email, oauth_status, oauth_last_sync_at, oauth_last_sync_error, created_at",
+      )
       .order("created_at", { ascending: false });
     if (error) {
       dbError = error.message;
@@ -42,7 +66,25 @@ export default async function FichasPage() {
         right={<AddFichaButton />}
       />
 
-      <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
+      <div
+        style={{
+          flex: 1,
+          padding: "24px 32px 32px",
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}
+      >
+        {connected && (
+          <Banner tone="ok">Ficha conectada con Google Business Profile.</Banner>
+        )}
+        {oauthError && (
+          <Banner tone="warn">
+            {OAUTH_ERRORS[oauthError] ?? `Error de OAuth: ${oauthError}`}
+          </Banner>
+        )}
+
         {dbError ? (
           <Card>
             <div style={{ fontSize: 13, color: "var(--warn)", fontWeight: 500 }}>
@@ -84,8 +126,8 @@ export default async function FichasPage() {
               }}
             >
               Cada apartamento / proyecto se representa por una ficha de Google
-              Business. Empieza por el nombre, el Place ID lo puedes añadir
-              después.
+              Business. Empieza por el nombre; el Place ID se rellena
+              automáticamente al conectar OAuth.
             </p>
             <AddFichaButton />
           </Card>
@@ -96,7 +138,7 @@ export default async function FichasPage() {
                 padding: "12px 22px",
                 borderBottom: "1px solid var(--line)",
                 display: "grid",
-                gridTemplateColumns: "2fr 1.5fr 1fr 1fr 100px",
+                gridTemplateColumns: "1.8fr 1.3fr 1.1fr 0.9fr 230px",
                 gap: 14,
                 fontSize: 11,
                 color: "var(--ink-4)",
@@ -105,7 +147,7 @@ export default async function FichasPage() {
               }}
             >
               <span>Ficha</span>
-              <span>Google Place ID</span>
+              <span>Cuenta Google</span>
               <span>Estado OAuth</span>
               <span>Alta</span>
               <span></span>
@@ -140,34 +182,50 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
         padding: "14px 22px",
         borderBottom: last ? "none" : "1px solid var(--line)",
         display: "grid",
-        gridTemplateColumns: "2fr 1.5fr 1fr 1fr 100px",
+        gridTemplateColumns: "1.8fr 1.3fr 1.1fr 0.9fr 230px",
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
       }}
     >
-      <div
-        style={{
-          fontWeight: 600,
-          letterSpacing: "-0.005em",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {loc.name}
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontWeight: 600,
+            letterSpacing: "-0.005em",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {loc.name}
+        </div>
+        {loc.google_place_id && (
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--ink-4)",
+              fontFamily: "var(--font-mono)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              marginTop: 2,
+            }}
+          >
+            {loc.google_place_id}
+          </div>
+        )}
       </div>
       <span
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 12,
-          color: loc.google_place_id ? "var(--ink-3)" : "var(--ink-4)",
+          fontSize: 12.5,
+          color: loc.google_account_email ? "var(--ink-2)" : "var(--ink-4)",
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
         }}
       >
-        {loc.google_place_id ?? "—"}
+        {loc.google_account_email ?? "—"}
       </span>
       <span>
         <Pill tone={oauthTone} withDot>
@@ -181,9 +239,61 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
           year: "numeric",
         })}
       </span>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 8,
+          alignItems: "center",
+        }}
+      >
+        {loc.oauth_status === "connected" ? (
+          <DisconnectGoogleButton id={loc.id} name={loc.name} />
+        ) : (
+          <Link
+            href={`/api/google/oauth/start?location_id=${loc.id}`}
+            style={{
+              padding: "6px 11px",
+              border: "1px solid var(--line-strong)",
+              borderRadius: 8,
+              fontSize: 12.5,
+              color: "var(--ink)",
+              textDecoration: "none",
+              fontWeight: 500,
+              background: "var(--surface)",
+            }}
+          >
+            {loc.oauth_status === "error" ? "Reconectar" : "Conectar Google"}
+          </Link>
+        )}
         <DeleteFichaButton id={loc.id} name={loc.name} />
       </div>
+    </div>
+  );
+}
+
+function Banner({
+  tone,
+  children,
+}: {
+  tone: "ok" | "warn";
+  children: React.ReactNode;
+}) {
+  const bg = tone === "ok" ? "var(--ok-bg, #e3f3e7)" : "var(--warn-bg)";
+  const fg = tone === "ok" ? "var(--ok, #1d7a3a)" : "var(--warn)";
+  return (
+    <div
+      role="status"
+      style={{
+        padding: "10px 14px",
+        background: bg,
+        color: fg,
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 500,
+      }}
+    >
+      {children}
     </div>
   );
 }
