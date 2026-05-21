@@ -128,15 +128,30 @@ export default function TerminosPage() {
       <h2 style={h2}>9. Legislación aplicable</h2>
       <p style={p}>
         Estos términos se rigen por la legislación española. Cualquier
-        controversia se someterá a los juzgados y tribunales de{" "}
-        <em>[domicilio social a completar]</em>, salvo que la ley imponga
-        otro fuero por la condición de consumidor de la otra parte.
+        controversia se someterá a los juzgados y tribunales de Valencia
+        (domicilio social del responsable), salvo que la ley imponga otro
+        fuero por la condición de consumidor de la otra parte.
       </p>
 
-      <h2 style={h2}>10. Contacto</h2>
+      <h2 style={h2}>10. Responsable y contacto</h2>
       <p style={p}>
-        Para cualquier asunto relacionado con estos términos:{" "}
-        <em>[legal@inseryal.es · completar]</em>.
+        <strong>INSERYAL S.L. Unipersonal</strong>
+        <br />
+        CIF: B-98013071
+        <br />
+        Domicilio social: Avenida de Francia nº 51, 1º-1ª, 46023 Valencia
+        <br />
+        Teléfono: +34 645 219 872
+        <br />
+        Para asuntos legales o sobre estos términos:{" "}
+        <a href="mailto:info@inseryal.es" style={a}>
+          info@inseryal.es
+        </a>
+        <br />
+        Para asuntos de protección de datos:{" "}
+        <a href="mailto:contacto_rgpd@inseryal.es" style={a}>
+          contacto_rgpd@inseryal.es
+        </a>
       </p>
     </>
   );
@@ -181,4 +196,9 @@ const code: React.CSSProperties = {
   background: "var(--surface-2)",
   border: "1px solid var(--line)",
   borderRadius: 4,
+};
+const a: React.CSSProperties = {
+  color: "var(--ink)",
+  textDecoration: "underline",
+  textUnderlineOffset: 2,
 };

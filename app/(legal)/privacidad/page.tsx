@@ -24,14 +24,18 @@ export default function PrivacidadPage() {
 
       <h2 style={h2}>1. Responsable del tratamiento</h2>
       <p style={p}>
-        <strong>[Inseryal by Marina d&apos;Or, S.L.]</strong>
+        <strong>INSERYAL S.L. Unipersonal</strong>
         <br />
-        CIF: <em>[Pendiente · completar]</em>
+        CIF: B-98013071
         <br />
-        Domicilio social: <em>[Pendiente · completar]</em>
+        Domicilio social: Avenida de Francia nº 51, 1º-1ª, 46023 Valencia
+        <br />
+        Teléfono: +34 645 219 872
         <br />
         Correo de contacto para temas de privacidad:{" "}
-        <em>[privacidad@inseryal.es · completar]</em>
+        <a href="mailto:contacto_rgpd@inseryal.es" style={a}>
+          contacto_rgpd@inseryal.es
+        </a>
       </p>
 
       <h2 style={h2}>2. Datos que tratamos</h2>
@@ -174,7 +178,10 @@ export default function PrivacidadPage() {
         Cualquier persona cuyos datos consten en ReseñaHub puede ejercer los
         derechos reconocidos por el RGPD: acceso, rectificación, supresión,
         oposición, limitación del tratamiento y portabilidad. Para hacerlo,
-        envía un correo a <em>[privacidad@inseryal.es · completar]</em>{" "}
+        envía un correo a{" "}
+        <a href="mailto:contacto_rgpd@inseryal.es" style={a}>
+          contacto_rgpd@inseryal.es
+        </a>{" "}
         identificándote y describiendo qué derecho quieres ejercer.
       </p>
       <p style={p}>
