@@ -1,0 +1,223 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { GhostBtn } from "@/components/ui/GhostBtn";
+import { createClientRecord, type ClientRow } from "./actions";
+import { ClientLinkDialog } from "./ClientLinkDialog";
+
+type NewClientButtonProps = {
+  appBase: string;
+  salesName: string;
+  salesSlug: string;
+};
+
+export function NewClientButton({ appBase, salesName, salesSlug }: NewClientButtonProps) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState<ClientRow | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function close() {
+    setOpen(false);
+    setError(null);
+    setCreated(null);
+  }
+
+  function handleSubmit(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      const input = {
+        fullName: String(formData.get("fullName") ?? ""),
+        email: String(formData.get("email") ?? ""),
+        phone: String(formData.get("phone") ?? ""),
+      };
+      const result = await createClientRecord(input);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setCreated(result.client);
+    });
+  }
+
+  return (
+    <>
+      <GhostBtn primary onClick={() => setOpen(true)}>
+        + Nuevo cliente
+      </GhostBtn>
+
+      {open && !created && (
+        <div
+          style={modalBackdrop}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) close();
+          }}
+        >
+          <div style={modalCard}>
+            <div style={modalHeader}>
+              <div style={{ fontSize: 12.5, color: "var(--ink-3)", fontWeight: 500 }}>
+                Nuevo cliente
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: 20,
+                  fontWeight: 600,
+                  letterSpacing: "-0.025em",
+                  marginTop: 2,
+                }}
+              >
+                Genera un enlace personalizado
+              </div>
+            </div>
+
+            <form action={handleSubmit}>
+              <div
+                style={{
+                  padding: "18px 22px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 14,
+                }}
+              >
+                <Field label="Nombre completo" hint="Aparecerá en el enlace, p.ej. /maria-gonzalez">
+                  <input
+                    name="fullName"
+                    required
+                    minLength={2}
+                    maxLength={120}
+                    autoFocus
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="Teléfono (opcional)" hint="Para WhatsApp y SMS pre-rellenados">
+                  <input name="phone" type="tel" maxLength={40} style={inputStyle} />
+                </Field>
+                <Field label="Email (opcional)">
+                  <input
+                    name="email"
+                    type="email"
+                    maxLength={120}
+                    autoComplete="off"
+                    style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
+                  />
+                </Field>
+                {error && (
+                  <div
+                    role="alert"
+                    style={{
+                      padding: "8px 10px",
+                      background: "var(--warn-bg)",
+                      color: "var(--warn)",
+                      borderRadius: 8,
+                      fontSize: 12.5,
+                    }}
+                  >
+                    {error}
+                  </div>
+                )}
+              </div>
+              <div
+                style={{
+                  padding: "14px 22px",
+                  borderTop: "1px solid var(--line)",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 8,
+                }}
+              >
+                <GhostBtn type="button" onClick={close} disabled={isPending}>
+                  Cancelar
+                </GhostBtn>
+                <GhostBtn primary type="submit" disabled={isPending}>
+                  {isPending ? "Creando…" : "Crear y ver enlace"}
+                </GhostBtn>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {created && (
+        <ClientLinkDialog
+          open={true}
+          onClose={close}
+          appBase={appBase}
+          salesName={salesName}
+          salesSlug={salesSlug}
+          clientName={created.full_name}
+          clientSlug={created.slug}
+          clientEmail={created.email}
+          clientPhone={created.phone}
+        />
+      )}
+    </>
+  );
+}
+
+const modalBackdrop: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 50,
+  background: "rgba(20,20,22,0.32)",
+  backdropFilter: "blur(2px)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 24,
+};
+
+const modalCard: React.CSSProperties = {
+  width: 520,
+  maxWidth: "100%",
+  background: "var(--surface)",
+  border: "1px solid var(--line)",
+  borderRadius: 18,
+  boxShadow: "0 24px 60px rgba(0,0,0,0.18), 0 8px 20px rgba(0,0,0,0.08)",
+  overflow: "hidden",
+};
+
+const modalHeader: React.CSSProperties = {
+  padding: "20px 22px 14px",
+  borderBottom: "1px solid var(--line)",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "9px 12px",
+  background: "var(--surface)",
+  border: "1px solid var(--line-strong)",
+  borderRadius: 9,
+  fontSize: 13,
+  color: "var(--ink)",
+};
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 11.5,
+          color: "var(--ink-4)",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      {children}
+      {hint && (
+        <div style={{ marginTop: 4, fontSize: 11.5, color: "var(--ink-4)" }}>{hint}</div>
+      )}
+    </div>
+  );
+}

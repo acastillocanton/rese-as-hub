@@ -3,6 +3,7 @@
 Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google Business Profile por comercial.
 
 > 📖 **La fuente de verdad del producto está en [`spec.md`](spec.md)** — leerla antes de añadir features o tomar decisiones de arquitectura.
+> 📋 **El estado actual del proyecto y los workarounds operativos están en [`CLAUDE.md`](CLAUDE.md)** — leerlo al abrir el repo en una máquina nueva.
 
 **Roles**: Admin (gestor global), Comercial (envía enlace al cliente tras la visita), Gestor de reseñas (solo lectura + exporta a Excel).
 **Flujo**: comercial comparte `reseñahub.es/c/{slug-comercial}/{slug-cliente}` → cliente abre y aterriza directamente en la ficha de Google → el cron sincroniza la reseña vía Google Business Profile API → la app la atribuye automáticamente al comercial mediante ventana temporal y nombre del cliente codificado en el enlace.
@@ -143,10 +144,29 @@ _design_package/    # Bundle original de Claude Design (referencia, no se modifi
 
 ## Próximos pasos (según el plan aprobado)
 
-Ver `~/.claude/plans/vamos-a-desarrollar-una-kind-lovelace.md` para el detalle. Resumen de qué queda:
+Estado real por fase actualizado en [`CLAUDE.md` §3](CLAUDE.md). Resumen ultra-corto:
 
-- **Fase 2**: Reemplazar placeholders del admin (lista de comerciales, ficha individual, verificación) con datos reales de Supabase.
-- **Fase 3**: Pulir el panel del comercial (versión responsive móvil) y la pantalla de clientes (alta + generación de enlace + QR + deep-links a WhatsApp/Email/SMS).
-- **Fase 4**: Implementar el motor de sincronización con Google Business Profile + algoritmo de matching (`lib/matching/attribute-review.ts`).
-- **Fase 5**: Pantallas del gestor de reseñas + endpoint `/api/export/reviews` con ExcelJS.
-- **Fase 6**: Accesibilidad, estados de carga/error, seed de datos realista, tests e2e.
+- **Fase 1**: ✅ hecha (schema + RLS + middleware + landing + login).
+- **Fase 2 admin**: ⚠️ a medias (`/comerciales` y `/fichas` reales; `/dashboard` con demo-data; `/comerciales/[slug]` y `/resenas/verificacion` placeholders).
+- **Fase 3 sales**: ✅ hecha (panel real + clientes con QR + deep-links + plantilla editable).
+- **Fase 4 Google sync**: ❌ pendiente (OAuth + cron real + algoritmo de matching).
+- **Fase 5 manager**: ❌ pendiente (listado solo-lectura + export Excel).
+- **Fase 6 polish**: ❌ pendiente.
+
+Próximo paso recomendado: **Resend SMTP** (destapa el flujo de invite real, ~20 min) → **Fase 4** (es el corazón del producto).
+
+---
+
+## Setup en una máquina nueva
+
+`.env.local` está en `.gitignore` → no viaja entre Macs. En cada máquina hay que regenerarlo. Pasos:
+
+1. `git clone https://github.com/acastillocanton/rese-as-hub.git && cd rese-as-hub`
+2. `npm install`
+3. Copiar `.env.example` → `.env.local` y rellenar las claves de Supabase desde el [Dashboard](https://supabase.com/dashboard) del proyecto `zejwmznusszqlwhevaqv` → Settings → API:
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` → la **publishable key** (`sb_publishable_…`).
+   - `SUPABASE_SERVICE_ROLE_KEY` → la **secret key** (`sb_secret_…`).
+4. `npm run dev` → http://localhost:3000.
+5. **Para loguearse mientras no haya SMTP**: usar [`/login/manual`](app/login/manual/page.tsx) con un token generado server-side. Receta en [`CLAUDE.md` §4.1](CLAUDE.md).
+
+⚠️ Las keys de Supabase usan el **nuevo formato** `sb_publishable_*` / `sb_secret_*`. No las JWT antiguas (`eyJhbGc…`).

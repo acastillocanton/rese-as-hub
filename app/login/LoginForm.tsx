@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
-import { sendMagicLink } from "./actions";
+import { createClient } from "@/lib/supabase/client";
+import { isSafeNext } from "@/lib/url-validation";
 
 type Props = {
   next?: string;
@@ -22,13 +23,39 @@ export function LoginForm({ next, error, sent }: Props) {
 
   function onSubmit(formData: FormData) {
     setErrorMessage(null);
+    const rawEmail = String(formData.get("email") ?? "").trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail)) {
+      setErrorMessage("Introduce un email válido.");
+      return;
+    }
+    const rawNext = String(formData.get("next") ?? "");
+    const safeNext = isSafeNext(rawNext) ? rawNext : "/";
+
     startTransition(async () => {
-      const result = await sendMagicLink(formData);
-      if (result?.error) {
-        setErrorMessage(result.error);
-      } else {
-        setSubmitted(true);
+      // PKCE requires the verifier to live in cookies the client can read on
+      // the callback. We must call signInWithOtp from the browser client so
+      // it's persisted via document.cookie — initiating from a server action
+      // leaves the verifier server-side only and the callback fails with
+      // "PKCE code verifier not found in storage".
+      const supabase = createClient();
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeNext)}`;
+      const { error: signInError } = await supabase.auth.signInWithOtp({
+        email: rawEmail,
+        options: {
+          emailRedirectTo: redirectTo,
+          shouldCreateUser: false,
+        },
+      });
+      if (signInError) {
+        console.error("[login] signInWithOtp failed:", signInError);
+        const detail =
+          signInError.status === 429
+            ? "Estás pidiendo demasiados emails seguidos. Espera 60 segundos y vuelve a intentarlo."
+            : signInError.message;
+        setErrorMessage(`No hemos podido enviar el correo: ${detail}`);
+        return;
       }
+      setSubmitted(true);
     });
   }
 

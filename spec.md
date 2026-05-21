@@ -2,7 +2,7 @@
 
 > **Fuente de verdad del MVP.** Este documento define qué construimos, por qué, y cómo sabemos que está hecho. Si un cambio (de código, scope, o decisión arquitectónica) entra en conflicto con este archivo, **se actualiza la spec primero** y luego se implementa.
 >
-> Documento vivo · versión 0.1 · 2026-05-20 · responsable: claude.seo@servidir.es (admin)
+> Documento vivo · versión 0.2 · última edición 2026-05-21 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
 
 ---
 
@@ -11,7 +11,7 @@
 **Qué construimos**: una aplicación web interna llamada **ReseñaHub** para Inseryal by Marina d'Or (apartamentos turísticos en la playa, ~10 fichas de Google Business Profile, ~24 comerciales). La app sustituye el "parte semanal de reseñas" que hoy Raquel Piquer compila a mano en Excel.
 
 **Para quién**:
-- **Admin** (única persona hoy: el usuario) — visión global, alta/baja de fichas Google y comerciales, configuración del sistema.
+- **Admin** (2 personas: Alejandro Castillo y Rafael Ibáñez) — visión global, alta/baja de fichas Google y comerciales, configuración del sistema.
 - **Comercial** (sales) — recibe invitación, accede a su panel (escritorio + móvil), genera un enlace personalizado por cliente, ve sus reseñas y ranking.
 - **Gestor de reseñas** (reviews_manager — perfil de Raquel Piquer) — entra en modo solo-lectura, filtra reseñas, descarga el Excel mensual.
 
@@ -275,14 +275,17 @@ El MVP está hecho cuando **todas** estas condiciones son verdad:
 
 Cuestiones sin resolver que necesitan input antes (o durante) la implementación:
 
-1. **Dominio definitivo de producción**. El diseño usa `reseñahub.es`; pendiente confirmar si se compra o usamos otro (¿`resenas.inseryal.es`?). No bloquea desarrollo local.
+1. **Dominio definitivo de producción**. El diseño usa `reseñahub.es`; pendiente confirmar si se compra o usamos otro (¿`resenas.inseryal.es`?). No bloquea desarrollo local. **Dominio corporativo de emails confirmado**: `inseryal.es` (con "y").
 2. **Branding final** (logo, paleta exacta, tipografía si se aparta de la del prototipo). El chat original dijo "logo placeholder, lo aporto luego". Hasta que llegue, usamos el cuadrado negro con `r` que tiene el prototipo.
 3. **Cómo conecta el "CRM" al alta de cliente**. ¿Hay un CRM externo del que extraer nombres? Si lo hay, ¿API o export? En el MVP el comercial introduce el nombre a mano.
-4. **Plantilla del mensaje** de WhatsApp/Email/SMS que pre-rellenamos al generar el enlace. Necesitamos texto definitivo.
+4. ~~**Plantilla del mensaje** de WhatsApp/Email/SMS que pre-rellenamos al generar el enlace.~~ **Cerrada 2026-05-21**: se implementa una plantilla por defecto editable por el comercial en el momento de envío. Vive en [`lib/messaging.ts`](lib/messaging.ts) (`DEFAULT_REVIEW_MESSAGE_TEMPLATE`) con variables `{nombre_cliente}`, `{nombre_comercial}`, `{url}`. Si se quiere centralizar la edición, mover a `/ajustes` cuando exista.
 5. **Cuántos comerciales hay realmente** (24 en el mock, ~30 según contexto). Influye en cuotas de la GBP API y diseño del cron.
 6. **Política de retención**. ¿Cuánto tiempo guardamos las reseñas en DB? ¿Eliminamos `share_links` antiguas (>90 días)?
 7. **¿Quiere el admin recibir alertas** sobre reseñas ≤ 3★ en tiempo real (email/push)? El prototipo lo sugiere pero no se acordó.
 8. **Encriptación del `oauth_refresh_token`** en reposo. Actualmente en texto plano dentro de `location_secrets` (aislada por RLS). Para producción: Supabase Vault o `pgcrypto`.
+9. **Configurar SMTP de Resend en Supabase**. Sin esto, el built-in email tiene un hard-cap de 2 emails/hora por proyecto, lo que bloquea el flujo de invitación real. Mientras tanto se usa el workaround [`/login/manual`](app/login/manual/page.tsx) (ver CLAUDE.md §4.1).
+10. **Fichas multi-marca**. La BD tiene 7 locations: 5 "Inseryal by Marina d'Or" + 2 "Marina d'Or Construcciones". La spec hablaba originalmente solo de "Inseryal". Confirmar si "Marina d'Or Construcciones" entra en el scope del MVP o se queda fuera.
+11. **Comercial pasa a `status='active'` ¿cuándo?**. Hoy el comercial queda como `'invited'` al crearse y nada lo mueve a `'active'`. Decisión pendiente: hacerlo automáticamente al primer login (en el callback de `/accept-invite` cuando esté hecho), o gestionarlo a mano desde `/comerciales`.
 
 ---
 
