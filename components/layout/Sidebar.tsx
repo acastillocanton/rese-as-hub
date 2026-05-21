@@ -164,6 +164,7 @@ export const SALES_SIDEBAR_ITEMS: SidebarItem[] = [
 ];
 
 export const MANAGER_SIDEBAR_ITEMS: SidebarItem[] = [
+  { id: "team", label: "Comerciales", href: "/manager/comerciales", icon: "◔" },
   { id: "reviews", label: "Reseñas", href: "/manager/resenas", icon: "☆" },
   { id: "export", label: "Exportar Excel", href: "/manager/export", icon: "⤓" },
 ];
