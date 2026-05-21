@@ -8,6 +8,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus } from "@/lib/supabase/types";
 import { InviteSalesButton } from "./InviteSalesButton";
 import { DeleteSalesButton } from "./DeleteSalesButton";
+import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
+import { resendSalesAccess } from "./actions";
 
 type SalesRow = {
   id: string;
@@ -168,7 +170,7 @@ export default async function ComercialesPage() {
                     borderBottom: "1px solid var(--line)",
                     display: "grid",
                     gridTemplateColumns: canEdit
-                      ? "2fr 1.4fr 1fr 0.8fr 0.8fr 100px"
+                      ? "2fr 1.4fr 1fr 0.8fr 0.8fr 200px"
                       : "2fr 1.4fr 1fr 0.8fr 0.8fr",
                     gap: 14,
                     fontSize: 11,
@@ -305,7 +307,8 @@ function SalesRow({
         </Pill>
       </span>
       {canEdit && (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+          <ResendAccessButton id={s.id} name={s.full_name} action={resendSalesAccess} />
           <DeleteSalesButton id={s.id} name={s.full_name} />
         </div>
       )}

@@ -11,6 +11,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { parseRange, defaultShortcuts, isFullNaturalMonth } from "@/lib/date-range";
 import type { ProfileStatus } from "@/lib/supabase/types";
 import { DeleteSalesButton } from "../DeleteSalesButton";
+import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
+import { resendSalesAccess } from "../actions";
 import { SalesEditCard } from "./SalesEditCard";
 
 type PageProps = {
@@ -232,12 +234,20 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
               ← Todos
             </Link>
             {canEdit && (
-              <DeleteSalesButton
-                id={sales.id}
-                name={sales.full_name}
-                redirectTo="/comerciales"
-                variant="prominent"
-              />
+              <>
+                <ResendAccessButton
+                  id={sales.id}
+                  name={sales.full_name}
+                  action={resendSalesAccess}
+                  variant="prominent"
+                />
+                <DeleteSalesButton
+                  id={sales.id}
+                  name={sales.full_name}
+                  redirectTo="/comerciales"
+                  variant="prominent"
+                />
+              </>
             )}
           </>
         }

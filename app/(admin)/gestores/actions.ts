@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createInvitedProfile } from "@/lib/invite";
+import { generateAccessLink } from "@/lib/auth/resend-link";
 import { slugify } from "@/lib/utils";
 
 const inviteManagerSchema = z.object({
@@ -42,6 +43,36 @@ export async function inviteReviewsManager(input: InviteManagerInput): Promise<
     nextPath: "/manager/resenas",
     revalidate: ["/gestores"],
   });
+}
+
+export async function resendManagerAccess(id: string): Promise<
+  | { ok: true; link: string; email: string }
+  | { ok: false; error: string }
+> {
+  if (!id) return { ok: false, error: "Id inválido." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "No autenticado." };
+  const { data: actor } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle<{ role: string }>();
+  if (actor?.role !== "admin") return { ok: false, error: "No autorizado." };
+
+  const admin = createServiceClient();
+  const { data: target } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("id", id)
+    .eq("role", "reviews_manager")
+    .maybeSingle<{ email: string | null }>();
+  if (!target?.email) {
+    return { ok: false, error: "Este gestor no tiene email registrado." };
+  }
+  return generateAccessLink(target.email, "/dashboard");
 }
 
 export async function deleteReviewsManager(id: string) {
