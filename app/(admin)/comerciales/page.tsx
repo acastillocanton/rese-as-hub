@@ -26,9 +26,22 @@ export default async function ComercialesPage() {
   let salesList: SalesRow[] = [];
   let locations: LocationOption[] = [];
   let dbError: string | null = null;
+  let viewerRole: string | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle<{ role: string }>();
+      viewerRole = profile?.role ?? null;
+    }
+
     const [salesRes, locRes] = await Promise.all([
       supabase
         .from("profiles")
@@ -46,6 +59,8 @@ export default async function ComercialesPage() {
     if (locRes.data) locations = locRes.data as LocationOption[];
   }
 
+  const canEdit = viewerRole === "admin";
+
   const stats = {
     total: salesList.length,
     active: salesList.filter((s) => s.status === "active").length,
@@ -57,10 +72,10 @@ export default async function ComercialesPage() {
     <>
       <Topbar
         title="Comerciales"
-        subtitle="Gestión de comerciales"
+        subtitle={canEdit ? "Gestión de comerciales" : "Vista solo lectura"}
         range={`${stats.total} en plantilla`}
         breadcrumb="Inseryal"
-        right={<InviteSalesButton locations={locations} />}
+        right={canEdit ? <InviteSalesButton locations={locations} /> : undefined}
       />
 
       <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
@@ -111,22 +126,39 @@ export default async function ComercialesPage() {
                     letterSpacing: "-0.02em",
                   }}
                 >
-                  Invita a tu primer comercial
+                  {canEdit ? "Invita a tu primer comercial" : "Aún no hay comerciales"}
                 </div>
-                <p
-                  style={{
-                    margin: "10px 0 16px",
-                    color: "var(--ink-3)",
-                    fontSize: 13.5,
-                    lineHeight: 1.55,
-                    maxWidth: 560,
-                  }}
-                >
-                  Necesitarás al menos una ficha creada para asignarle. Cuando
-                  invites a alguien, te daremos un enlace de un solo uso que
-                  puedes enviarle por WhatsApp o email.
-                </p>
-                <InviteSalesButton locations={locations} />
+                {canEdit ? (
+                  <>
+                    <p
+                      style={{
+                        margin: "10px 0 16px",
+                        color: "var(--ink-3)",
+                        fontSize: 13.5,
+                        lineHeight: 1.55,
+                        maxWidth: 560,
+                      }}
+                    >
+                      Necesitarás al menos una ficha creada para asignarle. Cuando
+                      invites a alguien, te daremos un enlace de un solo uso que
+                      puedes enviarle por WhatsApp o email.
+                    </p>
+                    <InviteSalesButton locations={locations} />
+                  </>
+                ) : (
+                  <p
+                    style={{
+                      margin: "10px 0 0",
+                      color: "var(--ink-3)",
+                      fontSize: 13.5,
+                      lineHeight: 1.55,
+                      maxWidth: 560,
+                    }}
+                  >
+                    Cuando el admin dé de alta comerciales aparecerán en esta
+                    lista con su actividad.
+                  </p>
+                )}
               </Card>
             ) : (
               <Card padding={0}>
@@ -135,7 +167,9 @@ export default async function ComercialesPage() {
                     padding: "12px 22px",
                     borderBottom: "1px solid var(--line)",
                     display: "grid",
-                    gridTemplateColumns: "2fr 1.4fr 1fr 0.8fr 0.8fr 100px",
+                    gridTemplateColumns: canEdit
+                      ? "2fr 1.4fr 1fr 0.8fr 0.8fr 100px"
+                      : "2fr 1.4fr 1fr 0.8fr 0.8fr",
                     gap: 14,
                     fontSize: 11,
                     color: "var(--ink-4)",
@@ -148,10 +182,15 @@ export default async function ComercialesPage() {
                   <span>Email</span>
                   <span style={{ textAlign: "right" }}>Objetivo</span>
                   <span>Estado</span>
-                  <span></span>
+                  {canEdit && <span></span>}
                 </div>
                 {salesList.map((s, i) => (
-                  <SalesRow key={s.id} s={s} last={i === salesList.length - 1} />
+                  <SalesRow
+                    key={s.id}
+                    s={s}
+                    last={i === salesList.length - 1}
+                    canEdit={canEdit}
+                  />
                 ))}
               </Card>
             )}
@@ -162,7 +201,15 @@ export default async function ComercialesPage() {
   );
 }
 
-function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
+function SalesRow({
+  s,
+  last,
+  canEdit,
+}: {
+  s: SalesRow;
+  last: boolean;
+  canEdit: boolean;
+}) {
   const tone =
     s.status === "active" ? "ok" : s.status === "paused" ? "warn" : "neutral";
   const label =
@@ -173,7 +220,9 @@ function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
         padding: "14px 22px",
         borderBottom: last ? "none" : "1px solid var(--line)",
         display: "grid",
-        gridTemplateColumns: "2fr 1.4fr 1fr 0.8fr 0.8fr 100px",
+        gridTemplateColumns: canEdit
+          ? "2fr 1.4fr 1fr 0.8fr 0.8fr 100px"
+          : "2fr 1.4fr 1fr 0.8fr 0.8fr",
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
@@ -255,9 +304,11 @@ function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
           {label}
         </Pill>
       </span>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <DeleteSalesButton id={s.id} name={s.full_name} />
-      </div>
+      {canEdit && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <DeleteSalesButton id={s.id} name={s.full_name} />
+        </div>
+      )}
     </div>
   );
 }

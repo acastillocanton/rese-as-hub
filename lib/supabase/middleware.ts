@@ -9,7 +9,7 @@ type CookieToSet = { name: string; value: string; options?: CookieOptions };
 const ROLE_HOME: Record<Role, string> = {
   admin: "/dashboard",
   sales: "/panel",
-  reviews_manager: "/manager/resenas",
+  reviews_manager: "/dashboard",
 };
 
 // Routes accessible without an authenticated session.
@@ -49,7 +49,13 @@ function pathAllowedForRole(pathname: string, role: Role): boolean {
     );
   }
   if (role === "reviews_manager") {
+    // El gestor comparte vistas con el admin (Dashboard + ficha del comercial)
+    // pero sin poder editar nada — las acciones admin están condicionadas en
+    // las pantallas. Mantenemos /manager/* para los listados read-only
+    // específicos (lista global de reseñas, exportar Excel).
     return (
+      pathname === "/dashboard" ||
+      pathname.startsWith("/comerciales") ||
       pathname.startsWith("/manager") ||
       pathname.startsWith("/api/export")
     );

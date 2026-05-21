@@ -235,7 +235,8 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
   {
     id: "main",
     items: [
-      { id: "team", label: "Comerciales", href: "/manager/comerciales", icon: Users },
+      { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { id: "team", label: "Comerciales", href: "/comerciales", icon: Users },
       { id: "reviews", label: "Reseñas", href: "/manager/resenas", icon: Star },
       { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },
     ],

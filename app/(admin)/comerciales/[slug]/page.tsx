@@ -57,6 +57,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
   const range = parseRange(sp.from, sp.to);
   const isMonthRange = isFullNaturalMonth(range);
   const shortcuts = defaultShortcuts();
+  let viewerRole: string | null = null;
 
   if (!isSupabaseConfigured()) {
     return (
@@ -78,6 +79,21 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
   }
 
   const supabase = await createClient();
+
+  // Rol del visor para condicionar acciones admin (Editar / Eliminar).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle<{ role: string }>();
+    viewerRole = profile?.role ?? null;
+  }
+  const canEdit = viewerRole === "admin";
+
   const [salesRes, locsRes] = await Promise.all([
     supabase
       .from("profiles")
@@ -215,12 +231,14 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
             <Link href="/comerciales" style={linkBtn}>
               ← Todos
             </Link>
-            <DeleteSalesButton
-              id={sales.id}
-              name={sales.full_name}
-              redirectTo="/comerciales"
-              variant="prominent"
-            />
+            {canEdit && (
+              <DeleteSalesButton
+                id={sales.id}
+                name={sales.full_name}
+                redirectTo="/comerciales"
+                variant="prominent"
+              />
+            )}
           </>
         }
       />
@@ -269,7 +287,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
           </div>
         </div>
 
-        {/* Datos editables + KPIs */}
+        {/* Datos editables (admin) o read-only (gestor) + KPIs */}
         <div
           style={{
             display: "grid",
@@ -277,19 +295,23 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
             gap: 18,
           }}
         >
-          <SalesEditCard
-            id={sales.id}
-            email={sales.email}
-            phone={sales.phone}
-            slug={sales.slug}
-            joinedAt={sales.joined_at}
-            locations={locations}
-            initial={{
-              locationId: sales.location_id,
-              monthlyGoal: sales.monthly_goal,
-              status: sales.status,
-            }}
-          />
+          {canEdit ? (
+            <SalesEditCard
+              id={sales.id}
+              email={sales.email}
+              phone={sales.phone}
+              slug={sales.slug}
+              joinedAt={sales.joined_at}
+              locations={locations}
+              initial={{
+                locationId: sales.location_id,
+                monthlyGoal: sales.monthly_goal,
+                status: sales.status,
+              }}
+            />
+          ) : (
+            <SalesReadOnlyCard sales={sales} joinedAt={sales.joined_at} />
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
             <Stat
@@ -595,3 +617,73 @@ const primaryBtn: React.CSSProperties = {
   fontWeight: 500,
   textDecoration: "none",
 };
+
+function SalesReadOnlyCard({
+  sales,
+  joinedAt,
+}: {
+  sales: SalesDetail;
+  joinedAt: string;
+}) {
+  const statusLabel =
+    sales.status === "active"
+      ? "Activo"
+      : sales.status === "paused"
+        ? "Pausado"
+        : "Invitado";
+  const joinedFmt = new Date(joinedAt).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  return (
+    <Card>
+      <div style={sectionLabel}>Ficha del comercial</div>
+      <dl
+        style={{
+          margin: "14px 0 0",
+          display: "grid",
+          gridTemplateColumns: "max-content 1fr",
+          rowGap: 10,
+          columnGap: 18,
+          fontSize: 13.5,
+        }}
+      >
+        <Term label="Email" value={sales.email ?? "—"} mono />
+        <Term label="Teléfono" value={sales.phone ?? "—"} />
+        <Term label="Ficha asignada" value={sales.location?.name ?? "—"} />
+        <Term label="Objetivo mensual" value={String(sales.monthly_goal)} />
+        <Term label="Estado" value={statusLabel} />
+        <Term label="Alta" value={joinedFmt} />
+      </dl>
+    </Card>
+  );
+}
+
+function Term({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <>
+      <dt
+        style={{
+          fontSize: 11.5,
+          color: "var(--ink-4)",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          alignSelf: "center",
+        }}
+      >
+        {label}
+      </dt>
+      <dd
+        style={{
+          margin: 0,
+          color: "var(--ink)",
+          fontFamily: mono ? "var(--font-mono)" : "inherit",
+          fontSize: mono ? 12.5 : 13.5,
+        }}
+      >
+        {value}
+      </dd>
+    </>
+  );
+}

@@ -276,7 +276,7 @@ export default async function ManagerResenasPage({
             >
               Cuando Google apruebe el acceso a la Business Profile API y el cron sincronice,
               las reseñas atribuidas aparecerán aquí. Mientras tanto puedes navegar a{" "}
-              <Link href="/manager/comerciales" style={{ color: "var(--ink)" }}>
+              <Link href="/comerciales" style={{ color: "var(--ink)" }}>
                 Comerciales
               </Link>{" "}
               para revisar las visitas a enlaces.
@@ -339,7 +339,7 @@ export default async function ManagerResenasPage({
                 <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
                   {r.sales ? (
                     <Link
-                      href={`/manager/comerciales/${r.sales.slug}`}
+                      href={`/comerciales/${r.sales.slug}`}
                       style={{ color: "var(--ink)", textDecoration: "none", fontWeight: 600 }}
                     >
                       {r.sales.full_name}
