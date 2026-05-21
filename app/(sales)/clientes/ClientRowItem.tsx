@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { deleteClientRecord, type ClientRow } from "./actions";
@@ -47,7 +48,15 @@ export function ClientRowItem({
           fontSize: 13.5,
         }}
       >
-        <div style={{ minWidth: 0 }}>
+        <Link
+          href={`/clientes/${client.slug}`}
+          style={{
+            minWidth: 0,
+            textDecoration: "none",
+            color: "inherit",
+            display: "block",
+          }}
+        >
           <div
             style={{
               fontWeight: 600,
@@ -55,6 +64,7 @@ export function ClientRowItem({
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
+              color: "var(--ink)",
             }}
           >
             {client.full_name}
@@ -71,7 +81,7 @@ export function ClientRowItem({
           >
             /c/{salesSlug}/{client.slug}
           </div>
-        </div>
+        </Link>
         <span
           style={{
             fontSize: 12.5,

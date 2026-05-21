@@ -1,27 +1,22 @@
-import { Card } from "@/components/ui/Card";
-import { ManualLoginClient } from "./ManualLoginClient";
+import { redirect } from "next/navigation";
 
 type SearchParams = Promise<{ token?: string }>;
 
+/**
+ * Legacy manual-login URL kept for the operational recipe in CLAUDE.md §4.1.
+ * It now just forwards to /auth/confirm, which verifies the token server-side
+ * and sets the session cookies via @supabase/ssr.
+ */
 export default async function ManualLoginPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
   const { token } = await searchParams;
-  return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "var(--bg)",
-        display: "grid",
-        placeItems: "center",
-        padding: 24,
-      }}
-    >
-      <Card padding={28} style={{ maxWidth: 420, width: "100%" }}>
-        <ManualLoginClient tokenHash={token ?? null} />
-      </Card>
-    </main>
+  if (!token) {
+    redirect("/login?error=invalid-link");
+  }
+  redirect(
+    `/auth/confirm?token_hash=${encodeURIComponent(token)}&type=magiclink&next=/`,
   );
 }

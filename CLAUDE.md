@@ -56,7 +56,8 @@ Plan original en `~/.claude/plans/vamos-a-desarrollar-una-kind-lovelace.md`. Res
 
 ### Fase 3 · Sales (comercial) — ✅ hecha (validada E2E el 2026-05-21)
 - [`/panel`](app/(sales)/panel/page.tsx) con datos reales del comercial logueado (KPIs propios, proyección ETA, enlace personal). Ranking aparcado como `ComingSoon` (requiere migración nueva).
-- [`/clientes`](app/(sales)/clientes/page.tsx) entero: lista, alta con server action, dialog con URL + QR + plantilla editable + deep-links WhatsApp/Email/SMS.
+- [`/clientes`](app/(sales)/clientes/page.tsx) entero: lista, alta con server action, dialog con URL + QR + plantilla editable + deep-links WhatsApp/Email/SMS. Fila navegable a detalle.
+- [`/clientes/[slug]`](app/(sales)/clientes/[slug]/page.tsx) detalle del cliente: datos, KPIs de visitas al enlace, bloque compartir reusado ([`ShareBlock`](app/(sales)/clientes/ShareBlock.tsx)), placeholder de reseñas atribuidas (mostrará lista real cuando entre Fase 4), botón eliminar con confirmación.
 - [`lib/messaging.ts`](lib/messaging.ts) con plantilla por defecto + helpers de deep-link.
 
 ### Fase 4 · Google sync + matching — ❌ no empezado
@@ -82,12 +83,23 @@ A11y, loading/error states, seed realista, tests Vitest + Playwright.
 
 Cosas reales del estado actual que hay que saber para no tropezar:
 
-### 4.1 Email rate limit de Supabase (hard cap, 2/hora)
-El servicio built-in de Supabase Auth tiene un límite **inamovible de 2 emails/hora por proyecto**. Para invitar comerciales o loguearse vía magic-link más allá de eso, hay que:
-- **Fix definitivo (pendiente)**: configurar SMTP custom con Resend en Supabase Dashboard → Authentication → Email Provider.
-- **Workaround actual**: pantalla [`/login/manual`](app/login/manual/page.tsx). Genera un token vía `admin.generate_link` server-side y abre `localhost:3000/login/manual?token=<hashed_token>`. El cliente llama a `verifyOtp({ token_hash, type: 'magiclink' })` y entra sin pasar por email ni por PKCE.
+### 4.1 Auth por email — flujo OTP `token_hash` (no PKCE)
+Brevo SMTP está configurado en Supabase Auth. El flujo de login/invite **NO usa PKCE** — usa el patrón OTP `token_hash` recomendado por Supabase para SSR (`@supabase/ssr`). Razón: PKCE exige un `code_verifier` en cookies del browser que inició la sesión, y rompía cuando el comercial abría el link desde otro dispositivo o cuando el invite-link se generaba server-side.
 
-Para generar un token manualmente desde la terminal (necesitas `.env.local` con `SUPABASE_SERVICE_ROLE_KEY`):
+Cómo funciona:
+1. Login: [`app/login/LoginForm.tsx`](app/login/LoginForm.tsx) llama `signInWithOtp({ email, options: { emailRedirectTo } })` desde el cliente. Supabase envía email vía Brevo.
+2. El email lleva al usuario a `${SITE_URL}/auth/confirm?token_hash=<hash>&type=magiclink&next=<path>`.
+3. [`app/auth/confirm/route.ts`](app/auth/confirm/route.ts) verifica server-side con `verifyOtp({ token_hash, type })`, mete la sesión en cookies vía `@supabase/ssr` y redirige a `next`.
+
+**Plantilla email en Supabase Dashboard** (Authentication → Email Templates) — IMPORTANTE, **hay que cambiarla manualmente**:
+- **Magic Link**: href = `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink&next=%2F`
+- **Invite user**: href = `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=%2Fpanel`
+- Verificar también que `Site URL` y `Redirect URLs` en Authentication → URL Configuration incluyen `http://localhost:3000` (dev) y la URL de prod.
+
+### 4.2 Rate limit Supabase Auth — ya mitigado vía Brevo
+El built-in tenía un cap de 2 emails/hora. Con Brevo SMTP configurado ya no es el cuello de botella.
+
+Workaround manual aún disponible (debug / si Brevo cae): [`/login/manual?token=<hashed_token>`](app/login/manual/page.tsx) — redirige internamente a `/auth/confirm`. Para generar token desde terminal:
 ```bash
 set -a && source .env.local && set +a && \
 curl -sS -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/admin/generate_link" \
@@ -98,21 +110,14 @@ curl -sS -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/admin/generate_link" \
   | python3 -c 'import sys,json;d=json.load(sys.stdin);print("http://localhost:3000/login/manual?token="+d.get("hashed_token",""))'
 ```
 
-### 4.2 Invite-link generado por el admin (en `/comerciales`) NO funciona con PKCE
-El server action `inviteSales` usa `admin.generateLink({ type: 'invite' })` y devuelve un `action_link` server-side. Al abrirlo en el navegador, llega un `?code=...` a `/auth/callback` pero **no hay code_verifier en cookies** (porque el flow no se inició desde el browser). Resultado: error `"PKCE code verifier not found in storage"`.
-
-Mitigación actual: en su lugar, generar token con `admin.generate_link` + abrir `/login/manual?token=...`.
-
-Fix correcto (pendiente): hacer real la página [`/accept-invite/[token]`](app/accept-invite/[token]/page.tsx) usando `verifyOtp({ token_hash, type: 'invite' })`, y cambiar `inviteSales` para devolver `/accept-invite/<hashed_token>` en vez del `action_link` directo.
-
 ### 4.3 `signInWithOtp` debe ir SIEMPRE en el cliente, no en server action
-El verifier PKCE se persiste en `document.cookie` cuando lo inicia el cliente browser. Si lo inicias desde una server action, el verifier se queda server-side y el callback rompe. Aprendido el 2026-05-21. [`app/login/LoginForm.tsx`](app/login/LoginForm.tsx) ya hace lo correcto.
+[`app/login/LoginForm.tsx`](app/login/LoginForm.tsx) lo llama desde el browser. Razón histórica: con PKCE el verifier tenía que vivir en `document.cookie`. Con el flujo `token_hash` ya no aplica esa restricción, pero mantenerlo en el cliente preserva la UX (estado de envío, error inline, etc.).
 
 ### 4.4 El `status` del comercial no se actualiza al primer login
 Tras `inviteSales`, el comercial queda con `status='invited'`. Hoy ningún sitio del código lo mueve a `'active'` cuando completa primer acceso. Operativo (no rompe nada) pero queda raro en el listado del admin.
 
-### 4.5 Comerciales sin Resend → solo se pueden invitar con workaround
-Hoy solo se puede invitar a un comercial usando `/login/manual` con un token generado server-side. Para que el flujo "admin pulsa botón → comercial recibe email" funcione en condiciones, hay que configurar Resend.
+### 4.5 Hydration warning silenciado en `<html>`
+[`app/layout.tsx`](app/layout.tsx) usa `suppressHydrationWarning` en `<html>` porque alguna extensión del navegador (Dark Reader-style) inyecta `className="light"` antes de que React hidrate. No afecta lógica, solo silencia el warning del dev overlay.
 
 ---
 
@@ -129,7 +134,7 @@ Hoy solo se puede invitar a un comercial usando `/login/manual` con un token gen
    - `CRON_SECRET` → generar con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
    - `NEXT_PUBLIC_APP_URL=http://localhost:3000`.
 4. `npm run dev` → http://localhost:3000.
-5. Para loguearse: usar `/login/manual?token=...` con token generado vía la receta de §4.1, **mientras no esté configurado Resend SMTP**.
+5. Para loguearse: con Brevo configurado, basta con ir a `/login` y pedir un magic link. Si Brevo falla, fallback es `/login/manual?token=...` (receta en §4.2).
 
 ⚠️ **Las keys de Supabase usan el nuevo formato** `sb_publishable_*` / `sb_secret_*`. Las JWT antiguas (`eyJhbGc…`) **siguen** funcionando si existen, pero el proyecto usa las nuevas.
 
@@ -177,9 +182,8 @@ Antes de actuar sobre cualquier dato, verifica con `curl $NEXT_PUBLIC_SUPABASE_U
 
 En orden de impacto:
 
-1. **Configurar Resend SMTP** (~20-30 min). Sin esto, el flujo de invite real no funciona y dependemos de `/login/manual` en cada sesión nueva.
-2. **Fase 4 — Google sync + matching** (~1-2 sesiones). Es lo que cierra el ciclo de valor del MVP: los comerciales empiezan a ver sus reseñas.
-3. **Cerrar Fase 2 admin** (~1 sesión). Tiene más sentido **post-Fase 4** porque la bandeja de verificación está vacía hasta que entren reseñas reales.
+1. **Fase 4 — Google sync + matching** (~1-2 sesiones). Es lo que cierra el ciclo de valor del MVP: los comerciales empiezan a ver sus reseñas.
+2. **Cerrar Fase 2 admin** (~1 sesión). Tiene más sentido **post-Fase 4** porque la bandeja de verificación está vacía hasta que entren reseñas reales.
 
 ---
 

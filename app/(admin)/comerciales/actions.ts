@@ -57,16 +57,19 @@ export async function inviteSales(input: InviteSalesInput): Promise<
     `https://${headerStore.get("host") ?? "localhost:3000"}`;
 
   // Generate an invite link (no email sent — we hand it to the admin to share).
+  // We build the URL ourselves using the hashed_token so the link points at our
+  // /auth/confirm route, which calls verifyOtp server-side. This avoids the
+  // PKCE flow entirely — the verifier-in-cookies requirement made the previous
+  // action_link unusable when opened from a different browser/device.
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
     type: "invite",
     email: parsed.data.email,
     options: {
-      redirectTo: `${origin}/auth/callback?next=/panel`,
       data: { full_name: parsed.data.fullName },
     },
   });
 
-  if (linkError || !linkData?.user?.id || !linkData?.properties?.action_link) {
+  if (linkError || !linkData?.user?.id || !linkData?.properties?.hashed_token) {
     console.error("[comerciales] generateLink failed:", linkError);
     if (linkError?.code === "email_exists") {
       return { ok: false, error: "Este email ya está registrado." };
@@ -75,6 +78,9 @@ export async function inviteSales(input: InviteSalesInput): Promise<
   }
 
   const newUserId = linkData.user.id;
+  const inviteLink = `${origin}/auth/confirm?token_hash=${encodeURIComponent(
+    linkData.properties.hashed_token,
+  )}&type=invite&next=${encodeURIComponent("/panel")}`;
 
   const { error: profileError } = await admin.from("profiles").insert({
     id: newUserId,
@@ -96,7 +102,7 @@ export async function inviteSales(input: InviteSalesInput): Promise<
   }
 
   revalidatePath("/comerciales");
-  return { ok: true, inviteLink: linkData.properties.action_link, email: parsed.data.email };
+  return { ok: true, inviteLink, email: parsed.data.email };
 }
 
 export async function deleteSales(id: string) {
