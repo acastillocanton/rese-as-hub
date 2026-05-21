@@ -44,7 +44,7 @@ export default async function ManagerExportPage() {
       <Topbar
         title="Exportar Excel"
         subtitle="Parte de reseñas"
-        range=""
+        range={null}
         breadcrumb="Inseryal"
       />
 

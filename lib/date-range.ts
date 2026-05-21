@@ -157,3 +157,42 @@ export function parseRange(
   }
   return thisMonthRange(now);
 }
+
+/**
+ * Atajos pre-calculados listos para alimentar a un selector cliente. Devuelven
+ * solo los datos serializables (no objetos `Date`), lo que evita errores de
+ * "cannot be passed to client components".
+ */
+export type ShortcutDescriptor = {
+  key: string;
+  label: string;
+  from: string;
+  to: string;
+  rangeLabel: string;
+};
+
+export function defaultShortcuts(now = new Date()): ShortcutDescriptor[] {
+  const m = thisMonthRange(now);
+  const lm = lastMonthRange(now);
+  const lq = lastQuarterRange(now);
+  return [
+    { key: "this-month", label: "Mes actual", from: m.from, to: m.to, rangeLabel: m.label },
+    { key: "last-month", label: "Mes pasado", from: lm.from, to: lm.to, rangeLabel: lm.label },
+    {
+      key: "last-quarter",
+      label: "Último trimestre",
+      from: lq.from,
+      to: lq.to,
+      rangeLabel: lq.label,
+    },
+  ];
+}
+
+/** Devuelve true si el rango cubre exactamente un único mes natural completo. */
+export function isFullNaturalMonth(range: DateRange): boolean {
+  const [y, m, d] = range.from.split("-").map(Number);
+  const [y2, m2, d2] = range.to.split("-").map(Number);
+  if (y !== y2 || m !== m2 || d !== 1) return false;
+  const lastDay = new Date(y, m, 0).getDate();
+  return d2 === lastDay;
+}

@@ -4,7 +4,9 @@ import { DateRange } from "@/components/ui/DateRange";
 type TopbarProps = {
   title: string;
   subtitle?: string;
-  range?: string;
+  /** Etiqueta del rango. Pasa `null` para ocultar el badge (útil cuando el
+   *  llamante mete su propio selector funcional en `right`). */
+  range?: string | null;
   right?: ReactNode;
   breadcrumb?: string;
 };
@@ -57,7 +59,7 @@ export function Topbar({
         </h1>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <DateRange value={range} />
+        {range !== null && <DateRange value={range} />}
         {right}
       </div>
     </header>

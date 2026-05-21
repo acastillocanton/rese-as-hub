@@ -12,6 +12,12 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus, OauthStatus } from "@/lib/supabase/types";
 import { MONTHS } from "@/lib/demo-data";
+import {
+  parseRange,
+  defaultShortcuts,
+  isFullNaturalMonth,
+} from "@/lib/date-range";
+import { RangePicker } from "@/components/ui/RangePicker";
 
 type SalesProfile = {
   id: string;
@@ -53,25 +59,6 @@ type ReviewLite = {
   google_created_at: string;
 };
 
-const MONTH_NAMES_ES = [
-  "enero",
-  "febrero",
-  "marzo",
-  "abril",
-  "mayo",
-  "junio",
-  "julio",
-  "agosto",
-  "septiembre",
-  "octubre",
-  "noviembre",
-  "diciembre",
-];
-
-function startOfMonthIso(d = new Date()) {
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
-}
-
 function startOfMonthsAgoIso(n: number, d = new Date()) {
   return new Date(d.getFullYear(), d.getMonth() - n, 1).toISOString();
 }
@@ -91,15 +78,24 @@ function bucketByMonth(timestamps: string[], monthsBack: number, now = new Date(
   return buckets;
 }
 
-export default async function DashboardPage() {
+type DashboardSearchParams = Promise<{ from?: string; to?: string }>;
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: DashboardSearchParams;
+}) {
   if (!isSupabaseConfigured()) {
     return <DemoFallback />;
   }
 
+  const params = await searchParams;
   const supabase = await createClient();
   const now = new Date();
-  const startOfMonth = startOfMonthIso(now);
+  const range = parseRange(params.from, params.to, now);
+  const isMonthRange = isFullNaturalMonth(range);
   const start6Months = startOfMonthsAgoIso(5, now); // 6 buckets incluyendo el actual
+  const shortcuts = defaultShortcuts(now);
 
   const [
     salesRes,
@@ -124,7 +120,8 @@ export default async function DashboardPage() {
     supabase
       .from("share_links")
       .select("id, sales_id, client_id, location_id, opened_at")
-      .gte("opened_at", startOfMonth)
+      .gte("opened_at", range.startIso)
+      .lt("opened_at", range.endIso)
       .returns<ShareLinkRow[]>(),
     supabase
       .from("share_links")
@@ -143,7 +140,8 @@ export default async function DashboardPage() {
     supabase
       .from("reviews")
       .select("rating, match_state, sales_id, location_id, google_created_at")
-      .gte("google_created_at", startOfMonth)
+      .gte("google_created_at", range.startIso)
+      .lt("google_created_at", range.endIso)
       .returns<ReviewLite[]>(),
     supabase
       .from("reviews")
@@ -162,7 +160,7 @@ export default async function DashboardPage() {
   const reviewsHistory = reviewsHistoryRes.data ?? [];
 
   // ─── KPIs ────────────────────────────────────────────────────────────────
-  const visitsThisMonth = sharesMonth.length;
+  const visitsInRange = sharesMonth.length;
   const activeSales = sales.filter((s) => s.status === "active").length;
   const invitedSales = sales.filter((s) => s.status === "invited").length;
   const pausedSales = sales.filter((s) => s.status === "paused").length;
@@ -256,10 +254,12 @@ export default async function DashboardPage() {
   }));
 
   // ─── Meta de equipo ──────────────────────────────────────────────────────
+  // El objetivo es mensual: si el rango no cubre exactamente un mes natural,
+  // mantenemos la suma pero avisamos al lado del título.
   const teamGoal = sales.reduce((sum, s) => sum + s.monthly_goal, 0);
   const teamCounted = leaderboard.reduce((sum, s) => sum + s.counted, 0);
   const teamProgress = teamGoal > 0 ? Math.round((teamCounted / teamGoal) * 100) : 0;
-  const monthLabelEs = MONTH_NAMES_ES[now.getMonth()];
+  const rangeLabel = range.label;
 
   const fmtDateTime = (iso: string) =>
     new Date(iso).toLocaleDateString("es-ES", {
@@ -274,23 +274,31 @@ export default async function DashboardPage() {
       <Topbar
         title="Dashboard"
         subtitle="Dashboard general"
-        range={`Este mes · ${monthLabelEs}`}
+        range={null}
         breadcrumb="Inseryal"
         right={
-          <Link
-            href="/comerciales"
-            style={{
-              padding: "7px 12px",
-              background: "var(--ink)",
-              color: "#fff",
-              borderRadius: 9,
-              fontSize: 13,
-              fontWeight: 500,
-              textDecoration: "none",
-            }}
-          >
-            Invitar comercial
-          </Link>
+          <>
+            <RangePicker
+              from={range.from}
+              to={range.to}
+              label={range.label}
+              shortcuts={shortcuts}
+            />
+            <Link
+              href="/comerciales"
+              style={{
+                padding: "7px 12px",
+                background: "var(--ink)",
+                color: "#fff",
+                borderRadius: 9,
+                fontSize: 13,
+                fontWeight: 500,
+                textDecoration: "none",
+              }}
+            >
+              Invitar comercial
+            </Link>
+          </>
         }
       />
 
@@ -305,8 +313,8 @@ export default async function DashboardPage() {
         >
           <Stat
             label="Visitas a enlaces"
-            value={visitsThisMonth.toString()}
-            sub={`${monthLabelEs} en curso`}
+            value={visitsInRange.toString()}
+            sub={rangeLabel}
           />
           <Stat
             label="Comerciales activos"
@@ -423,7 +431,7 @@ export default async function DashboardPage() {
             >
               <div>
                 <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
-                  Objetivos · {monthLabelEs}
+                  Objetivos · {rangeLabel}
                 </div>
                 <div
                   style={{
@@ -435,6 +443,18 @@ export default async function DashboardPage() {
                 >
                   Equipo en conjunto
                 </div>
+                {!isMonthRange && (
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 11.5,
+                      color: "var(--ink-4)",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Los objetivos son mensuales — selecciona un mes natural para verlos al 100%.
+                  </div>
+                )}
               </div>
               <Pill
                 tone={
@@ -462,13 +482,13 @@ export default async function DashboardPage() {
             />
             <GoalRow
               label="Visitas registradas"
-              value={`${visitsThisMonth}`}
+              value={`${visitsInRange}`}
               hint={
-                visitsThisMonth === 0
+                visitsInRange === 0
                   ? "Aún sin actividad"
                   : `${totalClients} cliente${totalClients === 1 ? "" : "s"} en el sistema`
               }
-              current={Math.min(visitsThisMonth, 100)}
+              current={Math.min(visitsInRange, 100)}
               max={100}
               tone="ink"
             />

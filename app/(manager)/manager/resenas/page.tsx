@@ -5,12 +5,8 @@ import { Stars } from "@/components/ui/Stars";
 import { Pill } from "@/components/ui/Pill";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import {
-  parseRange,
-  thisMonthRange,
-  lastMonthRange,
-  lastQuarterRange,
-} from "@/lib/date-range";
+import { parseRange, defaultShortcuts } from "@/lib/date-range";
+import { RangePicker } from "@/components/ui/RangePicker";
 
 type SearchParams = Promise<{
   sales_id?: string;
@@ -113,27 +109,7 @@ export default async function ManagerResenasPage({
   if (params.location_id) exportHref.set("location_id", params.location_id);
   if (params.match_state) exportHref.set("match_state", params.match_state);
 
-  // Atajos rápidos: pre-calculan rangos para los 3 botones de la barra de
-  // filtros. Cada uno mantiene los demás filtros activos (comercial / ficha /
-  // estado matching) para que cambiar de periodo no resetee el filtrado.
-  const shortcuts = [
-    { key: "this-month", label: "Mes actual", range: thisMonthRange() },
-    { key: "last-month", label: "Mes pasado", range: lastMonthRange() },
-    { key: "last-quarter", label: "Último trimestre", range: lastQuarterRange() },
-  ];
-  const baseQuery = new URLSearchParams();
-  if (params.sales_id) baseQuery.set("sales_id", params.sales_id);
-  if (params.location_id) baseQuery.set("location_id", params.location_id);
-  if (params.match_state) baseQuery.set("match_state", params.match_state);
-  const shortcutHref = (from: string, to: string) => {
-    const q = new URLSearchParams(baseQuery);
-    q.set("from", from);
-    q.set("to", to);
-    return `?${q.toString()}`;
-  };
-  const activeShortcut = shortcuts.find(
-    (s) => s.range.from === range.from && s.range.to === range.to,
-  )?.key;
+  const shortcuts = defaultShortcuts();
 
   const fmtDateTime = (iso: string) =>
     new Date(iso).toLocaleString("es-ES", {
@@ -149,23 +125,31 @@ export default async function ManagerResenasPage({
       <Topbar
         title="Reseñas"
         subtitle="Vista solo lectura"
-        range={range.label}
+        range={null}
         breadcrumb="Inseryal"
         right={
-          <a
-            href={`/api/export/reviews?${exportHref.toString()}`}
-            style={{
-              padding: "7px 12px",
-              background: "var(--ink)",
-              color: "#fff",
-              borderRadius: 9,
-              fontSize: 13,
-              fontWeight: 500,
-              textDecoration: "none",
-            }}
-          >
-            Descargar Excel
-          </a>
+          <>
+            <RangePicker
+              from={range.from}
+              to={range.to}
+              label={range.label}
+              shortcuts={shortcuts}
+            />
+            <a
+              href={`/api/export/reviews?${exportHref.toString()}`}
+              style={{
+                padding: "7px 12px",
+                background: "var(--ink)",
+                color: "#fff",
+                borderRadius: 9,
+                fontSize: 13,
+                fontWeight: 500,
+                textDecoration: "none",
+              }}
+            >
+              Descargar Excel
+            </a>
+          </>
         }
       />
 
@@ -179,78 +163,22 @@ export default async function ManagerResenasPage({
           gap: 16,
         }}
       >
-        {/* Atajos de periodo (links, no form: cada uno aplica un rango y
-            conserva los demás filtros). */}
+        {/* Filtros adicionales — el rango se elige desde el RangePicker del
+            topbar. Aquí solo viven los selects que dependen de catálogo. Se
+            mantiene un hidden con from/to para que el submit conserve el
+            periodo activo. */}
         <Card>
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 11,
-                color: "var(--ink-4)",
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                fontWeight: 500,
-                marginRight: 4,
-              }}
-            >
-              Periodo
-            </span>
-            {shortcuts.map((s) => (
-              <a
-                key={s.key}
-                href={shortcutHref(s.range.from, s.range.to)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 8,
-                  border: "1px solid var(--line-strong)",
-                  background: activeShortcut === s.key ? "var(--ink)" : "var(--surface)",
-                  color: activeShortcut === s.key ? "#fff" : "var(--ink)",
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  textDecoration: "none",
-                }}
-              >
-                {s.label}
-              </a>
-            ))}
-            <span style={{ fontSize: 12, color: "var(--ink-4)", marginLeft: 4 }}>
-              · Mostrando: <strong style={{ color: "var(--ink-2)" }}>{range.label}</strong>
-            </span>
-          </div>
-
           <form
             method="GET"
             style={{
-              marginTop: 14,
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr auto",
+              gridTemplateColumns: "1fr 1fr 1fr auto",
               gap: 12,
               alignItems: "end",
             }}
           >
-            <FilterField label="Desde">
-              <input
-                type="date"
-                name="from"
-                defaultValue={range.from}
-                style={inputStyle}
-              />
-            </FilterField>
-            <FilterField label="Hasta">
-              <input
-                type="date"
-                name="to"
-                defaultValue={range.to}
-                style={inputStyle}
-              />
-            </FilterField>
+            <input type="hidden" name="from" value={range.from} />
+            <input type="hidden" name="to" value={range.to} />
             <FilterField label="Comercial">
               <select
                 name="sales_id"
