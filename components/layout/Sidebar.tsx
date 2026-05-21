@@ -151,8 +151,11 @@ export function Sidebar({ items, user }: SidebarProps) {
 export const ADMIN_SIDEBAR_ITEMS: SidebarItem[] = [
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: "◧" },
   { id: "team", label: "Comerciales", href: "/comerciales", icon: "◔" },
-  { id: "reviews", label: "Reseñas", href: "/resenas/verificacion", icon: "☆" },
+  { id: "managers", label: "Gestores", href: "/gestores", icon: "◕" },
   { id: "branches", label: "Fichas Google", href: "/fichas", icon: "⌂" },
+  { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: "☆" },
+  { id: "reviews", label: "Reseñas", href: "/manager/resenas", icon: "★" },
+  { id: "export", label: "Exportar Excel", href: "/manager/export", icon: "⤓" },
   { id: "settings", label: "Ajustes", href: "/ajustes", icon: "◇" },
 ];
 

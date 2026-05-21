@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
@@ -6,68 +5,56 @@ import { Pill } from "@/components/ui/Pill";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus } from "@/lib/supabase/types";
-import { InviteSalesButton } from "./InviteSalesButton";
-import { DeleteSalesButton } from "./DeleteSalesButton";
+import { InviteManagerButton } from "./InviteManagerButton";
+import { DeleteManagerButton } from "./DeleteManagerButton";
 
-type SalesRow = {
+type ManagerRow = {
   id: string;
   full_name: string;
   email: string | null;
-  slug: string;
-  monthly_goal: number;
+  phone: string | null;
   status: ProfileStatus;
   joined_at: string;
-  location: { id: string; name: string } | null;
 };
 
-type LocationOption = { id: string; name: string };
-
-export default async function ComercialesPage() {
-  let salesList: SalesRow[] = [];
-  let locations: LocationOption[] = [];
+export default async function GestoresPage() {
+  let managers: ManagerRow[] = [];
   let dbError: string | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
-    const [salesRes, locRes] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select(
-          "id, full_name, email, slug, monthly_goal, status, joined_at, location:locations(id, name)",
-        )
-        .eq("role", "sales")
-        .order("joined_at", { ascending: false }),
-      supabase.from("locations").select("id, name").order("name"),
-    ]);
-
-    if (salesRes.error) dbError = salesRes.error.message;
-    else salesList = ((salesRes.data ?? []) as unknown) as SalesRow[];
-
-    if (locRes.data) locations = locRes.data as LocationOption[];
+    const res = await supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, status, joined_at")
+      .eq("role", "reviews_manager")
+      .order("joined_at", { ascending: false })
+      .returns<ManagerRow[]>();
+    if (res.error) dbError = res.error.message;
+    else managers = res.data ?? [];
   }
 
   const stats = {
-    total: salesList.length,
-    active: salesList.filter((s) => s.status === "active").length,
-    invited: salesList.filter((s) => s.status === "invited").length,
-    paused: salesList.filter((s) => s.status === "paused").length,
+    total: managers.length,
+    active: managers.filter((m) => m.status === "active").length,
+    invited: managers.filter((m) => m.status === "invited").length,
+    paused: managers.filter((m) => m.status === "paused").length,
   };
 
   return (
     <>
       <Topbar
-        title="Comerciales"
-        subtitle="Gestión de comerciales"
+        title="Gestores de reseñas"
+        subtitle="Acceso solo lectura · lista de reseñas y descarga Excel"
         range={`${stats.total} en plantilla`}
         breadcrumb="Inseryal"
-        right={<InviteSalesButton locations={locations} />}
+        right={<InviteManagerButton primary />}
       />
 
       <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
         {dbError && (
           <Card>
             <div style={{ fontSize: 13, color: "var(--warn)", fontWeight: 500 }}>
-              Error al cargar comerciales
+              Error al cargar gestores
             </div>
             <p
               style={{
@@ -92,16 +79,16 @@ export default async function ComercialesPage() {
                 marginBottom: 16,
               }}
             >
-              <MiniStat label="Total" value={stats.total} sub="comerciales en plantilla" />
-              <MiniStat label="Activos" value={stats.active} sub="con enlace en circulación" />
+              <MiniStat label="Total" value={stats.total} sub="gestores en plantilla" />
+              <MiniStat label="Activos" value={stats.active} sub="con acceso al panel" />
               <MiniStat label="Invitados" value={stats.invited} sub="pendientes de aceptar" />
               <MiniStat label="Pausados" value={stats.paused} sub="sin actividad reciente" />
             </div>
 
-            {salesList.length === 0 ? (
+            {managers.length === 0 ? (
               <Card padding={32}>
                 <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
-                  Sin comerciales todavía
+                  Sin gestores todavía
                 </div>
                 <div
                   style={{
@@ -111,7 +98,7 @@ export default async function ComercialesPage() {
                     letterSpacing: "-0.02em",
                   }}
                 >
-                  Invita a tu primer comercial
+                  Invita a tu primer gestor de reseñas
                 </div>
                 <p
                   style={{
@@ -122,11 +109,11 @@ export default async function ComercialesPage() {
                     maxWidth: 560,
                   }}
                 >
-                  Necesitarás al menos una ficha creada para asignarle. Cuando
-                  invites a alguien, te daremos un enlace de un solo uso que
-                  puedes enviarle por WhatsApp o email.
+                  El gestor de reseñas tiene acceso solo lectura al listado
+                  global de reseñas y a la descarga del Excel mensual. No ve
+                  clientes ni puede modificar nada.
                 </p>
-                <InviteSalesButton locations={locations} />
+                <InviteManagerButton primary />
               </Card>
             ) : (
               <Card padding={0}>
@@ -135,7 +122,7 @@ export default async function ComercialesPage() {
                     padding: "12px 22px",
                     borderBottom: "1px solid var(--line)",
                     display: "grid",
-                    gridTemplateColumns: "2fr 1.4fr 1fr 0.8fr 0.8fr 100px",
+                    gridTemplateColumns: "2fr 1.4fr 1fr 0.8fr 100px",
                     gap: 14,
                     fontSize: 11,
                     color: "var(--ink-4)",
@@ -143,15 +130,18 @@ export default async function ComercialesPage() {
                     letterSpacing: "0.04em",
                   }}
                 >
-                  <span>Comercial</span>
-                  <span>Ficha</span>
+                  <span>Gestor</span>
                   <span>Email</span>
-                  <span style={{ textAlign: "right" }}>Objetivo</span>
+                  <span>Teléfono</span>
                   <span>Estado</span>
                   <span></span>
                 </div>
-                {salesList.map((s, i) => (
-                  <SalesRow key={s.id} s={s} last={i === salesList.length - 1} />
+                {managers.map((m, i) => (
+                  <ManagerRowView
+                    key={m.id}
+                    m={m}
+                    last={i === managers.length - 1}
+                  />
                 ))}
               </Card>
             )}
@@ -162,35 +152,32 @@ export default async function ComercialesPage() {
   );
 }
 
-function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
+function ManagerRowView({ m, last }: { m: ManagerRow; last: boolean }) {
   const tone =
-    s.status === "active" ? "ok" : s.status === "paused" ? "warn" : "neutral";
+    m.status === "active" ? "ok" : m.status === "paused" ? "warn" : "neutral";
   const label =
-    s.status === "active" ? "Activo" : s.status === "paused" ? "Pausado" : "Invitado";
+    m.status === "active" ? "Activo" : m.status === "paused" ? "Pausado" : "Invitado";
   return (
     <div
       style={{
         padding: "14px 22px",
         borderBottom: last ? "none" : "1px solid var(--line)",
         display: "grid",
-        gridTemplateColumns: "2fr 1.4fr 1fr 0.8fr 0.8fr 100px",
+        gridTemplateColumns: "2fr 1.4fr 1fr 0.8fr 100px",
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
       }}
     >
-      <Link
-        href={`/comerciales/${s.slug}`}
+      <div
         style={{
           display: "flex",
           alignItems: "center",
           gap: 12,
           minWidth: 0,
-          textDecoration: "none",
-          color: "inherit",
         }}
       >
-        <Avatar name={s.full_name} size={32} />
+        <Avatar name={m.full_name} size={32} />
         <div style={{ minWidth: 0 }}>
           <div
             style={{
@@ -202,32 +189,28 @@ function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
               color: "var(--ink)",
             }}
           >
-            {s.full_name}
+            {m.full_name}
           </div>
           <div
             style={{
               fontSize: 11.5,
               color: "var(--ink-4)",
-              fontFamily: "var(--font-mono)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
             }}
           >
-            /c/{s.slug}
+            Gestor de reseñas · solo lectura
           </div>
         </div>
-      </Link>
+      </div>
       <span
         style={{
-          fontSize: 13,
-          color: "var(--ink-2)",
+          fontSize: 12.5,
+          color: "var(--ink-3)",
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
         }}
       >
-        {s.location?.name ?? "—"}
+        {m.email ?? "—"}
       </span>
       <span
         style={{
@@ -238,17 +221,7 @@ function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
           textOverflow: "ellipsis",
         }}
       >
-        {s.email ?? "—"}
-      </span>
-      <span
-        style={{
-          textAlign: "right",
-          fontSize: 13,
-          color: "var(--ink-3)",
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {s.monthly_goal}
+        {m.phone ?? "—"}
       </span>
       <span>
         <Pill tone={tone} withDot>
@@ -256,7 +229,7 @@ function SalesRow({ s, last }: { s: SalesRow; last: boolean }) {
         </Pill>
       </span>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <DeleteSalesButton id={s.id} name={s.full_name} />
+        <DeleteManagerButton id={m.id} name={m.full_name} />
       </div>
     </div>
   );
