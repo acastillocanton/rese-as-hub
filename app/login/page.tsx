@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { LoginForm } from "./LoginForm";
 
@@ -77,6 +78,30 @@ export default async function LoginPage({
         >
           Acceso solo para personal autorizado de Inseryal by Marina d&apos;Or.
         </p>
+        <div
+          style={{
+            marginTop: 18,
+            display: "flex",
+            justifyContent: "center",
+            gap: 14,
+            fontSize: 11.5,
+            color: "var(--ink-4)",
+          }}
+        >
+          <Link
+            href="/privacidad"
+            style={{ color: "var(--ink-4)", textDecoration: "none" }}
+          >
+            Privacidad
+          </Link>
+          <span aria-hidden="true">·</span>
+          <Link
+            href="/terminos"
+            style={{ color: "var(--ink-4)", textDecoration: "none" }}
+          >
+            Términos
+          </Link>
+        </div>
       </div>
     </main>
   );

@@ -19,6 +19,7 @@ const ROLE_HOME: Record<Role, string> = {
 //  - /auth/            magic-link callback + signout (anyone, by design)
 //  - /api/cron/        cron endpoints (self-authenticated via CRON_SECRET)
 //  - /api/google/oauth/callback  OAuth return from Google Business Profile
+//  - /privacidad, /terminos  legal pages linked from OAuth consent
 //  - /_next, /favicon  framework + static assets
 const PUBLIC_PREFIXES = [
   "/login",
@@ -27,6 +28,8 @@ const PUBLIC_PREFIXES = [
   "/auth/",
   "/api/cron",
   "/api/google/oauth/callback",
+  "/privacidad",
+  "/terminos",
   "/_next",
   "/favicon",
 ];
