@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { recordAudit } from "@/lib/audit";
 
 const reviewIdSchema = z.string().uuid();
 
@@ -25,13 +26,10 @@ async function audit(
   action: string,
   payload: Record<string, unknown>,
 ) {
-  const supabase = await createClient();
-  await supabase.from("audit_log").insert({
-    entity_type: "review",
-    entity_id: entityId,
-    action,
-    payload,
-  } as never);
+  // audit_log tiene RLS habilitado sin política de INSERT para ningún rol:
+  // se escribe vía service-role para que el comercial/admin no pueda fabricar
+  // entradas a mano. Helper en lib/audit.ts.
+  await recordAudit({ entityType: "review", entityId, action, payload });
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   getValidAccessTokenForLocation,
   listReviews,
   starRatingToInt,
+  type GoogleReview,
 } from "@/lib/google/business-profile";
 import {
   attributeReview,
@@ -108,11 +109,37 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      const { reviews: googleReviews } = await listReviews(
-        accessToken,
-        loc.google_location_resource,
-        { pageSize: 50 },
-      );
+      // Paginación: la API v4 ordena por updateTime desc, así que avanzamos
+      // hasta que una página entera ya esté en DB (alcanzamos backlog
+      // sincronizado) o se acabe nextPageToken. MAX_PAGES (10 × 50 = 500)
+      // limita el primer cron sobre una ficha con histórico enorme.
+      const MAX_PAGES = 10;
+      const PAGE_SIZE = 50;
+      const googleReviews: GoogleReview[] = [];
+      let pageToken: string | undefined;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const { reviews: pageReviews, nextPageToken } = await listReviews(
+          accessToken,
+          loc.google_location_resource,
+          { pageSize: PAGE_SIZE, pageToken },
+        );
+        if (pageReviews.length === 0) break;
+        googleReviews.push(...pageReviews);
+
+        // Si toda la página ya está en DB, no merece la pena pedir más:
+        // las siguientes son más antiguas todavía y ya las tenemos.
+        const pageIds = pageReviews.map((r) => r.reviewId);
+        const { data: existingInPage } = await admin
+          .from("reviews")
+          .select("google_review_id")
+          .eq("location_id", loc.id)
+          .in("google_review_id", pageIds)
+          .returns<{ google_review_id: string }[]>();
+        if ((existingInPage?.length ?? 0) === pageReviews.length) break;
+
+        if (!nextPageToken) break;
+        pageToken = nextPageToken;
+      }
       entry.fetched = googleReviews.length;
 
       if (googleReviews.length === 0) {
@@ -198,11 +225,13 @@ export async function GET(request: NextRequest) {
           match_evidence: result.match_evidence,
         };
 
-        const { error: insErr } = await admin
+        const { data: inserted, error: insErr } = await admin
           .from("reviews")
-          .insert(row as never);
+          .insert(row as never)
+          .select("id")
+          .single<{ id: string }>();
 
-        if (insErr) {
+        if (insErr || !inserted) {
           console.error("[cron] insert review failed:", insErr, gr.reviewId);
           continue;
         }
@@ -210,15 +239,16 @@ export async function GET(request: NextRequest) {
         entry.new_reviews++;
         if (result.match_state === "counted") {
           entry.counted++;
-          // Notificación al comercial. Fire-and-forget: si Resend falla o no
-          // está configurado, el wrapper traga el error y el cron sigue.
+          // Notificación al comercial. Si Resend falla o no está configurado,
+          // dejamos rastro en audit_log para poder reconciliar a mano sin
+          // bloquear el resto del sync.
           if (result.sales_id) {
             const sales = salesById.get(result.sales_id);
             if (sales?.email && sales.status === "active") {
               const clientName =
                 (result.match_evidence?.client_full_name as string | undefined) ??
                 null;
-              await notifyNewReview({
+              const sendRes = await notifyNewReview({
                 salesEmail: sales.email,
                 salesName: sales.full_name,
                 rating: starRatingToInt(gr.starRating),
@@ -229,6 +259,20 @@ export async function GET(request: NextRequest) {
                 matchConfidence: result.match_confidence,
                 appBase,
               });
+              if (!sendRes.ok && !("skipped" in sendRes && sendRes.skipped)) {
+                await admin.from("audit_log").insert({
+                  entity_type: "review",
+                  entity_id: inserted.id,
+                  action: "notify_failed",
+                  payload: {
+                    sales_id: result.sales_id,
+                    sales_email: sales.email,
+                    google_review_id: gr.reviewId,
+                    status: "status" in sendRes ? sendRes.status : null,
+                    error: "error" in sendRes ? sendRes.error : null,
+                  },
+                } as never);
+              }
             }
           }
         } else if (result.match_state === "pending") {

@@ -68,12 +68,25 @@ function renderText(
     .join("\n");
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function renderHtml(
   input: NewReviewNotificationInput,
   firstName: string,
   panelUrl: string,
 ): string {
-  const safeText = (input.reviewText ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const safeText = escapeHtml(input.reviewText ?? "");
+  const safeAuthor = escapeHtml(input.authorName);
+  const safeFirstName = escapeHtml(firstName);
+  const safeClient = input.clientFullName ? escapeHtml(input.clientFullName) : null;
+  const safeLocation = input.locationName ? escapeHtml(input.locationName) : null;
   const starsHtml = Array.from({ length: 5 })
     .map(
       (_, i) =>
@@ -90,7 +103,7 @@ function renderHtml(
 <title>Nueva reseña atribuida</title>
 </head>
 <body style="margin:0;padding:0;background:#f5f3ee;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1a1a1a;-webkit-font-smoothing:antialiased;">
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f5f3ee;">${input.authorName} acaba de dejarte una reseña de ${input.rating} estrellas.</div>
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f5f3ee;">${safeAuthor} acaba de dejarte una reseña de ${input.rating} estrellas.</div>
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f5f3ee;">
     <tr><td align="center" style="padding:48px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="width:560px;max-width:100%;">
@@ -101,17 +114,17 @@ function renderHtml(
           <div style="margin-top:18px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#8a8478;font-weight:600;">Reseña<span style="color:#1a1a1a;">Hub</span> · Notificación</div>
         </td></tr>
         <tr><td style="background:#ffffff;border:1px solid #e9e4d8;border-radius:12px;padding:36px 40px;">
-          <h1 style="margin:0 0 8px 0;font-size:22px;line-height:1.3;font-weight:700;letter-spacing:-0.015em;color:#111111;">¡Tienes una reseña nueva, ${firstName}!</h1>
+          <h1 style="margin:0 0 8px 0;font-size:22px;line-height:1.3;font-weight:700;letter-spacing:-0.015em;color:#111111;">¡Tienes una reseña nueva, ${safeFirstName}!</h1>
           <p style="margin:0 0 22px 0;font-size:14.5px;line-height:1.6;color:#555555;">El sincronizador acaba de atribuirte una nueva reseña de Google.</p>
 
           <div style="padding:18px 20px;background:#f8f6f0;border:1px solid #ece8df;border-radius:10px;">
             <div style="font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#a8a294;font-weight:600;">Cliente y valoración</div>
             <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
-              <div style="font-weight:600;font-size:15px;color:#1a1a1a;">${input.authorName}</div>
+              <div style="font-weight:600;font-size:15px;color:#1a1a1a;">${safeAuthor}</div>
               <div style="margin-left:auto;">${starsHtml}</div>
             </div>
-            ${input.clientFullName ? `<div style="margin-top:6px;font-size:12.5px;color:#8a8478;">Cliente asociado: <span style="color:#1a1a1a;font-weight:500;">${input.clientFullName}</span></div>` : ""}
-            ${input.locationName ? `<div style="margin-top:4px;font-size:12.5px;color:#8a8478;">Ficha: ${input.locationName}</div>` : ""}
+            ${safeClient ? `<div style="margin-top:6px;font-size:12.5px;color:#8a8478;">Cliente asociado: <span style="color:#1a1a1a;font-weight:500;">${safeClient}</span></div>` : ""}
+            ${safeLocation ? `<div style="margin-top:4px;font-size:12.5px;color:#8a8478;">Ficha: ${safeLocation}</div>` : ""}
             ${safeText ? `<p style="margin:14px 0 0;font-size:14px;line-height:1.55;color:#333333;font-style:italic;">«${safeText}»</p>` : ""}
             <div style="margin-top:14px;font-size:11.5px;color:#a8a294;">Confianza del matching: ${input.matchConfidence}%</div>
           </div>

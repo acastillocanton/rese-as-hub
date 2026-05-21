@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { recordAudit } from "@/lib/audit";
 import { slugify } from "@/lib/utils";
 
 const createClientSchema = z.object({
@@ -162,14 +163,50 @@ export async function deleteClientRecord(
   if (!id) return { ok: false, error: "Id inválido." };
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "No autenticado." };
+
+  // Snapshot del cliente antes de borrar — share_links + reviews quedan con
+  // client_id=null por ON DELETE SET NULL, así que sin esto perdemos la traza.
+  const { data: snapshot } = await supabase
+    .from("clients")
+    .select("id, full_name, slug, email, phone, sales_id")
+    .eq("id", id)
+    .maybeSingle<{
+      id: string;
+      full_name: string;
+      slug: string;
+      email: string | null;
+      phone: string | null;
+      sales_id: string;
+    }>();
+
   // RLS (`clients_sales_own`) enforces that the caller can only delete their
-  // own clients. share_links + reviews FKs are ON DELETE SET NULL, so history
-  // survives the deletion.
+  // own clients.
   const { error } = await supabase.from("clients").delete().eq("id", id);
   if (error) {
     console.error("[clientes] deleteClient failed:", error);
     return { ok: false, error: error.message };
   }
+
+  if (snapshot) {
+    await recordAudit({
+      entityType: "client",
+      entityId: snapshot.id,
+      action: "delete",
+      payload: {
+        deleted_by: user.id,
+        full_name: snapshot.full_name,
+        slug: snapshot.slug,
+        email: snapshot.email,
+        phone: snapshot.phone,
+        sales_id: snapshot.sales_id,
+      },
+    });
+  }
+
   revalidatePath("/clientes");
   return { ok: true };
 }

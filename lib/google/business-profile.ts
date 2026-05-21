@@ -2,6 +2,33 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
+ * Retry con backoff exponencial para 429 y 5xx. Google Business Profile
+ * acota agresivamente (cuota por minuto) y el cron corre cada 10 min: si nos
+ * comemos un 429 sin reintentar, la ficha pierde la ventana. 3 intentos
+ * cubren la mayoría de hiccups sin alargar el cron en exceso.
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  { maxAttempts = 3, baseDelayMs = 500 }: { maxAttempts?: number; baseDelayMs?: number } = {},
+): Promise<Response> {
+  let lastRes: Response | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(url, init);
+    if (res.ok) return res;
+    const retriable = res.status === 429 || (res.status >= 500 && res.status < 600);
+    if (!retriable || attempt === maxAttempts) return res;
+    lastRes = res;
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const delay = Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter * 1000
+      : baseDelayMs * 2 ** (attempt - 1);
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  return lastRes as Response;
+}
+
+/**
  * Cliente para Google Business Profile API.
  *
  * Cubre tres surfaces de Google que necesitamos para sincronizar reseñas:
@@ -169,7 +196,7 @@ export type GoogleAccount = {
 };
 
 export async function listAccounts(accessToken: string): Promise<GoogleAccount[]> {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     "https://mybusinessaccountmanagement.googleapis.com/v1/accounts",
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
@@ -200,7 +227,7 @@ export async function listLocations(
 ): Promise<GoogleLocation[]> {
   const readMask = "name,title,storefrontAddress,metadata";
   const url = `https://mybusinessbusinessinformation.googleapis.com/v1/${accountResource}/locations?readMask=${readMask}&pageSize=100`;
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error(`listLocations failed (${res.status}): ${await res.text()}`);
@@ -246,7 +273,7 @@ export async function listReviews(
   if (options.pageToken) params.set("pageToken", options.pageToken);
 
   const url = `https://mybusiness.googleapis.com/v4/${locationResource}/reviews?${params}`;
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) {
