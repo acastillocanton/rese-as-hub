@@ -29,7 +29,6 @@ export default async function SalesLayout({
     <Frame>
       <Sidebar
         items={SALES_SIDEBAR_ITEMS}
-        active="panel"
         user={{
           name: profile?.full_name ?? "Comercial",
           subtitle: "Comercial",

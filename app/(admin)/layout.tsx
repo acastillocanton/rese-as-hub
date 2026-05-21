@@ -29,7 +29,6 @@ export default async function AdminLayout({
     <Frame>
       <Sidebar
         items={ADMIN_SIDEBAR_ITEMS}
-        active={getActiveFromPath()}
         user={{
           name: profile?.full_name ?? "Administrador",
           subtitle: "Admin · Inseryal",
@@ -40,11 +39,4 @@ export default async function AdminLayout({
       </main>
     </Frame>
   );
-}
-
-// Active sidebar is highlighted per route via the Sidebar prop. We pass a placeholder
-// here; individual pages can pass their own active id by remounting Sidebar if needed.
-// For now we keep "dashboard" as default since most users land there first.
-function getActiveFromPath(): string {
-  return "dashboard";
 }

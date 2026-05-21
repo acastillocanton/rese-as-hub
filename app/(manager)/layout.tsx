@@ -29,7 +29,6 @@ export default async function ManagerLayout({
     <Frame>
       <Sidebar
         items={MANAGER_SIDEBAR_ITEMS}
-        active="reviews"
         user={{
           name: profile?.full_name ?? "Gestor de reseñas",
           subtitle: "Lectura · Inseryal",

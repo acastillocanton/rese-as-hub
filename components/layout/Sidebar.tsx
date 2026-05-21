@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useMemo } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 
 export type SidebarItem = {
@@ -10,11 +14,37 @@ export type SidebarItem = {
 
 type SidebarProps = {
   items: SidebarItem[];
-  active: string;
   user: { name: string; subtitle: string };
 };
 
-export function Sidebar({ items, active, user }: SidebarProps) {
+/**
+ * Calcula qué item del sidebar está activo según la URL.
+ *
+ * Reglas:
+ *  - Match exacto contra el path del href (ignorando hash) gana siempre.
+ *  - Si no, prefix match (`/comerciales/comercial-prueba` activa "comerciales").
+ *    Cuando hay varios candidatos por prefix, gana el más específico (href más
+ *    largo).
+ */
+function pickActiveId(items: SidebarItem[], pathname: string): string | null {
+  for (const item of items) {
+    const itemPath = item.href.split("#")[0];
+    if (pathname === itemPath) return item.id;
+  }
+  const sorted = [...items].sort(
+    (a, b) => b.href.split("#")[0].length - a.href.split("#")[0].length,
+  );
+  for (const item of sorted) {
+    const itemPath = item.href.split("#")[0];
+    if (itemPath !== "/" && pathname.startsWith(itemPath + "/")) return item.id;
+  }
+  return null;
+}
+
+export function Sidebar({ items, user }: SidebarProps) {
+  const pathname = usePathname() ?? "";
+  const activeId = useMemo(() => pickActiveId(items, pathname), [items, pathname]);
+
   return (
     <aside
       style={{
@@ -61,7 +91,7 @@ export function Sidebar({ items, active, user }: SidebarProps) {
 
       <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {items.map((it) => {
-          const on = it.id === active;
+          const on = it.id === activeId;
           return (
             <Link
               key={it.id}
