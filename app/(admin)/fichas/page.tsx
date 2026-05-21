@@ -8,6 +8,7 @@ import type { OauthStatus } from "@/lib/supabase/types";
 import { AddFichaButton } from "./AddFichaButton";
 import { DeleteFichaButton } from "./DeleteFichaButton";
 import { DisconnectGoogleButton } from "./DisconnectGoogleButton";
+import { DismissibleBanner } from "./DismissibleBanner";
 
 type LocationRow = {
   id: string;
@@ -77,12 +78,14 @@ export default async function FichasPage({
         }}
       >
         {connected && (
-          <Banner tone="ok">Ficha conectada con Google Business Profile.</Banner>
+          <DismissibleBanner tone="ok">
+            Ficha conectada con Google Business Profile.
+          </DismissibleBanner>
         )}
         {oauthError && (
-          <Banner tone="warn">
+          <DismissibleBanner tone="warn">
             {OAUTH_ERRORS[oauthError] ?? `Error de OAuth: ${oauthError}`}
-          </Banner>
+          </DismissibleBanner>
         )}
 
         {dbError ? (
@@ -250,7 +253,7 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
         {loc.oauth_status === "connected" ? (
           <DisconnectGoogleButton id={loc.id} name={loc.name} />
         ) : (
-          <Link
+          <a
             href={`/api/google/oauth/start?location_id=${loc.id}`}
             style={{
               padding: "6px 11px",
@@ -264,7 +267,7 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
             }}
           >
             {loc.oauth_status === "error" ? "Reconectar" : "Conectar Google"}
-          </Link>
+          </a>
         )}
         <DeleteFichaButton id={loc.id} name={loc.name} />
       </div>
@@ -272,28 +275,3 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
   );
 }
 
-function Banner({
-  tone,
-  children,
-}: {
-  tone: "ok" | "warn";
-  children: React.ReactNode;
-}) {
-  const bg = tone === "ok" ? "var(--ok-bg, #e3f3e7)" : "var(--warn-bg)";
-  const fg = tone === "ok" ? "var(--ok, #1d7a3a)" : "var(--warn)";
-  return (
-    <div
-      role="status"
-      style={{
-        padding: "10px 14px",
-        background: bg,
-        color: fg,
-        borderRadius: 10,
-        fontSize: 13,
-        fontWeight: 500,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
