@@ -46,20 +46,45 @@ export async function inviteReviewsManager(input: InviteManagerInput): Promise<
 
 export async function deleteReviewsManager(id: string) {
   if (!id) return { error: "Id inválido." };
+
+  // Verificación explícita del rol del actor: el middleware ya bloquea
+  // /gestores para no-admin, pero el server action es una superficie aparte
+  // que conviene comprobar también aquí.
   const supabase = await createClient();
-  // El middleware ya garantiza solo-admin para /gestores; la RLS de profiles
-  // refuerza que solo admin puede borrar perfiles ajenos.
-  const { error } = await supabase
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "No autenticado." };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle<{ role: string }>();
+  if (profile?.role !== "admin") return { error: "No autorizado." };
+
+  // Usamos service-client para el delete del profile + el auth.user. Bypasea
+  // la RLS y evita el caso "admin tiene política pero current_role() no lo
+  // resuelve" en algún edge case. Coherente con createInvitedProfile, que
+  // también pasa por service-client para crear el perfil + el auth.user.
+  const admin = createServiceClient();
+  const { error: profileErr } = await admin
     .from("profiles")
     .delete()
     .eq("id", id)
     .eq("role", "reviews_manager");
-  if (error) {
-    console.error("[gestores] deleteReviewsManager failed:", error);
-    return { error: error.message };
+  if (profileErr) {
+    console.error("[gestores] delete profile failed:", profileErr);
+    return { error: profileErr.message };
   }
-  const admin = createServiceClient();
-  await admin.auth.admin.deleteUser(id);
+
+  const { error: authErr } = await admin.auth.admin.deleteUser(id);
+  if (authErr) {
+    // Si el auth user no se puede borrar (el caso típico es que ya no exista
+    // porque alguien lo eliminó manualmente desde Supabase), no rompemos la
+    // operación: el profile ya está eliminado y el sidebar lo refleja.
+    console.warn("[gestores] auth deleteUser failed:", authErr);
+  }
+
   revalidatePath("/gestores");
   return { ok: true };
 }
