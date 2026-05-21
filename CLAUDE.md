@@ -73,11 +73,12 @@ Hecho:
 7. [`/api/cron/sync-google-reviews`](app/api/cron/sync-google-reviews/route.ts) — implementación real (no stub). Idempotente vía `unique (location_id, google_review_id)`. Devuelve summary JSON por ficha.
 8. [`vercel.json`](vercel.json) — schedule `*/10 * * * *`.
 
-Pendiente del usuario:
-- Aplicar migración [`004_google_oauth.sql`](supabase/migrations/004_google_oauth.sql) en Supabase.
-- Setup en Google Cloud Console: proyecto, habilitar Business Profile APIs, OAuth consent screen, credenciales OAuth 2.0 Web App, redirect URI `http://localhost:3000/api/google/oauth/callback`.
-- Rellenar `.env.local` con `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`.
-- ⚠️ La **Reviews API legacy v4** requiere aprobación explícita por Google ([formulario aquí](https://developers.google.com/my-business/content/prereqs#request-access)). Sin esa aprobación, el listado de cuentas/fichas (Account Management + Business Information) sí funciona; pero `listReviews` devuelve 403. Mientras tanto, el cron procesa todo lo demás y deja `oauth_last_sync_error` poblado.
+Pendiente:
+- ✅ Migración 004 aplicada en Supabase (2026-05-21).
+- ✅ Google Cloud: proyecto `628454280082`, APIs habilitadas, credenciales OAuth Web App con redirect URI `http://localhost:3000/api/google/oauth/callback`, consent screen en Testing con `socialmedia.inseryal@gmail.com` como test user + scopes `openid`, `email`, `business.manage`.
+- ✅ `.env.local` con `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`.
+- ✅ OAuth flow validado E2E (token swap + userinfo).
+- ⏳ **Quota a 0 hasta que Google apruebe acceso a la API**. Solicitud enviada el 2026-05-21, **case ID `5-5855000041022`**. ETA 7-10 días hábiles (∼2026-06-04). Sin esto las APIs `mybusiness*` devuelven 429 RESOURCE_EXHAUSTED y la página `/fichas/[id]/conectar` no puede listar cuentas. Cuando Google responda, todo lo demás funciona sin tocar código.
 
 ### Fase 5 · Reviews manager (Raquel) — ❌ no empezado
 [`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) y [`/manager/export`](app/(manager)/manager/export/page.tsx) son `ComingSoon`. Endpoint `/api/export/reviews` con ExcelJS por hacer. Tiene sentido **post-Fase 4** (sin reseñas reales, no hay nada que exportar).
