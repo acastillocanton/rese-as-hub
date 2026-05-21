@@ -283,9 +283,9 @@ Cuestiones sin resolver que necesitan input antes (o durante) la implementación
 6. **Política de retención**. ¿Cuánto tiempo guardamos las reseñas en DB? ¿Eliminamos `share_links` antiguas (>90 días)?
 7. **¿Quiere el admin recibir alertas** sobre reseñas ≤ 3★ en tiempo real (email/push)? El prototipo lo sugiere pero no se acordó.
 8. **Encriptación del `oauth_refresh_token`** en reposo. Actualmente en texto plano dentro de `location_secrets` (aislada por RLS). Para producción: Supabase Vault o `pgcrypto`.
-9. **Configurar SMTP de Resend en Supabase**. Sin esto, el built-in email tiene un hard-cap de 2 emails/hora por proyecto, lo que bloquea el flujo de invitación real. Mientras tanto se usa el workaround [`/login/manual`](app/login/manual/page.tsx) (ver CLAUDE.md §4.1).
+9. ~~**Configurar SMTP de Resend en Supabase**.~~ **Cerrada 2026-05-21**: se configuró **Brevo** SMTP para Supabase Auth (no Resend). El built-in hard-cap de 2 emails/h ya no es bloqueante. Plantillas en Supabase Dashboard usan el flujo OTP `token_hash` apuntando a `/auth/confirm` ([CLAUDE.md §4.1](CLAUDE.md)). Resend queda reservado para notificaciones transaccionales del cron al comercial (ver punto 7).
 10. **Fichas multi-marca**. La BD tiene 7 locations: 5 "Inseryal by Marina d'Or" + 2 "Marina d'Or Construcciones". La spec hablaba originalmente solo de "Inseryal". Confirmar si "Marina d'Or Construcciones" entra en el scope del MVP o se queda fuera.
-11. **Comercial pasa a `status='active'` ¿cuándo?**. Hoy el comercial queda como `'invited'` al crearse y nada lo mueve a `'active'`. Decisión pendiente: hacerlo automáticamente al primer login (en el callback de `/accept-invite` cuando esté hecho), o gestionarlo a mano desde `/comerciales`.
+11. ~~**Comercial pasa a `status='active'` ¿cuándo?**.~~ **Cerrada 2026-05-21**: [`app/auth/confirm/route.ts`](app/auth/confirm/route.ts) flippea automáticamente `invited→active` tras un `verifyOtp` exitoso. `paused` se respeta. El admin sigue pudiendo forzar el estado desde la ficha del comercial.
 
 ---
 

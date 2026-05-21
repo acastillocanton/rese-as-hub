@@ -16,7 +16,7 @@ Este archivo lo lee Claude Code automáticamente al abrir el repo. Vive en git �
 
 Flujo: comercial comparte `reseñahub.es/c/{slug-comercial}/{slug-cliente}` → cliente cae directo en "Escribir reseña" en Google (302) → cron sincroniza vía Google Business Profile API → algoritmo atribuye la reseña al comercial mediante ventana temporal + nombre del cliente.
 
-Stack: Next.js 15 App Router + Turbopack · TypeScript strict · Supabase (Postgres + Auth + RLS) · Google Business Profile API + OAuth (una credencial por ficha) · Resend (email transaccional, pendiente de conectar) · Vercel hosting + Cron · ExcelJS · qrcode.react · Zod.
+Stack: Next.js 15 App Router + Turbopack · TypeScript strict · Supabase (Postgres + Auth + RLS) · Google Business Profile API + OAuth (una credencial por ficha) · Brevo SMTP (magic-link de auth, vía Supabase) · Resend (notificaciones transaccionales al comercial, integrado en el cron — habilítalo poniendo `RESEND_API_KEY`) · Vercel hosting + Cron · ExcelJS · qrcode.react · Zod.
 
 ---
 
