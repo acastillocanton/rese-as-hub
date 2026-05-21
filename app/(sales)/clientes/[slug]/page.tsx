@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { ShareBlock } from "../ShareBlock";
 import { DeleteClientButton } from "./DeleteClientButton";
+import { ClientEditCard } from "./ClientEditCard";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -166,19 +167,17 @@ export default async function ClienteDetallePage({ params }: PageProps) {
             gap: 18,
           }}
         >
-          <Card>
-            <div style={sectionLabel}>Datos</div>
-            <dl style={{ margin: "12px 0 0", display: "grid", rowGap: 10 }}>
-              <DataRow label="Email" value={client.email ?? "—"} />
-              <DataRow label="Teléfono" value={client.phone ?? "—"} />
-              <DataRow
-                label="Slug"
-                mono
-                value={`/c/${profile.slug}/${client.slug}`}
-              />
-              <DataRow label="Alta" value={fmtDate(client.created_at)} />
-            </dl>
-          </Card>
+          <ClientEditCard
+            id={client.id}
+            initial={{
+              fullName: client.full_name,
+              email: client.email,
+              phone: client.phone,
+            }}
+            slug={client.slug}
+            joinedAt={client.created_at}
+            salesSlug={profile.slug}
+          />
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
             <Stat
@@ -334,36 +333,3 @@ const sectionLabel: React.CSSProperties = {
   fontWeight: 600,
 };
 
-function DataRow({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "110px 1fr",
-        alignItems: "baseline",
-        gap: 12,
-      }}
-    >
-      <dt style={{ fontSize: 12, color: "var(--ink-4)" }}>{label}</dt>
-      <dd
-        style={{
-          margin: 0,
-          fontSize: 13.5,
-          color: "var(--ink)",
-          fontFamily: mono ? "var(--font-mono)" : "inherit",
-          wordBreak: mono ? "break-all" : "normal",
-        }}
-      >
-        {value}
-      </dd>
-    </div>
-  );
-}

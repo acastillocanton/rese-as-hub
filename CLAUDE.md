@@ -51,13 +51,13 @@ Plan original en `~/.claude/plans/vamos-a-desarrollar-una-kind-lovelace.md`. Res
 | [`/dashboard`](app/(admin)/dashboard/page.tsx) | UI completa pero **usa `lib/demo-data.ts` hardcodeada** — no enchufada a Supabase |
 | [`/comerciales`](app/(admin)/comerciales/page.tsx) | ✅ DB real + invite + delete + fila navegable |
 | [`/comerciales/[slug]`](app/(admin)/comerciales/[slug]/page.tsx) | ✅ ficha completa: datos editables (meta/ficha/status), KPIs (reseñas mes + visitas + clientes), lista de clientes con visitas y reseñas, sección reseñas con placeholder hasta Fase 4 |
-| [`/resenas/verificacion`](app/(admin)/resenas/verificacion/page.tsx) | ❌ `ComingSoon` |
+| [`/resenas/verificacion`](app/(admin)/resenas/verificacion/page.tsx) | ✅ bandeja de reseñas con `match_state='pending'` / `'unmatched'`. Cada reseña con cabecera + propuesta del matcher + evidencia plegable + acciones (confirmar / rechazar / reasignar a otro comercial+cliente). Auditoría en `audit_log` por cada acción. |
 | [`/fichas`](app/(admin)/fichas/page.tsx) | ✅ lista + add + delete + botones Conectar/Desconectar Google + UI selección de Business Profile en `/fichas/[id]/conectar` |
 
 ### Fase 3 · Sales (comercial) — ✅ hecha (validada E2E el 2026-05-21)
 - [`/panel`](app/(sales)/panel/page.tsx) con datos reales del comercial logueado (KPIs propios, proyección ETA, enlace personal). Ranking aparcado como `ComingSoon` (requiere migración nueva).
 - [`/clientes`](app/(sales)/clientes/page.tsx) entero: lista, alta con server action, dialog con URL + QR + plantilla editable + deep-links WhatsApp/Email/SMS. Fila navegable a detalle.
-- [`/clientes/[slug]`](app/(sales)/clientes/[slug]/page.tsx) detalle del cliente: datos, KPIs de visitas al enlace, bloque compartir reusado ([`ShareBlock`](app/(sales)/clientes/ShareBlock.tsx)), placeholder de reseñas atribuidas (mostrará lista real cuando entre Fase 4), botón eliminar con confirmación.
+- [`/clientes/[slug]`](app/(sales)/clientes/[slug]/page.tsx) detalle del cliente: datos editables inline (nombre/email/teléfono) vía [`ClientEditCard`](app/(sales)/clientes/[slug]/ClientEditCard.tsx), KPIs de visitas al enlace, bloque compartir reusado ([`ShareBlock`](app/(sales)/clientes/ShareBlock.tsx)), placeholder de reseñas atribuidas (lista real cuando entre Fase 4), botón eliminar.
 - [`lib/messaging.ts`](lib/messaging.ts) con plantilla por defecto + helpers de deep-link.
 
 ### Fase 4 · Google sync + matching — ⚠️ código listo, esperando aprobación de Google
@@ -72,6 +72,7 @@ Hecho:
 6. [`lib/matching/attribute-review.ts`](lib/matching/attribute-review.ts) — algoritmo de atribución con ventana temporal (48h) + similitud de nombre. Thresholds: `AUTO_THRESHOLD=75` → counted, 40-75 → pending para verificación admin, <40 → unmatched.
 7. [`/api/cron/sync-google-reviews`](app/api/cron/sync-google-reviews/route.ts) — implementación real (no stub). Idempotente vía `unique (location_id, google_review_id)`. Devuelve summary JSON por ficha.
 8. [`vercel.json`](vercel.json) — schedule `*/10 * * * *`.
+9. [`lib/email/notify-new-review.ts`](lib/email/notify-new-review.ts) + [`lib/email/resend.ts`](lib/email/resend.ts) — el cron envía email al comercial activo cuando una reseña entra como `counted`. Plantilla HTML con logo, estrellas, snippet y CTA al panel. Degrada gracefully si `RESEND_API_KEY` no está set (logea y sigue).
 
 Pendiente:
 - ✅ Migración 004 aplicada en Supabase (2026-05-21).
@@ -194,19 +195,12 @@ Antes de actuar sobre cualquier dato, verifica con `curl $NEXT_PUBLIC_SUPABASE_U
 
 ## 8. Próximo paso recomendado
 
-Mientras Google aprueba el caso `5-5855000041022` (ETA ~2026-06-04):
+Producto funcional al 100% código. Lo único que queda es bloqueo externo + polish:
 
-1. **Edición inline en `/clientes/[slug]`** (~20 min). Hoy el comercial solo puede crear y eliminar; falta corregir email/teléfono sin tener que borrar.
-
-Post-aprobación Google:
-
-2. **Probar OAuth flow E2E con datos reales** — el código está validado hasta el token swap; falta `listAccounts`/`listLocations`/`listReviews`.
-3. **`/resenas/verificacion` admin** — bandeja para reseñas con `match_state='pending'` (confianza 40-75) donde el admin reasigna o confirma.
-4. **Notificación Resend al comercial** cuando entre una reseña con match='counted'.
-
-Polish (Fase 6):
-
-5. A11y, loading/error states, seed más realista, tests Vitest + Playwright.
+1. **Esperar aprobación Google** (caso `5-5855000041022`, ETA ~2026-06-04). Sin esto el cron devuelve 429 y no entran reseñas reales — todo lo demás (clientes, share_links, KPIs internos, bandeja de verificación con datos vacíos) sigue operativo.
+2. **Cuando Google apruebe**: probar OAuth E2E con `listAccounts`/`listLocations`/`listReviews`. Si todo va bien, conectar las 7 fichas desde `/fichas`.
+3. **Cuando despleguéis a `reseñahub.es`**: configurar Resend, actualizar `GOOGLE_OAUTH_REDIRECT_URI`, actualizar URLs de privacy/terms en consent screen, considerar publicar consent fuera de Testing (requiere Verification).
+4. **Polish (Fase 6, opcional)**: a11y, loading/error states, seed más realista, tests Vitest + Playwright.
 
 ---
 

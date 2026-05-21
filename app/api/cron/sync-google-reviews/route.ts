@@ -11,6 +11,7 @@ import {
   TEMPORAL_WINDOW_HOURS,
   type ShareLinkCandidate,
 } from "@/lib/matching/attribute-review";
+import { notifyNewReview } from "@/lib/email/notify-new-review";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -42,12 +43,29 @@ export async function GET(request: NextRequest) {
 
   const admin = createServiceClient();
 
-  const { data: connectedLocations, error: locsErr } = await admin
-    .from("locations")
-    .select("id, name, google_location_resource")
-    .eq("oauth_status", "connected")
-    .not("google_location_resource", "is", null)
-    .returns<{ id: string; name: string; google_location_resource: string }[]>();
+  // Cargamos en paralelo: locations conectadas + mapa de comerciales para
+  // notificar por email cuando entre una reseña con match='counted'.
+  const [locationsRes, salesRes] = await Promise.all([
+    admin
+      .from("locations")
+      .select("id, name, google_location_resource")
+      .eq("oauth_status", "connected")
+      .not("google_location_resource", "is", null)
+      .returns<{ id: string; name: string; google_location_resource: string }[]>(),
+    admin
+      .from("profiles")
+      .select("id, full_name, email, status")
+      .eq("role", "sales")
+      .returns<{ id: string; full_name: string; email: string | null; status: string }[]>(),
+  ]);
+  const connectedLocations = locationsRes.data ?? null;
+  const locsErr = locationsRes.error;
+  const salesById = new Map<string, { full_name: string; email: string | null; status: string }>();
+  for (const s of salesRes.data ?? []) {
+    salesById.set(s.id, { full_name: s.full_name, email: s.email, status: s.status });
+  }
+  const appBase =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
 
   if (locsErr) {
     console.error("[cron] failed listing connected locations:", locsErr);
@@ -190,9 +208,34 @@ export async function GET(request: NextRequest) {
         }
 
         entry.new_reviews++;
-        if (result.match_state === "counted") entry.counted++;
-        else if (result.match_state === "pending") entry.pending++;
-        else entry.unmatched++;
+        if (result.match_state === "counted") {
+          entry.counted++;
+          // Notificación al comercial. Fire-and-forget: si Resend falla o no
+          // está configurado, el wrapper traga el error y el cron sigue.
+          if (result.sales_id) {
+            const sales = salesById.get(result.sales_id);
+            if (sales?.email && sales.status === "active") {
+              const clientName =
+                (result.match_evidence?.client_full_name as string | undefined) ??
+                null;
+              await notifyNewReview({
+                salesEmail: sales.email,
+                salesName: sales.full_name,
+                rating: starRatingToInt(gr.starRating),
+                reviewText: gr.comment ?? null,
+                authorName: gr.reviewer?.displayName ?? "Anónimo",
+                clientFullName: clientName,
+                locationName: loc.name,
+                matchConfidence: result.match_confidence,
+                appBase,
+              });
+            }
+          }
+        } else if (result.match_state === "pending") {
+          entry.pending++;
+        } else {
+          entry.unmatched++;
+        }
       }
 
       await markSyncOk(admin, loc.id);
