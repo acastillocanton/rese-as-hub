@@ -5,12 +5,19 @@ import { Stars } from "@/components/ui/Stars";
 import { Pill } from "@/components/ui/Pill";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import {
+  parseRange,
+  thisMonthRange,
+  lastMonthRange,
+  lastQuarterRange,
+} from "@/lib/date-range";
 
 type SearchParams = Promise<{
   sales_id?: string;
   location_id?: string;
   match_state?: string;
-  month?: string; // formato yyyy-mm
+  from?: string;
+  to?: string;
 }>;
 
 type SalesOption = { id: string; full_name: string; slug: string };
@@ -28,46 +35,6 @@ type ReviewRow = {
   client: { full_name: string } | null;
   location: { name: string } | null;
 };
-
-const MONTH_LABELS = [
-  "enero",
-  "febrero",
-  "marzo",
-  "abril",
-  "mayo",
-  "junio",
-  "julio",
-  "agosto",
-  "septiembre",
-  "octubre",
-  "noviembre",
-  "diciembre",
-];
-
-function monthRange(monthParam: string | undefined): {
-  start: string;
-  end: string;
-  label: string;
-} {
-  let year: number;
-  let month: number; // 0-indexed
-  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
-    const [y, m] = monthParam.split("-").map(Number);
-    year = y;
-    month = m - 1;
-  } else {
-    const now = new Date();
-    year = now.getFullYear();
-    month = now.getMonth();
-  }
-  const start = new Date(year, month, 1);
-  const end = new Date(year, month + 1, 1);
-  return {
-    start: start.toISOString(),
-    end: end.toISOString(),
-    label: `${MONTH_LABELS[month]} ${year}`,
-  };
-}
 
 export default async function ManagerResenasPage({
   searchParams,
@@ -97,15 +64,15 @@ export default async function ManagerResenasPage({
   }
 
   const supabase = await createClient();
-  const range = monthRange(params.month);
+  const range = parseRange(params.from, params.to);
 
   let query = supabase
     .from("reviews")
     .select(
       "id, author_name, rating, text, google_created_at, match_state, match_confidence, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
     )
-    .gte("google_created_at", range.start)
-    .lt("google_created_at", range.end)
+    .gte("google_created_at", range.startIso)
+    .lt("google_created_at", range.endIso)
     .order("google_created_at", { ascending: false });
 
   if (params.sales_id) query = query.eq("sales_id", params.sales_id);
@@ -140,10 +107,33 @@ export default async function ManagerResenasPage({
       : "—";
 
   const exportHref = new URLSearchParams();
-  exportHref.set("month", params.month ?? defaultMonthParam());
+  exportHref.set("from", range.from);
+  exportHref.set("to", range.to);
   if (params.sales_id) exportHref.set("sales_id", params.sales_id);
   if (params.location_id) exportHref.set("location_id", params.location_id);
   if (params.match_state) exportHref.set("match_state", params.match_state);
+
+  // Atajos rápidos: pre-calculan rangos para los 3 botones de la barra de
+  // filtros. Cada uno mantiene los demás filtros activos (comercial / ficha /
+  // estado matching) para que cambiar de periodo no resetee el filtrado.
+  const shortcuts = [
+    { key: "this-month", label: "Mes actual", range: thisMonthRange() },
+    { key: "last-month", label: "Mes pasado", range: lastMonthRange() },
+    { key: "last-quarter", label: "Último trimestre", range: lastQuarterRange() },
+  ];
+  const baseQuery = new URLSearchParams();
+  if (params.sales_id) baseQuery.set("sales_id", params.sales_id);
+  if (params.location_id) baseQuery.set("location_id", params.location_id);
+  if (params.match_state) baseQuery.set("match_state", params.match_state);
+  const shortcutHref = (from: string, to: string) => {
+    const q = new URLSearchParams(baseQuery);
+    q.set("from", from);
+    q.set("to", to);
+    return `?${q.toString()}`;
+  };
+  const activeShortcut = shortcuts.find(
+    (s) => s.range.from === range.from && s.range.to === range.to,
+  )?.key;
 
   const fmtDateTime = (iso: string) =>
     new Date(iso).toLocaleString("es-ES", {
@@ -189,22 +179,75 @@ export default async function ManagerResenasPage({
           gap: 16,
         }}
       >
-        {/* Filtros */}
+        {/* Atajos de periodo (links, no form: cada uno aplica un rango y
+            conserva los demás filtros). */}
         <Card>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--ink-4)",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                fontWeight: 500,
+                marginRight: 4,
+              }}
+            >
+              Periodo
+            </span>
+            {shortcuts.map((s) => (
+              <a
+                key={s.key}
+                href={shortcutHref(s.range.from, s.range.to)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--line-strong)",
+                  background: activeShortcut === s.key ? "var(--ink)" : "var(--surface)",
+                  color: activeShortcut === s.key ? "#fff" : "var(--ink)",
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  textDecoration: "none",
+                }}
+              >
+                {s.label}
+              </a>
+            ))}
+            <span style={{ fontSize: 12, color: "var(--ink-4)", marginLeft: 4 }}>
+              · Mostrando: <strong style={{ color: "var(--ink-2)" }}>{range.label}</strong>
+            </span>
+          </div>
+
           <form
             method="GET"
             style={{
+              marginTop: 14,
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr 1fr auto",
+              gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr auto",
               gap: 12,
               alignItems: "end",
             }}
           >
-            <FilterField label="Mes">
+            <FilterField label="Desde">
               <input
-                type="month"
-                name="month"
-                defaultValue={params.month ?? defaultMonthParam()}
+                type="date"
+                name="from"
+                defaultValue={range.from}
+                style={inputStyle}
+              />
+            </FilterField>
+            <FilterField label="Hasta">
+              <input
+                type="date"
+                name="to"
+                defaultValue={range.to}
                 style={inputStyle}
               />
             </FilterField>
@@ -416,11 +459,6 @@ export default async function ManagerResenasPage({
       </div>
     </>
   );
-}
-
-function defaultMonthParam(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function mostActiveLocation(reviews: ReviewRow[]): string | null {

@@ -17,13 +17,16 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Fija el workspace root para Turbopack. Sin esto, Turbopack >=15.5
-  // detecta un package-lock.json huérfano en el home del usuario y elige
-  // /Users/... como root, lo que en macOS dispara un permiso denegado
-  // de TCC sobre ~/Documents y mata el dev server al arrancar.
+  // Fija el workspace root del proyecto. Sin esto, Next >=15.5 detecta el
+  // package-lock.json huérfano del home del usuario y elige /Users/...
+  // como root, lo que rompe tanto el dev server (Turbopack pide leer
+  // ~/Documents y macOS responde permiso denegado de TCC) como el build
+  // (Cannot find module for page: /_document). Apuntar a __dirname
+  // restaura el comportamiento correcto en ambos modos.
   turbopack: {
     root: __dirname,
   },
+  outputFileTracingRoot: __dirname,
   async headers() {
     return [
       {

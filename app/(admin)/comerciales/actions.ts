@@ -22,32 +22,37 @@ const inviteSchema = z.object({
 
 export type InviteSalesInput = z.infer<typeof inviteSchema>;
 
-export async function inviteSales(input: InviteSalesInput): Promise<
+/**
+ * Genera invite-link de Supabase + inserta la fila en profiles. Helper
+ * común a sales y reviews_manager — la única diferencia es el rol, los
+ * campos extra del profile y la ruta a la que redirigimos tras el primer
+ * login (panel del comercial vs. dashboard del manager).
+ *
+ * No se envía email; devolvemos el link al admin para que lo comparta.
+ */
+async function createInvitedProfile(args: {
+  fullName: string;
+  email: string;
+  phone: string | null;
+  slug: string;
+  role: "sales" | "reviews_manager";
+  extra: Record<string, unknown>;
+  nextPath: string;
+}): Promise<
   | { ok: true; inviteLink: string; email: string }
   | { ok: false; error: string }
 > {
-  const parsed = inviteSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
-  }
-
-  const baseSlug = slugify(parsed.data.fullName);
-  if (!baseSlug) {
-    return { ok: false, error: "No se pudo generar el identificador del comercial." };
-  }
-
   const admin = createServiceClient();
 
-  // Reject duplicate slugs early — the admin can adjust the name to disambiguate.
   const { data: existing } = await admin
     .from("profiles")
     .select("id")
-    .eq("slug", baseSlug)
+    .eq("slug", args.slug)
     .maybeSingle<{ id: string }>();
   if (existing) {
     return {
       ok: false,
-      error: `Ya existe un comercial con el slug "${baseSlug}". Cambia el nombre o añade un apellido.`,
+      error: `Ya existe un perfil con el slug "${args.slug}". Cambia el nombre o añade un apellido.`,
     };
   }
 
@@ -56,16 +61,14 @@ export async function inviteSales(input: InviteSalesInput): Promise<
     process.env.NEXT_PUBLIC_APP_URL ??
     `https://${headerStore.get("host") ?? "localhost:3000"}`;
 
-  // Generate an invite link (no email sent — we hand it to the admin to share).
-  // We build the URL ourselves using the hashed_token so the link points at our
-  // /auth/confirm route, which calls verifyOtp server-side. This avoids the
-  // PKCE flow entirely — the verifier-in-cookies requirement made the previous
-  // action_link unusable when opened from a different browser/device.
+  // Construimos el URL nosotros con el hashed_token apuntando a /auth/confirm
+  // (verifyOtp server-side) para evitar PKCE: el verifier-en-cookies rompía
+  // cuando el invitado abría el link desde otro dispositivo.
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
     type: "invite",
-    email: parsed.data.email,
+    email: args.email,
     options: {
-      data: { full_name: parsed.data.fullName },
+      data: { full_name: args.fullName },
     },
   });
 
@@ -80,18 +83,17 @@ export async function inviteSales(input: InviteSalesInput): Promise<
   const newUserId = linkData.user.id;
   const inviteLink = `${origin}/auth/confirm?token_hash=${encodeURIComponent(
     linkData.properties.hashed_token,
-  )}&type=invite&next=${encodeURIComponent("/panel")}`;
+  )}&type=invite&next=${encodeURIComponent(args.nextPath)}`;
 
   const { error: profileError } = await admin.from("profiles").insert({
     id: newUserId,
-    full_name: parsed.data.fullName.trim(),
-    role: "sales",
-    location_id: parsed.data.locationId,
-    slug: baseSlug,
-    email: parsed.data.email,
-    phone: parsed.data.phone,
-    monthly_goal: parsed.data.monthlyGoal,
+    full_name: args.fullName.trim(),
+    role: args.role,
+    slug: args.slug,
+    email: args.email,
+    phone: args.phone,
     status: "invited",
+    ...args.extra,
   } as never);
 
   if (profileError) {
@@ -102,7 +104,69 @@ export async function inviteSales(input: InviteSalesInput): Promise<
   }
 
   revalidatePath("/comerciales");
-  return { ok: true, inviteLink, email: parsed.data.email };
+  return { ok: true, inviteLink, email: args.email };
+}
+
+export async function inviteSales(input: InviteSalesInput): Promise<
+  | { ok: true; inviteLink: string; email: string }
+  | { ok: false; error: string }
+> {
+  const parsed = inviteSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  const baseSlug = slugify(parsed.data.fullName);
+  if (!baseSlug) {
+    return { ok: false, error: "No se pudo generar el identificador del comercial." };
+  }
+  return createInvitedProfile({
+    fullName: parsed.data.fullName,
+    email: parsed.data.email,
+    phone: parsed.data.phone,
+    slug: baseSlug,
+    role: "sales",
+    extra: {
+      location_id: parsed.data.locationId,
+      monthly_goal: parsed.data.monthlyGoal,
+    },
+    nextPath: "/panel",
+  });
+}
+
+const inviteManagerSchema = z.object({
+  fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
+  email: z.string().email("Email inválido."),
+  phone: z
+    .string()
+    .max(40)
+    .optional()
+    .nullable()
+    .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
+});
+
+export type InviteManagerInput = z.infer<typeof inviteManagerSchema>;
+
+export async function inviteReviewsManager(input: InviteManagerInput): Promise<
+  | { ok: true; inviteLink: string; email: string }
+  | { ok: false; error: string }
+> {
+  const parsed = inviteManagerSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  const baseSlug = slugify(parsed.data.fullName);
+  if (!baseSlug) {
+    return { ok: false, error: "No se pudo generar el identificador del gestor." };
+  }
+  return createInvitedProfile({
+    fullName: parsed.data.fullName,
+    email: parsed.data.email,
+    phone: parsed.data.phone,
+    slug: baseSlug,
+    role: "reviews_manager",
+    extra: {},
+    nextPath: "/manager/resenas",
+  });
 }
 
 const updateSchema = z.object({

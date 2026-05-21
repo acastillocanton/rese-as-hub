@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus } from "@/lib/supabase/types";
 import { InviteSalesButton } from "./InviteSalesButton";
+import { InviteManagerButton } from "./InviteManagerButton";
 import { DeleteSalesButton } from "./DeleteSalesButton";
 
 type SalesRow = {
@@ -20,16 +21,24 @@ type SalesRow = {
   location: { id: string; name: string } | null;
 };
 
+type ManagerRow = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  status: ProfileStatus;
+};
+
 type LocationOption = { id: string; name: string };
 
 export default async function ComercialesPage() {
   let salesList: SalesRow[] = [];
+  let managers: ManagerRow[] = [];
   let locations: LocationOption[] = [];
   let dbError: string | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
-    const [salesRes, locRes] = await Promise.all([
+    const [salesRes, managersRes, locRes] = await Promise.all([
       supabase
         .from("profiles")
         .select(
@@ -37,12 +46,19 @@ export default async function ComercialesPage() {
         )
         .eq("role", "sales")
         .order("joined_at", { ascending: false }),
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, status")
+        .eq("role", "reviews_manager")
+        .order("joined_at", { ascending: false })
+        .returns<ManagerRow[]>(),
       supabase.from("locations").select("id, name").order("name"),
     ]);
 
     if (salesRes.error) dbError = salesRes.error.message;
     else salesList = ((salesRes.data ?? []) as unknown) as SalesRow[];
 
+    if (managersRes.data) managers = managersRes.data;
     if (locRes.data) locations = locRes.data as LocationOption[];
   }
 
@@ -60,7 +76,12 @@ export default async function ComercialesPage() {
         subtitle="Gestión de comerciales"
         range={`${stats.total} en plantilla`}
         breadcrumb="Inseryal"
-        right={<InviteSalesButton locations={locations} />}
+        right={
+          <div style={{ display: "flex", gap: 8 }}>
+            <InviteManagerButton />
+            <InviteSalesButton locations={locations} />
+          </div>
+        }
       />
 
       <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
@@ -155,6 +176,105 @@ export default async function ComercialesPage() {
                 ))}
               </Card>
             )}
+
+            {/* Gestor de reseñas (solo lectura · descarga Excel). */}
+            <div style={{ marginTop: 24 }}>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--ink-4)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  fontWeight: 500,
+                  marginBottom: 8,
+                }}
+              >
+                Gestor de reseñas
+              </div>
+              {managers.length === 0 ? (
+                <Card>
+                  <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
+                    Sin gestor invitado
+                  </div>
+                  <p
+                    style={{
+                      margin: "8px 0 14px",
+                      fontSize: 13,
+                      color: "var(--ink-3)",
+                      lineHeight: 1.55,
+                      maxWidth: 560,
+                    }}
+                  >
+                    El gestor de reseñas tiene acceso solo lectura al listado
+                    global de reseñas y a la descarga del Excel mensual. No ve
+                    clientes ni puede editar nada.
+                  </p>
+                  <InviteManagerButton primary label="+ Invitar gestor" />
+                </Card>
+              ) : (
+                <Card padding={0}>
+                  {managers.map((m, i) => (
+                    <div
+                      key={m.id}
+                      style={{
+                        padding: "14px 22px",
+                        borderBottom:
+                          i === managers.length - 1 ? "none" : "1px solid var(--line)",
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 0.8fr",
+                        gap: 14,
+                        alignItems: "center",
+                        fontSize: 13.5,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 600, letterSpacing: "-0.005em" }}>
+                          {m.full_name}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            color: "var(--ink-4)",
+                            marginTop: 2,
+                          }}
+                        >
+                          Gestor de reseñas · solo lectura
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 12.5,
+                          color: "var(--ink-3)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {m.email ?? "—"}
+                      </span>
+                      <span>
+                        <Pill
+                          tone={
+                            m.status === "active"
+                              ? "ok"
+                              : m.status === "paused"
+                                ? "warn"
+                                : "neutral"
+                          }
+                          withDot
+                        >
+                          {m.status === "active"
+                            ? "Activo"
+                            : m.status === "paused"
+                              ? "Pausado"
+                              : "Invitado"}
+                        </Pill>
+                      </span>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
           </>
         )}
       </div>

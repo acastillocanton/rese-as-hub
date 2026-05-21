@@ -2,32 +2,15 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import {
+  thisMonthRange,
+  lastMonthRange,
+  lastQuarterRange,
+  type DateRange,
+} from "@/lib/date-range";
 
 type SalesOption = { id: string; full_name: string };
 type LocationOption = { id: string; name: string };
-
-const MONTH_LABELS = [
-  "enero",
-  "febrero",
-  "marzo",
-  "abril",
-  "mayo",
-  "junio",
-  "julio",
-  "agosto",
-  "septiembre",
-  "octubre",
-  "noviembre",
-  "diciembre",
-];
-
-function ymdMonth(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function labelMonth(d: Date) {
-  return `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
-}
 
 export default async function ManagerExportPage() {
   let sales: SalesOption[] = [];
@@ -52,16 +35,15 @@ export default async function ManagerExportPage() {
     locations = locsRes.data ?? [];
   }
 
-  const now = new Date();
-  const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const thisMonth = thisMonthRange();
+  const lastMonth = lastMonthRange();
+  const lastQuarter = lastQuarterRange();
 
   return (
     <>
       <Topbar
         title="Exportar Excel"
-        subtitle="Parte mensual de reseñas"
+        subtitle="Parte de reseñas"
         range=""
         breadcrumb="Inseryal"
       />
@@ -88,17 +70,14 @@ export default async function ManagerExportPage() {
               maxWidth: 640,
             }}
           >
-            Una sola pulsación. Devuelve el .xlsx con todas las reseñas del mes
-            seleccionado, sin filtros adicionales: dos hojas (Reseñas + Resumen
-            con ranking de comerciales y fichas).
+            Una sola pulsación. Devuelve el .xlsx con todas las reseñas del
+            periodo seleccionado, sin filtros adicionales: dos hojas (Reseñas
+            + Resumen con ranking de comerciales y fichas).
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <QuickBtn month={thisMonth} primary label={`Este mes · ${labelMonth(thisMonth)}`} />
-            <QuickBtn month={lastMonth} label={`Mes anterior · ${labelMonth(lastMonth)}`} />
-            <QuickBtn
-              month={twoMonthsAgo}
-              label={`Hace dos meses · ${labelMonth(twoMonthsAgo)}`}
-            />
+            <QuickBtn range={thisMonth} primary label="Mes actual" sub={thisMonth.label} />
+            <QuickBtn range={lastMonth} label="Mes pasado" sub={lastMonth.label} />
+            <QuickBtn range={lastQuarter} label="Último trimestre" sub={lastQuarter.label} />
           </div>
         </Card>
 
@@ -114,14 +93,24 @@ export default async function ManagerExportPage() {
               maxWidth: 640,
             }}
           >
-            Filtra por comercial, ficha y estado de matching antes de descargar.
+            Elige un rango de fechas y filtra por comercial, ficha y estado
+            de matching antes de descargar.
           </p>
           <form action="/api/export/reviews" method="GET" style={formGrid}>
-            <FilterField label="Mes">
+            <FilterField label="Desde">
               <input
-                type="month"
-                name="month"
-                defaultValue={ymdMonth(thisMonth)}
+                type="date"
+                name="from"
+                defaultValue={thisMonth.from}
+                required
+                style={inputStyle}
+              />
+            </FilterField>
+            <FilterField label="Hasta">
+              <input
+                type="date"
+                name="to"
+                defaultValue={thisMonth.to}
                 required
                 style={inputStyle}
               />
@@ -202,17 +191,19 @@ export default async function ManagerExportPage() {
 }
 
 function QuickBtn({
-  month,
+  range,
   label,
+  sub,
   primary,
 }: {
-  month: Date;
+  range: DateRange;
   label: string;
+  sub: string;
   primary?: boolean;
 }) {
   return (
     <a
-      href={`/api/export/reviews?month=${ymdMonth(month)}`}
+      href={`/api/export/reviews?from=${range.from}&to=${range.to}`}
       style={{
         padding: "9px 14px",
         background: primary ? "var(--ink)" : "var(--surface)",
@@ -222,9 +213,22 @@ function QuickBtn({
         fontSize: 13,
         fontWeight: 500,
         textDecoration: "none",
+        display: "inline-flex",
+        flexDirection: "column",
+        gap: 2,
+        lineHeight: 1.3,
       }}
     >
-      {label}
+      <span>{label}</span>
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 400,
+          opacity: 0.75,
+        }}
+      >
+        {sub}
+      </span>
     </a>
   );
 }
