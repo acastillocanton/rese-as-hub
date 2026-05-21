@@ -199,7 +199,7 @@ Producto funcional al 100% código. Lo único que queda es bloqueo externo + pol
 
 1. **Esperar aprobación Google** (caso `5-5855000041022`, ETA ~2026-06-04). Sin esto el cron devuelve 429 y no entran reseñas reales — todo lo demás (clientes, share_links, KPIs internos, bandeja de verificación con datos vacíos) sigue operativo.
 2. **Cuando Google apruebe**: probar OAuth E2E con `listAccounts`/`listLocations`/`listReviews`. Si todo va bien, conectar las 7 fichas desde `/fichas`.
-3. **Cuando despleguéis a `reseñahub.es`**: configurar Resend, actualizar `GOOGLE_OAUTH_REDIRECT_URI`, actualizar URLs de privacy/terms en consent screen, considerar publicar consent fuera de Testing (requiere Verification).
+3. **Despliegue a producción** (decisión 2026-05-21: **Vercel** sobre un subdominio de `inseryal.es`, no SiteGround). SiteGround se queda con el sitio corporativo `inseryal.es`/`.com`. Cuando llegue el momento: conectar repo a Vercel → env vars → elegir subdominio (`app.inseryal.es` o `resenas.inseryal.es`) → CNAME a `cname.vercel-dns.com` desde panel DNS de SiteGround → actualizar `GOOGLE_OAUTH_REDIRECT_URI` y URLs de privacy/terms en consent screen de Google → configurar Resend con dominio verificado → considerar publicar consent fuera de Testing (requiere Verification de Google).
 4. **Polish (Fase 6, opcional)**: a11y, loading/error states, seed más realista, tests Vitest + Playwright.
 
 ---
