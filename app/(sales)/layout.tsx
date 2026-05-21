@@ -1,5 +1,5 @@
 import { Frame } from "@/components/layout/Frame";
-import { Sidebar, SALES_SIDEBAR_ITEMS } from "@/components/layout/Sidebar";
+import { Sidebar, SALES_SIDEBAR_GROUPS } from "@/components/layout/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -28,7 +28,7 @@ export default async function SalesLayout({
   return (
     <Frame>
       <Sidebar
-        items={SALES_SIDEBAR_ITEMS}
+        groups={SALES_SIDEBAR_GROUPS}
         user={{
           name: profile?.full_name ?? "Comercial",
           subtitle: "Comercial",

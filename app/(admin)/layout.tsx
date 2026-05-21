@@ -1,5 +1,5 @@
 import { Frame } from "@/components/layout/Frame";
-import { Sidebar, ADMIN_SIDEBAR_ITEMS } from "@/components/layout/Sidebar";
+import { Sidebar, ADMIN_SIDEBAR_GROUPS } from "@/components/layout/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -28,7 +28,7 @@ export default async function AdminLayout({
   return (
     <Frame>
       <Sidebar
-        items={ADMIN_SIDEBAR_ITEMS}
+        groups={ADMIN_SIDEBAR_GROUPS}
         user={{
           name: profile?.full_name ?? "Administrador",
           subtitle: "Admin · Inseryal",

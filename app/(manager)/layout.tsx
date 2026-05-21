@@ -1,8 +1,8 @@
 import { Frame } from "@/components/layout/Frame";
 import {
   Sidebar,
-  ADMIN_SIDEBAR_ITEMS,
-  MANAGER_SIDEBAR_ITEMS,
+  ADMIN_SIDEBAR_GROUPS,
+  MANAGER_SIDEBAR_GROUPS,
 } from "@/components/layout/Sidebar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -36,7 +36,7 @@ export default async function ManagerLayout({
   }
 
   const isAdmin = profile?.role === "admin";
-  const items = isAdmin ? ADMIN_SIDEBAR_ITEMS : MANAGER_SIDEBAR_ITEMS;
+  const groups = isAdmin ? ADMIN_SIDEBAR_GROUPS : MANAGER_SIDEBAR_GROUPS;
   const user = isAdmin
     ? { name: profile?.full_name ?? "Administrador", subtitle: "Admin · Inseryal" }
     : {
@@ -46,7 +46,7 @@ export default async function ManagerLayout({
 
   return (
     <Frame>
-      <Sidebar items={items} user={user} />
+      <Sidebar groups={groups} user={user} />
       <main style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
         {children}
       </main>
