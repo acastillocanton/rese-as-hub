@@ -80,8 +80,13 @@ Pendiente:
 - ✅ OAuth flow validado E2E (token swap + userinfo).
 - ⏳ **Quota a 0 hasta que Google apruebe acceso a la API**. Solicitud enviada el 2026-05-21, **case ID `5-5855000041022`**. ETA 7-10 días hábiles (∼2026-06-04). Sin esto las APIs `mybusiness*` devuelven 429 RESOURCE_EXHAUSTED y la página `/fichas/[id]/conectar` no puede listar cuentas. Cuando Google responda, todo lo demás funciona sin tocar código.
 
-### Fase 5 · Reviews manager (Raquel) — ❌ no empezado
-[`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) y [`/manager/export`](app/(manager)/manager/export/page.tsx) son `ComingSoon`. Endpoint `/api/export/reviews` con ExcelJS por hacer. Tiene sentido **post-Fase 4** (sin reseñas reales, no hay nada que exportar).
+### Fase 5 · Reviews manager (Raquel) — ✅ hecha (esperando reseñas reales para validar E2E)
+- [`/manager/comerciales`](app/(manager)/manager/comerciales/page.tsx) — tabla read-only con KPIs del mes por comercial. Cada fila navega al detalle.
+- [`/manager/comerciales/[slug]`](app/(manager)/manager/comerciales/[slug]/page.tsx) — ficha read-only del comercial (mismo render que admin sin botones de edición/eliminación).
+- [`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) — listado global de reseñas con filtros (mes, comercial, ficha, match_state) + MiniStats de resumen.
+- [`/manager/export`](app/(manager)/manager/export/page.tsx) — atajos mensuales + formulario personalizado.
+- [`/api/export/reviews`](app/api/export/reviews/route.ts) — devuelve .xlsx con ExcelJS. Dos hojas: Reseñas (una fila por reseña con todo el detalle) + Resumen (ranking comerciales + ranking fichas + totales).
+- Sidebar manager: items Comerciales / Reseñas / Exportar Excel.
 
 ### Fase 6 · Polish — ❌
 A11y, loading/error states, seed realista, tests Vitest + Playwright.
@@ -189,17 +194,19 @@ Antes de actuar sobre cualquier dato, verifica con `curl $NEXT_PUBLIC_SUPABASE_U
 
 ## 8. Próximo paso recomendado
 
-Mientras Google aprueba el caso `5-5855000041022` (ETA ~2026-06-04), tres frentes que no dependen de la API real:
+Mientras Google aprueba el caso `5-5855000041022` (ETA ~2026-06-04):
 
-1. **Dashboard admin real** (~30 min). [`/dashboard`](app/(admin)/dashboard/page.tsx) sigue con `lib/demo-data.ts`. Enchufar a Supabase: visitas totales del mes, comerciales activos, fichas conectadas, actividad reciente. Reseñas placeholder hasta Fase 4 desbloqueada.
-2. **Vista del manager (Raquel)** (~1h). [`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) y [`/manager/export`](app/(manager)/manager/export/page.tsx) son `ComingSoon`. Build de `/manager/comerciales` read-only + lista global de reseñas con filtros + endpoint export con ExcelJS.
-3. **Edición inline en `/clientes/[slug]`** (~20 min). Hoy el comercial solo puede crear y eliminar; falta corregir email/teléfono sin tener que borrar.
+1. **Edición inline en `/clientes/[slug]`** (~20 min). Hoy el comercial solo puede crear y eliminar; falta corregir email/teléfono sin tener que borrar.
 
 Post-aprobación Google:
 
-4. **Probar OAuth flow E2E con datos reales** — el código está validado hasta el token swap; falta `listAccounts`/`listLocations`/`listReviews`.
-5. **`/resenas/verificacion` admin** — bandeja para reseñas con `match_state='pending'` (confianza 40-75) donde el admin reasigna o confirma.
-6. **Notificación Resend al comercial** cuando entre una reseña con match='counted'.
+2. **Probar OAuth flow E2E con datos reales** — el código está validado hasta el token swap; falta `listAccounts`/`listLocations`/`listReviews`.
+3. **`/resenas/verificacion` admin** — bandeja para reseñas con `match_state='pending'` (confianza 40-75) donde el admin reasigna o confirma.
+4. **Notificación Resend al comercial** cuando entre una reseña con match='counted'.
+
+Polish (Fase 6):
+
+5. A11y, loading/error states, seed más realista, tests Vitest + Playwright.
 
 ---
 
