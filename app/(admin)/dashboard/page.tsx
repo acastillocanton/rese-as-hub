@@ -277,28 +277,12 @@ export default async function DashboardPage({
         range={null}
         breadcrumb="Inseryal"
         right={
-          <>
-            <RangePicker
-              from={range.from}
-              to={range.to}
-              label={range.label}
-              shortcuts={shortcuts}
-            />
-            <Link
-              href="/comerciales"
-              style={{
-                padding: "7px 12px",
-                background: "var(--ink)",
-                color: "#fff",
-                borderRadius: 9,
-                fontSize: 13,
-                fontWeight: 500,
-                textDecoration: "none",
-              }}
-            >
-              Invitar comercial
-            </Link>
-          </>
+          <RangePicker
+            from={range.from}
+            to={range.to}
+            label={range.label}
+            shortcuts={shortcuts}
+          />
         }
       />
 
