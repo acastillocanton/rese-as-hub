@@ -60,8 +60,8 @@ Plan original en `~/.claude/plans/vamos-a-desarrollar-una-kind-lovelace.md`. Res
 - [`/clientes/[slug]`](app/(sales)/clientes/[slug]/page.tsx) detalle del cliente: datos, KPIs de visitas al enlace, bloque compartir reusado ([`ShareBlock`](app/(sales)/clientes/ShareBlock.tsx)), placeholder de reseñas atribuidas (mostrará lista real cuando entre Fase 4), botón eliminar con confirmación.
 - [`lib/messaging.ts`](lib/messaging.ts) con plantilla por defecto + helpers de deep-link.
 
-### Fase 4 · Google sync + matching — ⚠️ código listo, pendiente setup Google Cloud
-**Es el corazón del producto.** Código entero implementado; falta credenciales reales en `.env.local` y aprobación de la Reviews API por parte de Google.
+### Fase 4 · Google sync + matching — ⚠️ código listo, esperando aprobación de Google
+**Es el corazón del producto.** Código entero implementado y OAuth validado E2E. Único bloqueo: la cuota de la API está a 0 hasta que Google apruebe la solicitud (caso `5-5855000041022`, ETA ~2026-06-04).
 
 Hecho:
 1. [`lib/google/business-profile.ts`](lib/google/business-profile.ts) — cliente API con refresh-token automático. Cubre OAuth, Account Management, Business Information y Reviews (v4 legacy).
@@ -176,11 +176,11 @@ curl -sS -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/admin/generate_link" \
 
 ## 7. Estado real de Supabase (snapshot 2026-05-21)
 
-- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones 001+002 aplicadas.
+- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones 001+002+004 aplicadas.
 - **2 admins**: Alejandro Castillo + Rafael Ibáñez (ambos `@inseryal.es`).
-- **1 comercial de prueba**: "Comercial prueba" / `comercial-prueba` / asignado a "Inseryal by Marina d'Or · Chamberí" / status `invited`. Email: `a.castillo.esv@gmail.com`.
+- **1 comercial de prueba**: "Comercial prueba" / `comercial-prueba` / asignado a "Inseryal by Marina d'Or · Chamberí" / status `active` (auto-flipped al primer login). Email: `a.castillo.esv@gmail.com`.
 - **1 cliente de prueba**: "Otto Castillo" / `otto-castillo` (creado por "Comercial prueba").
-- **7 fichas** dadas de alta — 5 "Inseryal by Marina d'Or" (Oropesa + Madrid Pardiñas + Madrid Príncipe de Vergara + Leganés + Chamberí) y 2 "Marina d'Or Construcciones" (Castellón + Valencia). Solo la de Chamberí tiene `google_place_id` (`ChIJu9sQJr8pQg0RVMjg-UM8zYI`). Todas con `oauth_status: disconnected` — Fase 4 pendiente.
+- **7 fichas** dadas de alta — 5 "Inseryal by Marina d'Or" (Oropesa + Madrid Pardiñas + Madrid Príncipe de Vergara + Leganés + Chamberí) y 2 "Marina d'Or Construcciones" (Castellón + Valencia). Solo la de Chamberí tiene `google_place_id` (`ChIJu9sQJr8pQg0RVMjg-UM8zYI`). Todas con `oauth_status: disconnected` — esperando aprobación de Google para conectar.
 - **2 share_links** registradas (las dos primeras pruebas E2E del 2026-05-21). 0 reseñas.
 
 Antes de actuar sobre cualquier dato, verifica con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v1/<tabla>?select=... -H "apikey: $SUPABASE_SERVICE_ROLE_KEY"`. La BD evoluciona; este snapshot envejece.
@@ -189,10 +189,17 @@ Antes de actuar sobre cualquier dato, verifica con `curl $NEXT_PUBLIC_SUPABASE_U
 
 ## 8. Próximo paso recomendado
 
-En orden de impacto:
+Mientras Google aprueba el caso `5-5855000041022` (ETA ~2026-06-04), tres frentes que no dependen de la API real:
 
-1. **Fase 4 — Google sync + matching** (~1-2 sesiones). Es lo que cierra el ciclo de valor del MVP: los comerciales empiezan a ver sus reseñas.
-2. **Cerrar Fase 2 admin** (~1 sesión). Tiene más sentido **post-Fase 4** porque la bandeja de verificación está vacía hasta que entren reseñas reales.
+1. **Dashboard admin real** (~30 min). [`/dashboard`](app/(admin)/dashboard/page.tsx) sigue con `lib/demo-data.ts`. Enchufar a Supabase: visitas totales del mes, comerciales activos, fichas conectadas, actividad reciente. Reseñas placeholder hasta Fase 4 desbloqueada.
+2. **Vista del manager (Raquel)** (~1h). [`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) y [`/manager/export`](app/(manager)/manager/export/page.tsx) son `ComingSoon`. Build de `/manager/comerciales` read-only + lista global de reseñas con filtros + endpoint export con ExcelJS.
+3. **Edición inline en `/clientes/[slug]`** (~20 min). Hoy el comercial solo puede crear y eliminar; falta corregir email/teléfono sin tener que borrar.
+
+Post-aprobación Google:
+
+4. **Probar OAuth flow E2E con datos reales** — el código está validado hasta el token swap; falta `listAccounts`/`listLocations`/`listReviews`.
+5. **`/resenas/verificacion` admin** — bandeja para reseñas con `match_state='pending'` (confianza 40-75) donde el admin reasigna o confirma.
+6. **Notificación Resend al comercial** cuando entre una reseña con match='counted'.
 
 ---
 
