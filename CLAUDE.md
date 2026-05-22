@@ -16,7 +16,7 @@ Este archivo lo lee Claude Code automáticamente al abrir el repo. Vive en git �
 
 Flujo: comercial comparte `reseñahub.es/c/{slug-comercial}/{slug-cliente}` → cliente cae directo en "Escribir reseña" en Google (302) → cron sincroniza vía Google Business Profile API → algoritmo atribuye la reseña al comercial mediante ventana temporal + nombre del cliente.
 
-Stack: Next.js 15.5.18 App Router + Turbopack · TypeScript strict · Supabase (Postgres + Auth + RLS) · Google Business Profile API + OAuth (una credencial por ficha) · Brevo SMTP (magic-link de auth + invite, vía Supabase) · Resend (notificaciones transaccionales al comercial — código integrado pero apagado en prod hasta migrar a Brevo, ver §8) · Vercel hosting (proyecto `rese-as-hub` en equipo "Marina d'Or Construcciones" Hobby) + Cron diario en `0 9 * * *` UTC · ExcelJS · qrcode.react · Zod · lucide-react (iconos).
+Stack: Next.js 15.5.18 App Router + Turbopack · TypeScript strict · Supabase (Postgres + Auth + RLS) · Google Business Profile API + OAuth (una credencial por ficha) · Brevo SMTP — vía Supabase para magic-links + invites + vía Nodemailer ([lib/email/brevo.ts](lib/email/brevo.ts)) para notificaciones transaccionales al comercial (mismo proveedor, claves SMTP independientes) · Vercel hosting (proyecto `rese-as-hub` en equipo "Marina d'Or Construcciones" Hobby) + Cron diario en `0 9 * * *` UTC · ExcelJS · qrcode.react · Zod · lucide-react (iconos).
 
 **Producción**: [`https://resenas.marinadorconstrucciones.com`](https://resenas.marinadorconstrucciones.com). DNS gestionado en SiteGround.
 
@@ -103,7 +103,7 @@ El admin tiene en su sidebar los items `Reseñas` y `Exportar Excel` que apuntan
 - **Dominio**: `https://resenas.marinadorconstrucciones.com` con CNAME desde SiteGround DNS apuntando al target específico del proyecto Vercel (`a15b66f05763b0b1.vercel-dns-017.com`). Antes de crear el CNAME hubo que **borrar el subdominio "resenas" en Site Tools de SiteGround**: el sistema había auto-creado A y TXT (SPF/DKIM) defecto que entran en conflicto con CNAME por RFC.
 - **Hosting**: Vercel, equipo "Marina d'Or Construcciones" (Hobby). Cuenta GitHub que importó el repo es la **misma** que es dueña del equipo Vercel — sin esa coincidencia, Hobby plan bloquea el deploy por "GitHub could not associate the committer with a GitHub user" (no permite colaboradores).
 - **Cron**: `vercel.json` ajustado a `0 9 * * *` (diario 09:00 UTC). Vercel Hobby **no permite cron sub-diario** (rechaza `*/10 * * * *` con "would run more than once per day"). Trade-off: reseñas aparecen con delay máx 24h en lugar de 10 min. Disparo manual desde Vercel Cron Jobs UI cuando se necesite inmediatez.
-- **Env vars en Vercel**: las 8 esenciales (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `NEXT_PUBLIC_APP_URL=https://resenas.marinadorconstrucciones.com`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI=https://resenas.marinadorconstrucciones.com/api/google/oauth/callback`). `RESEND_API_KEY` no se ha pegado — los emails al comercial quedan apagados hasta migrar a Brevo (ver §8).
+- **Env vars en Vercel**: las 11 esenciales (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `NEXT_PUBLIC_APP_URL=https://resenas.marinadorconstrucciones.com`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI=https://resenas.marinadorconstrucciones.com/api/google/oauth/callback`, `BREVO_SMTP_USER`, `BREVO_SMTP_PASS`, `BREVO_FROM_EMAIL`). Migración Resend → Brevo completada 2026-05-22, ver §4.12.
 - **Supabase**: `Site URL` cambiado de `http://localhost:3000` a `https://resenas.marinadorconstrucciones.com`. `Redirect URLs` incluyen ambos (`http://localhost:3000/**` + `https://resenas.marinadorconstrucciones.com/**`). Plantilla Magic Link: `type=email` (no `magiclink`, deprecated — ver §4.9).
 - **Google Cloud**: añadido `https://resenas.marinadorconstrucciones.com/api/google/oauth/callback` a Authorized redirect URIs del OAuth client. Localhost se queda para dev.
 - **Login E2E validado** desde incógnito el 2026-05-22.
@@ -209,6 +209,24 @@ Si en algún momento se necesita inmediatez:
 - **Cron externo gratuito** (cron-job.org o GitHub Actions) que llama al endpoint `/api/cron/sync-google-reviews` con `Authorization: Bearer <CRON_SECRET>`. Vercel no impone límites a invocaciones externas, solo a sus propios crons internos.
 - **Upgrade a Vercel Pro** (~$20/usuario/mes) si se prefiere mantener todo en Vercel y poder volver a `*/10`.
 
+### 4.12 Brevo SMTP — IP whitelist hay que dejarlo desactivado
+Brevo tiene una opción **"Bloqueo de direcciones IP no autorizadas"** en Settings → Seguridad → IP autorizadas con toggles para "Claves API" y "Claves SMTP". Si están activados (por defecto en cuentas nuevas a veces lo están), los envíos SMTP fallan con `525 5.7.1 Unauthorized IP address` desde cualquier IP que no esté en la whitelist.
+
+**Hay que dejar el toggle "Claves SMTP" en Desactivado** porque:
+- Vercel corre en IPs dinámicas dentro de rangos amplios de AWS. No publican una lista estable que podamos whitelistear de antemano. Si activáis bloqueo, el cron en prod fallaría aleatoriamente cuando Vercel cambie de IP.
+- La autenticación con `BREVO_SMTP_PASS` (la SMTP key) ya garantiza que solo quien tenga la clave puede mandar. Restringir además por IP no añade seguridad práctica en este setup.
+
+Si en algún momento Brevo lo reactiva solo (lo hicieron una vez con cuentas nuevas en 2024), se ve clavado con un 525 y se desactiva volviendo a Settings → Seguridad → IP autorizadas → toggle "Claves SMTP" → off.
+
+### 4.13 Brevo — dos SMTP keys conviven sin pisarse
+La cuenta Brevo tiene dos claves SMTP independientes que se usan en paralelo:
+- **`resenahub-supabase`** (creada 2026-05-21) — la consume Supabase Auth para enviar magic-links y emails de invite. Configurada en Supabase Dashboard → Project Settings → Auth → SMTP Settings. NO TOCAR ni regenerar — rompería el login.
+- **`resenahub-app`** (creada 2026-05-22) — la consume nuestro código en [lib/email/brevo.ts](lib/email/brevo.ts) para notificaciones transaccionales (email al comercial cuando entra una reseña atribuida). Va en `BREVO_SMTP_PASS` en `.env.local` y en Vercel.
+
+Las dos comparten el mismo login (`BREVO_SMTP_USER=7e1a24001@smtp-brevo.com`) y el mismo remitente (`info@marinadorconstrucciones.com`, dominio autenticado en Brevo). Razón de mantenerlas separadas: si una se compromete o se rota, no afecta a la otra.
+
+Brevo solo enseña el valor de cada SMTP key **una vez al crearla**. Si se pierde el valor de `resenahub-app`, la única solución es regenerarla (en Settings → SMTP & API → Claves SMTP → crear nueva → copiar el valor al instante → actualizar `.env.local` + Vercel + redeploy).
+
 ---
 
 ## 5. Setup en otro Mac
@@ -281,13 +299,12 @@ Antes de actuar sobre datos, verifica con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
 
 ## 8. Próximo paso recomendado
 
-Producto live en `https://resenas.marinadorconstrucciones.com` con login E2E funcionando. Quedan:
+Producto live en `https://resenas.marinadorconstrucciones.com` con login E2E funcionando + emails transaccionales por Brevo SMTP listos. Quedan:
 
 1. **Esperar aprobación Google** (caso `5-5855000041022`, ETA ~2026-06-04). Sin esto las APIs `mybusiness*` devuelven 429 RESOURCE_EXHAUSTED y el cron no puede traer reseñas reales — el resto de la app sigue operativa.
 2. **Cuando Google apruebe**: probar OAuth E2E con `listAccounts`/`listLocations`/`listReviews`. Si todo va bien, conectar las 7 fichas desde `/fichas` en prod. Recordar: el redirect URI de prod ya está añadido en Google Cloud Console (Authorized redirect URIs incluye `https://resenas.marinadorconstrucciones.com/api/google/oauth/callback`).
-3. **Migrar emails transaccionales de Resend a Brevo** (~30 min de código, sin prisa hasta ~2026-06-04). Hoy `RESEND_API_KEY` no está en Vercel, así que la notificación al comercial cuando entra una reseña queda apagada. Migración: reescribir [`lib/email/resend.ts`](lib/email/resend.ts) para usar SMTP de Brevo vía `nodemailer` con las mismas creds que ya tiene Supabase Auth. Hace que dependamos de una sola plataforma de email.
-4. **Considerar publicar consent screen fuera de Testing en Google** (Verification de Google) cuando se valide OAuth en prod. Solo afecta si invitamos a usuarios externos al equipo de testers — para el equipo interno actual (admins + Raquel + comerciales fijos) Testing basta.
-5. **Polish (Fase 6 restante, opcional)**: a11y, loading states, seed más realista, tests Vitest + Playwright, `noUncheckedIndexedAccess`, migración 005 con política INSERT en audit_log.
+3. **Considerar publicar consent screen fuera de Testing en Google** (Verification de Google) cuando se valide OAuth en prod. Solo afecta si invitamos a usuarios externos al equipo de testers — para el equipo interno actual (admins + Raquel + comerciales fijos) Testing basta.
+4. **Polish (Fase 6 restante, opcional)**: a11y, loading states, seed más realista, tests Vitest + Playwright, `noUncheckedIndexedAccess`, migración 005 con política INSERT en audit_log.
 
 ---
 
