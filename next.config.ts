@@ -33,6 +33,10 @@ const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // Defensa en profundidad contra indexación. El meta tag en app/layout.tsx
+  // solo viaja en respuestas HTML; este header cubre redirects 302 (/c/...),
+  // JSON de las API routes y cualquier respuesta no-HTML.
+  { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet" },
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
