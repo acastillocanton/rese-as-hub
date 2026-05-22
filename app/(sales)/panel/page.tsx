@@ -452,6 +452,7 @@ export default async function PanelPage({
                   justifyContent: "space-between",
                   alignItems: "center",
                   gap: 10,
+                  flexWrap: "wrap",
                 }}
               >
                 <span
@@ -459,6 +460,9 @@ export default async function PanelPage({
                     fontFamily: "var(--font-mono)",
                     fontSize: 13.5,
                     color: "var(--ink-2)",
+                    wordBreak: "break-all",
+                    minWidth: 0,
+                    flex: "1 1 200px",
                   }}
                 >
                   {link}
