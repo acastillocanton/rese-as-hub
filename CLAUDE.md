@@ -233,6 +233,7 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
 3. **Publicar consent screen fuera de Testing** (Verification de Google) si en el futuro hay testers externos al equipo interno actual.
 4. **Polish opcional**: a11y, loading states, seed más realista, tests Vitest + Playwright, `noUncheckedIndexedAccess`, política INSERT en `audit_log`.
 5. **Ranking del comercial**: migración 007 + UI real para `/panel/ranking` (hoy ComingSoon).
+6. **Ajustes globales** (`/ajustes`): la ruta existe pero está **oculta del sidebar admin** hasta tener contenido (era un stub `ComingSoon` que confundía). Cuando se implemente alguna de las funcionalidades planeadas (reglas de matching configurables, plantilla del email de invitación, schedule del cron, plantilla del mensaje de WhatsApp), añadir de vuelta el item `{ id: "settings", label: "Ajustes", href: "/ajustes", icon: Settings }` en `ADMIN_SIDEBAR_GROUPS` de [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) (junto a "Fichas Google"). Sigue siendo solo-admin por middleware.
 
 ---
 

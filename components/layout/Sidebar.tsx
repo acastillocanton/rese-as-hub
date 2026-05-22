@@ -12,7 +12,6 @@ import {
   ListChecks,
   Star,
   Download,
-  Settings,
   Link2,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
@@ -213,7 +212,6 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
     label: "Configuración",
     items: [
       { id: "branches", label: "Fichas Google", href: "/fichas", icon: MapPin },
-      { id: "settings", label: "Ajustes", href: "/ajustes", icon: Settings },
     ],
   },
 ];
