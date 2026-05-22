@@ -15,6 +15,9 @@ import {
   type DateRange,
 } from "@/lib/date-range";
 
+// `new Date()` + rango activo basado en "ahora" → forzamos dinámico.
+export const dynamic = "force-dynamic";
+
 type SalesProfile = {
   id: string;
   full_name: string;

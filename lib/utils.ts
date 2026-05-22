@@ -25,5 +25,5 @@ export function initials(name: string): string {
 export function avatarColor(name: string): string {
   const palette = ["#D2D2D7", "#C7C7CC", "#BCBCC1", "#B0B0B6", "#A6A6AB", "#9C9CA1"];
   const code = name.charCodeAt(0) || 65;
-  return palette[code % palette.length];
+  return palette[code % palette.length] ?? "#D2D2D7";
 }

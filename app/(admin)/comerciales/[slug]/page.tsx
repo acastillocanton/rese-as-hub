@@ -179,10 +179,10 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     reviews.length > 0
       ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
       : null;
-  const lastVisitISO =
-    shares.length > 0
-      ? shares.reduce((max, s) => (s.opened_at > max ? s.opened_at : max), shares[0].opened_at)
-      : null;
+  const firstShare = shares[0];
+  const lastVisitISO = firstShare
+    ? shares.reduce((max, s) => (s.opened_at > max ? s.opened_at : max), firstShare.opened_at)
+    : null;
   const meta = sales.monthly_goal;
   // Solo tiene sentido comparar contra monthly_goal si el rango es un mes
   // natural completo; si no, marcamos el ratio como null y avisamos en UI.

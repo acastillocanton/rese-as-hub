@@ -59,6 +59,9 @@ export async function uploadAvatar(formData: FormData): Promise<UploadResult> {
   const { data: publicUrlData } = service.storage
     .from("avatars")
     .getPublicUrl(path);
+  if (!publicUrlData?.publicUrl) {
+    return { ok: false, error: "No se pudo obtener la URL pública del avatar." };
+  }
   const url = `${publicUrlData.publicUrl}?v=${Date.now()}`;
 
   const { error: updateError } = await service

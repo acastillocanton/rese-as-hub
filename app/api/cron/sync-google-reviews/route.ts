@@ -88,6 +88,25 @@ export async function GET(request: NextRequest) {
     error?: string;
   }> = [];
 
+  // Acumulamos las notificaciones de TODAS las locations y las enviamos en
+  // paralelo al final (Promise.allSettled). Antes hacíamos await dentro del
+  // loop por cada reseña → si entraban 50, eran 50 envíos SMTP secuenciales
+  // y el cron podía exceder los 60s de Vercel.
+  type PendingNotification = {
+    salesEmail: string;
+    salesName: string;
+    rating: number;
+    reviewText: string | null;
+    authorName: string;
+    clientFullName: string | null;
+    locationName: string;
+    matchConfidence: number;
+    reviewDbId: string;
+    salesId: string;
+    googleReviewId: string;
+  };
+  const pendingNotifications: PendingNotification[] = [];
+
   for (const loc of connectedLocations) {
     const entry = {
       location_id: loc.id,
@@ -99,6 +118,27 @@ export async function GET(request: NextRequest) {
       unmatched: 0,
       error: undefined as string | undefined,
     };
+
+    // Lock optimista contra solapamiento: si otro cron procesó esta
+    // location en los últimos 60s, abortamos. Postgres garantiza que
+    // UPDATE con filtro temporal es atómico — solo uno gana la carrera.
+    const lockCutoff = new Date(Date.now() - 60_000).toISOString();
+    const { data: lockRows, error: lockErr } = await admin
+      .from("locations")
+      .update({ oauth_last_sync_at: new Date().toISOString() } as never)
+      .eq("id", loc.id)
+      .or(`oauth_last_sync_at.is.null,oauth_last_sync_at.lt.${lockCutoff}`)
+      .select("id");
+    if (lockErr) {
+      entry.error = `lock_failed: ${lockErr.message}`;
+      summary.push(entry);
+      continue;
+    }
+    if (!lockRows || lockRows.length === 0) {
+      entry.error = "skipped_concurrent_run";
+      summary.push(entry);
+      continue;
+    }
 
     try {
       const accessToken = await getValidAccessTokenForLocation(loc.id);
@@ -174,6 +214,9 @@ export async function GET(request: NextRequest) {
         oldestReviewMs - TEMPORAL_WINDOW_HOURS * 3_600_000,
       ).toISOString();
 
+      // Límite defensivo: si en 48h una location acumula >10K visitas,
+      // algo raro pasa (spam, scraping). Cortamos para no saturar memoria.
+      // Con `share_links_location_opened_idx` desc la query es índice puro.
       const { data: shareRows } = await admin
         .from("share_links")
         .select(
@@ -181,6 +224,8 @@ export async function GET(request: NextRequest) {
         )
         .eq("location_id", loc.id)
         .gte("opened_at", windowStart)
+        .order("opened_at", { ascending: false })
+        .limit(10000)
         .returns<
           {
             id: string;
@@ -200,10 +245,13 @@ export async function GET(request: NextRequest) {
       }));
 
       for (const gr of fresh) {
+        const rawAuthor = gr.reviewer?.displayName?.trim() ?? "";
+        const hasAuthorName = rawAuthor.length > 0;
         const result = attributeReview(
           {
             google_review_id: gr.reviewId,
-            author_name: gr.reviewer?.displayName ?? "Anónimo",
+            author_name: hasAuthorName ? rawAuthor : "Anónimo",
+            hasAuthorName,
             google_created_at: gr.createTime,
           },
           allCandidates,
@@ -239,16 +287,15 @@ export async function GET(request: NextRequest) {
         entry.new_reviews++;
         if (result.match_state === "counted") {
           entry.counted++;
-          // Notificación al comercial. Si Resend falla o no está configurado,
-          // dejamos rastro en audit_log para poder reconciliar a mano sin
-          // bloquear el resto del sync.
+          // Solo encolamos la notificación. El envío real se hace en batch al
+          // final del cron (Promise.allSettled) para no bloquear el loop.
           if (result.sales_id) {
             const sales = salesById.get(result.sales_id);
             if (sales?.email && sales.status === "active") {
               const clientName =
                 (result.match_evidence?.client_full_name as string | undefined) ??
                 null;
-              const sendRes = await notifyNewReview({
+              pendingNotifications.push({
                 salesEmail: sales.email,
                 salesName: sales.full_name,
                 rating: starRatingToInt(gr.starRating),
@@ -257,22 +304,10 @@ export async function GET(request: NextRequest) {
                 clientFullName: clientName,
                 locationName: loc.name,
                 matchConfidence: result.match_confidence,
-                appBase,
+                reviewDbId: inserted.id,
+                salesId: result.sales_id,
+                googleReviewId: gr.reviewId,
               });
-              if (!sendRes.ok && !("skipped" in sendRes && sendRes.skipped)) {
-                await admin.from("audit_log").insert({
-                  entity_type: "review",
-                  entity_id: inserted.id,
-                  action: "notify_failed",
-                  payload: {
-                    sales_id: result.sales_id,
-                    sales_email: sales.email,
-                    google_review_id: gr.reviewId,
-                    status: "status" in sendRes ? sendRes.status : null,
-                    error: "error" in sendRes ? sendRes.error : null,
-                  },
-                } as never);
-              }
             }
           }
         } else if (result.match_state === "pending") {
@@ -293,9 +328,82 @@ export async function GET(request: NextRequest) {
     summary.push(entry);
   }
 
+  // Envío en paralelo de todas las notificaciones acumuladas. Si una falla,
+  // dejamos rastro en audit_log con el formato 'notify_failed' (igual que
+  // antes pero ahora sin bloquear el cron).
+  let notifyAttempted = 0;
+  let notifyFailed = 0;
+  if (pendingNotifications.length > 0) {
+    notifyAttempted = pendingNotifications.length;
+    const results = await Promise.allSettled(
+      pendingNotifications.map((p) =>
+        notifyNewReview({
+          salesEmail: p.salesEmail,
+          salesName: p.salesName,
+          rating: p.rating,
+          reviewText: p.reviewText,
+          authorName: p.authorName,
+          clientFullName: p.clientFullName,
+          locationName: p.locationName,
+          matchConfidence: p.matchConfidence,
+          appBase,
+        }),
+      ),
+    );
+
+    const failedAuditRows: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      const p = pendingNotifications[i];
+      if (!r || !p) continue;
+      if (r.status === "rejected") {
+        notifyFailed++;
+        failedAuditRows.push({
+          entity_type: "review",
+          entity_id: p.reviewDbId,
+          action: "notify_failed",
+          payload: {
+            sales_id: p.salesId,
+            sales_email: p.salesEmail,
+            google_review_id: p.googleReviewId,
+            error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          },
+        });
+        continue;
+      }
+      const sendRes = r.value;
+      if (!sendRes.ok && !("skipped" in sendRes && sendRes.skipped)) {
+        notifyFailed++;
+        failedAuditRows.push({
+          entity_type: "review",
+          entity_id: p.reviewDbId,
+          action: "notify_failed",
+          payload: {
+            sales_id: p.salesId,
+            sales_email: p.salesEmail,
+            google_review_id: p.googleReviewId,
+            status: "status" in sendRes ? sendRes.status : null,
+            error: "error" in sendRes ? sendRes.error : null,
+          },
+        });
+      }
+    }
+
+    if (failedAuditRows.length > 0) {
+      const { error: auditErr } = await admin
+        .from("audit_log")
+        .insert(failedAuditRows as never);
+      if (auditErr) {
+        console.error("[cron] failed to write notify_failed audit rows:", auditErr);
+      }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     locations_processed: summary.length,
+    notify_attempted: notifyAttempted,
+    notify_failed: notifyFailed,
     summary,
   });
 }

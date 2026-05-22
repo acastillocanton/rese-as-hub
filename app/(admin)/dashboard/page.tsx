@@ -19,6 +19,9 @@ import {
 } from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
 
+// Dashboard recalcula rango y proyecciones con `new Date()`. Dinámico.
+export const dynamic = "force-dynamic";
+
 type SalesProfile = {
   id: string;
   full_name: string;
@@ -72,7 +75,8 @@ function bucketByMonth(timestamps: string[], monthsBack: number, now = new Date(
     const d = new Date(t);
     const monthsAgo = (baseY - d.getFullYear()) * 12 + (baseM - d.getMonth());
     if (monthsAgo >= 0 && monthsAgo < monthsBack) {
-      buckets[monthsBack - 1 - monthsAgo]++;
+      const idx = monthsBack - 1 - monthsAgo;
+      buckets[idx] = (buckets[idx] ?? 0) + 1;
     }
   }
   return buckets;
@@ -136,7 +140,9 @@ export default async function DashboardPage({
       .order("opened_at", { ascending: false })
       .limit(8)
       .returns<RecentShareLinkRow[]>(),
-    supabase.from("clients").select("id", { count: "exact", head: true }),
+    // count: planned usa pg_stats — aprox pero rápido. Aceptable en un KPI
+    // total de clientes sin comparar contra objetivo.
+    supabase.from("clients").select("id", { count: "planned", head: true }),
     supabase
       .from("reviews")
       .select("rating, match_state, sales_id, location_id, google_created_at")
@@ -187,7 +193,7 @@ export default async function DashboardPage({
   const monthLabels: string[] = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    monthLabels.push(MONTHS[d.getMonth()]);
+    monthLabels.push(MONTHS[d.getMonth()] ?? "");
   }
 
   // ─── Leaderboard ─────────────────────────────────────────────────────────

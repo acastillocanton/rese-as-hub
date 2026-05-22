@@ -1,7 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
-import ExcelJS from "exceljs";
 import { createClient } from "@/lib/supabase/server";
 import { parseRange } from "@/lib/date-range";
+// Tipos de exceljs SOLO (import type) — no se incluye en el bundle.
+import type ExcelJS from "exceljs";
+
+// ExcelJS pesa ~500KB. Lo cargamos dinámicamente para que el chunk del
+// resto de la app no lo incluya (este route es el único usuario).
+async function loadExcelJS() {
+  const mod = await import("exceljs");
+  return mod.default;
+}
 
 export const runtime = "nodejs";
 
@@ -94,6 +102,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
+  // Límite defensivo para no timeout en Vercel (60s) ni saturar memoria al
+  // generar el Excel. Si el rango pide más, el caller debería trocear (la UI
+  // ofrece 3 atajos de máx 90 días, suficiente en la práctica).
+  const REVIEWS_HARD_LIMIT = 5000;
+  const SHARE_LINKS_HARD_LIMIT = 50000;
+
   let query = supabase
     .from("reviews")
     .select(
@@ -101,7 +115,8 @@ export async function GET(request: NextRequest) {
     )
     .gte("google_created_at", range.startIso)
     .lt("google_created_at", range.endIso)
-    .order("google_created_at", { ascending: true });
+    .order("google_created_at", { ascending: true })
+    .limit(REVIEWS_HARD_LIMIT);
 
   if (salesId) query = query.eq("sales_id", salesId);
   if (locationId) query = query.eq("location_id", locationId);
@@ -114,7 +129,8 @@ export async function GET(request: NextRequest) {
     .from("share_links")
     .select("sales_id, location_id, opened_at")
     .gte("opened_at", range.startIso)
-    .lt("opened_at", range.endIso);
+    .lt("opened_at", range.endIso)
+    .limit(SHARE_LINKS_HARD_LIMIT);
   if (salesId) shareLinksQuery = shareLinksQuery.eq("sales_id", salesId);
   if (locationId) shareLinksQuery = shareLinksQuery.eq("location_id", locationId);
 
@@ -138,6 +154,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const ExcelJS = await loadExcelJS();
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ReseñaHub";
   workbook.created = new Date();

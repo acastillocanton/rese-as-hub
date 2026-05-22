@@ -24,6 +24,7 @@ export function Sparkline({
     .map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1))
     .join(" ");
   const last = pts[pts.length - 1];
+  if (!last) return null;
   return (
     <svg width={width} height={height} role="img" aria-label="tendencia">
       <path

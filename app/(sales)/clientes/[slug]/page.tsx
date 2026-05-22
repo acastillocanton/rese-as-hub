@@ -99,8 +99,8 @@ export default async function ClienteDetallePage({ params }: PageProps) {
 
   const visits = visitsRes.data ?? [];
   const reviews = reviewsRes.data ?? [];
-  const firstVisit = visits.length > 0 ? visits[visits.length - 1].opened_at : null;
-  const lastVisit = visits.length > 0 ? visits[0].opened_at : null;
+  const firstVisit = visits[visits.length - 1]?.opened_at ?? null;
+  const lastVisit = visits[0]?.opened_at ?? null;
 
   const appBase = process.env.NEXT_PUBLIC_APP_URL ?? "https://reseñahub.es";
 

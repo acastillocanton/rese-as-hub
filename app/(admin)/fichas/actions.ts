@@ -89,8 +89,21 @@ export async function linkGoogleLocation(input: z.input<typeof linkSchema>) {
 export async function disconnectGoogleLocation(locationId: string) {
   if (!locationId) return { error: "Id inválido." };
   const admin = createServiceClient();
-  // Tokens fuera.
-  await admin.from("location_secrets").delete().eq("location_id", locationId);
+  // Tokens fuera. Si falla aquí abortamos: dejar la location en
+  // disconnected con un refresh_token vivo en location_secrets sería un
+  // estado inconsistente (el cron no la procesaría pero el secreto
+  // seguiría en BD).
+  const { error: secretsErr } = await admin
+    .from("location_secrets")
+    .delete()
+    .eq("location_id", locationId);
+  if (secretsErr) {
+    console.error(
+      "[fichas] disconnectGoogleLocation failed deleting secrets:",
+      secretsErr,
+    );
+    return { error: `No se pudieron borrar los tokens: ${secretsErr.message}` };
+  }
   // Estado a disconnected y campos OAuth a null.
   const { error } = await admin
     .from("locations")

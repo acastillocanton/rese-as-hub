@@ -8,6 +8,10 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { LinkArsenalBlock } from "./LinkArsenalBlock";
 
+// Forzamos render dinámico: la página usa `new Date()` para "hace X min"
+// y filtros temporales del mes en curso.
+export const dynamic = "force-dynamic";
+
 type SalesProfile = {
   id: string;
   full_name: string;
@@ -58,9 +62,12 @@ export default async function EnlacePage() {
   // distinta — el comercial necesita saber el peso del genérico vs personalizado.
   const [genericTotalRes, genericMonthRes, genericLastRes, personalizedMonthRes] =
     await Promise.all([
+      // Total histórico de visitas QR genérico — no se compara con objetivo
+      // ni con periodo anterior, así que basta count aproximado (rápido en
+      // tablas grandes).
       supabase
         .from("share_links")
-        .select("id", { count: "exact", head: true })
+        .select("id", { count: "planned", head: true })
         .eq("sales_id", user.id)
         .is("client_id", null),
       supabase

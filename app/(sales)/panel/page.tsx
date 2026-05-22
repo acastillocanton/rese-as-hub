@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { Users } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
+
+// Forzamos render dinámico: la página usa `new Date()` para proyección ETA
+// y deltas vs mes pasado. Si Next cachea la respuesta, los relativos
+// quedan stale.
+export const dynamic = "force-dynamic";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { Ring } from "@/components/charts/Ring";
@@ -115,8 +120,8 @@ async function loadPanelData(range: DateRange): Promise<PanelData> {
 }
 
 function parseFromIso(ymd: string): Date {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(y, m - 1, d);
+  const parts = ymd.split("-").map(Number);
+  return new Date(parts[0] ?? 1970, (parts[1] ?? 1) - 1, parts[2] ?? 1);
 }
 
 function formatRating(value: number | null): string {

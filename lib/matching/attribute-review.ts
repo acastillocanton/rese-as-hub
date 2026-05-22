@@ -46,7 +46,13 @@ export type ShareLinkCandidate = {
 
 export type ReviewInput = {
   google_review_id: string;
+  /** Nombre tal cual lo devuelve Google. Si Google no devolvió nombre,
+   *  pasar el fallback ("Anónimo" o equivalente) Y poner `hasAuthorName:
+   *  false` para que el matcher use modo temporal-only. */
   author_name: string;
+  /** Si false, el matcher ignora la similitud de nombre y se apoya solo
+   *  en la ventana temporal corta. Default true (asume nombre real). */
+  hasAuthorName?: boolean;
   google_created_at: string; // ISO
 };
 
@@ -111,8 +117,8 @@ export function nameSimilarity(clientName: string, authorName: string): number {
   // inicial del primer apellido del cliente ("Antonio R.").
   if (clientFirst === authorFirst) {
     const clientLast = clientTokens[1];
-    if (clientLast && authorTokens.length >= 2) {
-      const authorSecond = authorTokens[1];
+    const authorSecond = authorTokens[1];
+    if (clientLast && authorSecond) {
       if (authorSecond === clientLast) return 88;
       // Inicial: "r" coincide con "ramirez"
       if (authorSecond.length === 1 && clientLast.startsWith(authorSecond)) {
@@ -146,6 +152,50 @@ export function attributeReview(
   candidates: ShareLinkCandidate[],
 ): MatchResult {
   const reviewMs = new Date(review.google_created_at).getTime();
+  const hasAuthorName = review.hasAuthorName !== false;
+
+  // Modo temporal-only: cuando Google no nos da nombre real, no podemos
+  // hacer name match. Si hay UN único candidato en la ventana corta
+  // (≤ TEMPORAL_BONUS_HOURS), lo dejamos como 'pending' para verificación
+  // manual con confianza moderada. Mejor que tirar todas a unmatched.
+  if (!hasAuthorName) {
+    const nearby = candidates.filter((c) => {
+      const openedMs = new Date(c.opened_at).getTime();
+      if (openedMs > reviewMs) return false;
+      const hoursDelta = (reviewMs - openedMs) / 3_600_000;
+      return hoursDelta <= TEMPORAL_BONUS_HOURS;
+    });
+    if (nearby.length === 1) {
+      const c = nearby[0]!;
+      const hoursDelta = (reviewMs - new Date(c.opened_at).getTime()) / 3_600_000;
+      return {
+        match_state: "pending",
+        match_confidence: 50,
+        match_evidence: {
+          reason: "anonymous_author_single_temporal_match",
+          share_link_id: c.id,
+          client_full_name: c.client_full_name,
+          hours_delta: Number(hoursDelta.toFixed(2)),
+          candidates_considered: candidates.length,
+        },
+        sales_id: c.sales_id,
+        client_id: c.client_id ?? undefined,
+        share_link_id: c.id,
+      };
+    }
+    return {
+      match_state: "unmatched",
+      match_confidence: 0,
+      match_evidence: {
+        reason:
+          nearby.length === 0
+            ? "anonymous_author_no_nearby_candidates"
+            : `anonymous_author_multiple_candidates (${nearby.length})`,
+        candidates_considered: candidates.length,
+        window_hours: TEMPORAL_BONUS_HOURS,
+      },
+    };
+  }
 
   let best: {
     candidate: ShareLinkCandidate;

@@ -11,16 +11,19 @@ type Item = { id: string; href: string };
  *
  * Compartido entre `Sidebar` (desktop) y `MobileTabBar` (mobile sales).
  */
+function basePath(href: string): string {
+  return href.split("#")[0] ?? href;
+}
+
 export function pickActiveId<T extends Item>(items: T[], pathname: string): string | null {
   for (const item of items) {
-    const itemPath = item.href.split("#")[0];
-    if (pathname === itemPath) return item.id;
+    if (pathname === basePath(item.href)) return item.id;
   }
   const sorted = [...items].sort(
-    (a, b) => b.href.split("#")[0].length - a.href.split("#")[0].length,
+    (a, b) => basePath(b.href).length - basePath(a.href).length,
   );
   for (const item of sorted) {
-    const itemPath = item.href.split("#")[0];
+    const itemPath = basePath(item.href);
     if (itemPath !== "/" && pathname.startsWith(itemPath + "/")) return item.id;
   }
   return null;

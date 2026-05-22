@@ -50,7 +50,11 @@ function ymd(d: Date): string {
 
 function isValidYmd(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  const [y, m, d] = s.split("-").map(Number);
+  const parts = s.split("-").map(Number);
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  if (y === undefined || m === undefined || d === undefined) return false;
   const dt = new Date(y, m - 1, d);
   return (
     dt.getFullYear() === y &&
@@ -60,7 +64,12 @@ function isValidYmd(s: string): boolean {
 }
 
 function parseYmd(s: string): Date {
-  const [y, m, d] = s.split("-").map(Number);
+  const parts = s.split("-").map(Number);
+  // Asume formato pre-validado con isValidYmd: si llega aquí algo distinto
+  // de 3 números válidos, es un bug del caller, no input externo.
+  const y = parts[0] ?? 1970;
+  const m = parts[1] ?? 1;
+  const d = parts[2] ?? 1;
   return new Date(y, m - 1, d);
 }
 
@@ -104,12 +113,12 @@ function rangeLabel(from: Date, to: Date): string {
     from.getFullYear() === to.getFullYear() &&
     isSameDay(to, lastDayOfMonth)
   ) {
-    return `${MONTH_LABELS[from.getMonth()]} ${from.getFullYear()}`;
+    return `${MONTH_LABELS[from.getMonth()] ?? ""} ${from.getFullYear()}`;
   }
   // Mismo año, dos meses naturales completos consecutivos no nos los
   // detallamos: tratamos cualquier otra cosa como rango libre.
   const fmt = (d: Date) =>
-    `${pad(d.getDate())} ${MONTH_LABELS[d.getMonth()].slice(0, 3)} ${d.getFullYear()}`;
+    `${pad(d.getDate())} ${(MONTH_LABELS[d.getMonth()] ?? "").slice(0, 3)} ${d.getFullYear()}`;
   return `${fmt(from)} – ${fmt(to)}`;
 }
 
@@ -143,9 +152,12 @@ export function lastQuarterRange(now = new Date()): DateRange {
 }
 
 /**
- * Parsea los query params `from` y `to` (yyyy-mm-dd). Si faltan o son
- * inválidos, cae al mes en curso. Sin sorpresas: el manager siempre tiene
- * un rango definido.
+ * Parsea los query params `from` y `to` (yyyy-mm-dd). Si faltan, son
+ * inválidos o vienen invertidos (`from > to`), cae al mes en curso. Sin
+ * sorpresas: el manager siempre tiene un rango definido y bien orientado.
+ *
+ * La UI (`RangePicker`) nunca produce rangos invertidos — la validación
+ * defensiva es solo para URLs escritas a mano o copy/paste.
  */
 export function parseRange(
   fromParam: string | null | undefined,
@@ -153,7 +165,15 @@ export function parseRange(
   now = new Date(),
 ): DateRange {
   if (fromParam && toParam && isValidYmd(fromParam) && isValidYmd(toParam)) {
-    return buildRange(parseYmd(fromParam), parseYmd(toParam));
+    const from = parseYmd(fromParam);
+    const to = parseYmd(toParam);
+    if (from > to) {
+      // Antes invertíamos silenciosamente en buildRange — confundía al
+      // usuario porque la etiqueta no coincidía con lo que había escrito.
+      // Mejor caer al mes actual y que vuelva a elegir.
+      return thisMonthRange(now);
+    }
+    return buildRange(from, to);
   }
   return thisMonthRange(now);
 }
@@ -190,8 +210,24 @@ export function defaultShortcuts(now = new Date()): ShortcutDescriptor[] {
 
 /** Devuelve true si el rango cubre exactamente un único mes natural completo. */
 export function isFullNaturalMonth(range: DateRange): boolean {
-  const [y, m, d] = range.from.split("-").map(Number);
-  const [y2, m2, d2] = range.to.split("-").map(Number);
+  const a = range.from.split("-").map(Number);
+  const b = range.to.split("-").map(Number);
+  const y = a[0];
+  const m = a[1];
+  const d = a[2];
+  const y2 = b[0];
+  const m2 = b[1];
+  const d2 = b[2];
+  if (
+    y === undefined ||
+    m === undefined ||
+    d === undefined ||
+    y2 === undefined ||
+    m2 === undefined ||
+    d2 === undefined
+  ) {
+    return false;
+  }
   if (y !== y2 || m !== m2 || d !== 1) return false;
   const lastDay = new Date(y, m, 0).getDate();
   return d2 === lastDay;
