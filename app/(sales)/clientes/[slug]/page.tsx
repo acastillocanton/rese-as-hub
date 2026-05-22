@@ -127,10 +127,12 @@ export default async function ClienteDetallePage({ params }: PageProps) {
         subtitle={`Cliente · Alta ${fmtDate(client.created_at)}`}
         breadcrumb="Mis clientes"
         range=""
+        compact
         right={
           <div style={{ display: "flex", gap: 8 }}>
             <Link
               href="/clientes"
+              className="sales-hide-mobile"
               style={{
                 padding: "7px 12px",
                 background: "transparent",
@@ -150,6 +152,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       />
 
       <div
+        className="sales-page-pad"
         style={{
           flex: 1,
           padding: "24px 32px 32px",
@@ -161,6 +164,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       >
         {/* Datos + Actividad */}
         <div
+          className="sales-detail-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(280px, 1fr) minmax(280px, 1fr)",

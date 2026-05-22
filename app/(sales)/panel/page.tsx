@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Users } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -210,6 +212,7 @@ export default async function PanelPage({
         subtitle={`Buenos días, ${data.name.split(" ")[0]}`}
         range={null}
         breadcrumb="Inseryal"
+        compact
         right={
           <>
             <RangePicker
@@ -223,9 +226,10 @@ export default async function PanelPage({
         }
       />
 
-      <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
+      <div className="sales-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
         <Card padding={28}>
           <div
+            className="sales-grid-hero"
             style={{
               display: "grid",
               gridTemplateColumns: "1.2fr 1fr",
@@ -292,7 +296,7 @@ export default async function PanelPage({
               </div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            <div className="sales-ring-row" style={{ display: "flex", alignItems: "center", gap: 24 }}>
               <Ring value={data.reviews} max={data.goal} size={140} />
               <div>
                 <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Objetivo mensual</div>
@@ -348,6 +352,52 @@ export default async function PanelPage({
             </div>
           </div>
         </Card>
+
+        {/* Card "Mis clientes" — solo mobile (en desktop el sidebar ya lo cubre). */}
+        <div className="sales-mobile-only" style={{ marginTop: 16 }}>
+          <Link
+            href="/clientes"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              padding: "16px 18px",
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
+              borderRadius: 14,
+              textDecoration: "none",
+              color: "var(--ink)",
+              boxShadow: "var(--shadow-card)",
+            }}
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: "var(--surface-2)",
+                display: "grid",
+                placeItems: "center",
+                color: "var(--ink-2)",
+                flexShrink: 0,
+              }}
+            >
+              <Users size={20} strokeWidth={1.75} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>
+                Mis clientes
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-4)", marginTop: 2 }}>
+                Da de alta antes de pedir una reseña
+              </div>
+            </div>
+            <span aria-hidden="true" style={{ color: "var(--ink-4)", fontSize: 18 }}>
+              ›
+            </span>
+          </Link>
+        </div>
 
         <div style={{ marginTop: 16 }}>
           <Card padding={24}>

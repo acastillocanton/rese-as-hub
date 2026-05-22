@@ -1,5 +1,6 @@
 import { Frame } from "@/components/layout/Frame";
 import { Sidebar, SALES_SIDEBAR_GROUPS } from "@/components/layout/Sidebar";
+import { MobileTabBar } from "@/components/layout/MobileTabBar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -27,17 +28,27 @@ export default async function SalesLayout({
 
   return (
     <Frame>
-      <Sidebar
-        groups={SALES_SIDEBAR_GROUPS}
-        user={{
-          name: profile?.full_name ?? "Comercial",
-          subtitle: "Comercial",
-          avatarUrl: profile?.avatar_url,
-        }}
-      />
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      {/* Sidebar desktop: visible ≥768px, oculto en mobile (CSS) */}
+      <div className="sales-hide-mobile" style={{ display: "contents" }}>
+        <Sidebar
+          groups={SALES_SIDEBAR_GROUPS}
+          user={{
+            name: profile?.full_name ?? "Comercial",
+            subtitle: "Comercial",
+            avatarUrl: profile?.avatar_url,
+          }}
+        />
+      </div>
+      <main
+        className="sales-main"
+        style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}
+      >
         {children}
       </main>
+      {/* Tab bar mobile: oculta en desktop (CSS), fixed bottom en mobile */}
+      <div className="sales-hide-desktop">
+        <MobileTabBar />
+      </div>
     </Frame>
   );
 }

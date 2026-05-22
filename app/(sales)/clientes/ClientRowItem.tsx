@@ -35,9 +35,17 @@ export function ClientRowItem({
     });
   }
 
+  const altaLabel = new Date(client.created_at).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
   return (
     <>
+      {/* Desktop: fila tabular de 5 columnas */}
       <div
+        className="sales-hide-mobile"
         style={{
           padding: "14px 22px",
           borderBottom: last ? "none" : "1px solid var(--line)",
@@ -104,13 +112,7 @@ export function ClientRowItem({
         >
           {client.phone ?? "—"}
         </span>
-        <span style={{ fontSize: 12.5, color: "var(--ink-4)" }}>
-          {new Date(client.created_at).toLocaleDateString("es-ES", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })}
-        </span>
+        <span style={{ fontSize: 12.5, color: "var(--ink-4)" }}>{altaLabel}</span>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <GhostBtn onClick={() => setOpen(true)}>Ver enlace</GhostBtn>
           <button
@@ -123,6 +125,87 @@ export function ClientRowItem({
               border: "1px solid var(--line-strong)",
               borderRadius: 7,
               fontSize: 12,
+              color: "var(--ink-3)",
+              cursor: isPending ? "wait" : "pointer",
+            }}
+          >
+            {isPending ? "…" : "Eliminar"}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile: card vertical */}
+      <div
+        className="sales-mobile-only"
+        style={{
+          padding: "14px 16px",
+          borderBottom: last ? "none" : "1px solid var(--line)",
+        }}
+      >
+        <Link
+          href={`/clientes/${client.slug}`}
+          style={{
+            display: "block",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 15,
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+              color: "var(--ink)",
+            }}
+          >
+            {client.full_name}
+          </div>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "var(--ink-4)",
+              fontFamily: "var(--font-mono)",
+              marginTop: 2,
+              wordBreak: "break-all",
+            }}
+          >
+            /c/{salesSlug}/{client.slug}
+          </div>
+        </Link>
+        <div
+          style={{
+            marginTop: 10,
+            display: "grid",
+            gap: 4,
+            fontSize: 12.5,
+            color: "var(--ink-3)",
+          }}
+        >
+          <div>
+            <span style={{ color: "var(--ink-4)", marginRight: 6 }}>Email</span>
+            {client.email ?? "—"}
+          </div>
+          <div>
+            <span style={{ color: "var(--ink-4)", marginRight: 6 }}>Teléfono</span>
+            {client.phone ?? "—"}
+          </div>
+          <div>
+            <span style={{ color: "var(--ink-4)", marginRight: 6 }}>Alta</span>
+            {altaLabel}
+          </div>
+        </div>
+        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+          <GhostBtn onClick={() => setOpen(true)}>Ver enlace</GhostBtn>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={isPending}
+            style={{
+              padding: "6px 12px",
+              background: "transparent",
+              border: "1px solid var(--line-strong)",
+              borderRadius: 7,
+              fontSize: 12.5,
               color: "var(--ink-3)",
               cursor: isPending ? "wait" : "pointer",
             }}

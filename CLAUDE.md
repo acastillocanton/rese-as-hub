@@ -67,6 +67,27 @@ npm run lint           # next lint
 
 > Sidebar antes apuntaba a anchors `/panel#enlace` y `/panel#resenas` que no existían (los links solo recargaban `/panel` sin scroll a nada). Ya migrado a las rutas dedicadas en [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx).
 
+#### Fase 3.b · Vista mobile del comercial — ✅ hecha (2026-05-22)
+**Solo el rol sales** tiene vista mobile (≤767px). Admin/gestor/profile siguen siendo desktop-only por diseño (trabajo de oficina). En vez de duplicar páginas, usamos **CSS media queries puras** con clases con prefijo `sales-*` definidas al final de [`app/globals.css`](app/globals.css) — sin hooks JS, sin route group nuevo, sin flicker SSR/CSR.
+
+Estructura:
+- Sidebar de 232px se oculta vía `.sales-hide-mobile { display: none !important }` en mobile.
+- Aparece [`<MobileTabBar />`](components/layout/MobileTabBar.tsx) fija inferior con 4 tabs: Panel · Enlace · Reseñas · Ranking (lucide icons). `padding-bottom: env(safe-area-inset-bottom)` para iPhones con notch. Reusa el helper [`pickActiveId`](components/layout/active-item.ts) compartido con `Sidebar`.
+- [`<main className="sales-main">`](app/(sales)/layout.tsx) reserva `padding-bottom: 64px` para que la tab bar no tape contenido al final del scroll.
+- "Clientes" intencionalmente NO está en la tab bar (fidelidad al mockup). Se accede desde una **card "Mis clientes" mobile-only** en `/panel` o por URL directa.
+- [`/panel/ranking`](app/(sales)/panel/ranking/page.tsx) es un placeholder ComingSoon hasta que se implemente el ranking real (requiere migración 007).
+
+Patrón de clases mobile (todas con `!important` para vencer al inline `style={{}}` desktop):
+- `sales-hide-mobile` / `sales-hide-desktop` / `sales-mobile-only` — visibilidad selectiva.
+- `sales-page-pad` — reduce padding 24/32 → 16.
+- `sales-grid-hero`, `sales-stats-3`, `sales-stats-4`, `sales-qr-grid`, `sales-detail-grid` — grids fijos → 1 col (o 2x2 en stats-4).
+- `sales-ring-row` — flex row → column (Ring + texto objetivo).
+- `sales-review-row` + `sales-review-pill` — review item se reorganiza con pill debajo del texto.
+- `sales-rangepicker-popover` — `width: calc(100vw - 24px); max-width: 320px` para que no desborde en iPhone SE.
+- `sales-topbar-compact` + `sales-topbar-title` + `sales-topbar-breadcrumb` — Topbar más compacto, breadcrumb oculto en mobile. Activada via prop opcional `compact?: boolean` en [`Topbar.tsx`](components/layout/Topbar.tsx); solo páginas sales la pasan, admin/manager no.
+
+`ClientRowItem` mantiene dos sub-layouts coexistentes en el mismo componente (uno con `sales-hide-mobile` para grid 5 cols, otro con `sales-mobile-only` para card vertical con labels inline) compartiendo el mismo estado de open/isPending.
+
 ### Fase 4 · Google sync + matching — ⚠️ código listo, esperando aprobación de Google
 **Es el corazón del producto.** Código entero implementado y OAuth validado E2E. Único bloqueo: la cuota de la API está a 0 hasta que Google apruebe la solicitud (caso `5-5855000041022`, ETA ~2026-06-04).
 
@@ -237,6 +258,13 @@ Brevo tiene una opción **"Bloqueo de direcciones IP no autorizadas"** en Settin
 
 Si en algún momento Brevo lo reactiva solo (lo hicieron una vez con cuentas nuevas en 2024), se ve clavado con un 525 y se desactiva volviendo a Settings → Seguridad → IP autorizadas → toggle "Claves SMTP" → off.
 
+### 4.14 Clases `sales-*` solo dentro del scope sales
+Las clases con prefijo `sales-*` definidas al final de [`app/globals.css`](app/globals.css) usan `!important` para vencer a los inline `style={{}}` que tienen casi todos los componentes. Eso permite mobile sin tocar el desktop, pero también significa que aplicarlas fuera de `app/(sales)/` (o de [`components/layout/MobileTabBar.tsx`](components/layout/MobileTabBar.tsx)) contaminaría admin/manager/profile cuando alguien abriera esas rutas en mobile (cosa que no se debe hacer, esos roles son desktop).
+
+Excepciones controladas (clases compartidas que viven en componentes UI compartidos pero que solo activan reglas con scope sales):
+- [`Topbar.tsx`](components/layout/Topbar.tsx) acepta prop opcional `compact?: boolean` que pinta `sales-topbar-*`. Default `false`, solo páginas sales la pasan.
+- [`RangePicker.tsx`](components/ui/RangePicker.tsx) lleva siempre `sales-rangepicker-popover` en su popover. En desktop la clase no hace nada; en mobile fija `width: calc(100vw - 24px)`. Inofensivo para admin/manager (que solo se ven desktop) y útil si alguien lo prueba en mobile.
+
 ### 4.13 Brevo — dos SMTP keys conviven sin pisarse
 La cuenta Brevo tiene dos claves SMTP independientes que se usan en paralelo:
 - **`resenahub-supabase`** (creada 2026-05-21) — la consume Supabase Auth para enviar magic-links y emails de invite. Configurada en Supabase Dashboard → Project Settings → Auth → SMTP Settings. NO TOCAR ni regenerar — rompería el login.
@@ -292,6 +320,7 @@ Brevo solo enseña el valor de cada SMTP key **una vez al crearla**. Si se pierd
 - Redirect a URLs externas desde un parámetro de query sin pasar por `isSafeNext`.
 - Tocar `_design_package/` (referencia de diseño, no código fuente).
 - Quitar `turbopack.root` o `outputFileTracingRoot` de [`next.config.ts`](next.config.ts) (ver §4.5).
+- Usar clases CSS con prefijo `sales-*` fuera de `app/(sales)/` o de [`components/layout/MobileTabBar.tsx`](components/layout/MobileTabBar.tsx) (ver §4.14).
 
 ---
 

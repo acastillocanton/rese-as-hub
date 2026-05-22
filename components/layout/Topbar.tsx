@@ -9,6 +9,11 @@ type TopbarProps = {
   range?: string | null;
   right?: ReactNode;
   breadcrumb?: string;
+  /** Cuando es `true`, aplica la clase `sales-topbar-compact` que en
+   *  mobile (≤767px) reduce paddings, achica el título y oculta el
+   *  breadcrumb. Solo deberían pasarlo páginas del rol sales. En desktop
+   *  no tiene efecto visible. */
+  compact?: boolean;
 };
 
 export function Topbar({
@@ -17,9 +22,11 @@ export function Topbar({
   range = "Este mes",
   right,
   breadcrumb = "Grupo",
+  compact = false,
 }: TopbarProps) {
   return (
     <header
+      className={compact ? "sales-topbar-compact" : undefined}
       style={{
         padding: "18px 32px 14px",
         borderBottom: "1px solid var(--line)",
@@ -33,6 +40,7 @@ export function Topbar({
     >
       <div>
         <div
+          className={compact ? "sales-topbar-breadcrumb" : undefined}
           style={{
             display: "flex",
             alignItems: "center",
@@ -47,6 +55,7 @@ export function Topbar({
           <span>{title}</span>
         </div>
         <h1
+          className={compact ? "sales-topbar-title" : undefined}
           style={{
             margin: "4px 0 0",
             fontFamily: "var(--font-display)",
@@ -58,7 +67,10 @@ export function Topbar({
           {subtitle || title}
         </h1>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <div
+        className={compact ? "sales-topbar-right" : undefined}
+        style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+      >
         {range !== null && <DateRange value={range} />}
         {right}
       </div>

@@ -113,9 +113,11 @@ export default async function EnlacePage() {
         subtitle="Tu enlace personal y herramientas para compartirlo"
         breadcrumb="Mi panel"
         range={null}
+        compact
         right={
           <Link
             href="/panel"
+            className="sales-hide-mobile"
             style={{
               padding: "7px 12px",
               border: "1px solid var(--line-strong)",
@@ -132,6 +134,7 @@ export default async function EnlacePage() {
       />
 
       <div
+        className="sales-page-pad"
         style={{
           flex: 1,
           padding: "24px 32px 32px",
@@ -143,6 +146,7 @@ export default async function EnlacePage() {
       >
         {/* Stats del enlace genérico */}
         <div
+          className="sales-stats-3"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(3, 1fr)",

@@ -59,6 +59,7 @@ export default async function ClientesPage() {
             : `${clients.length} ${clients.length === 1 ? "cliente" : "clientes"}`
         }
         breadcrumb="Inseryal"
+        compact
         right={
           <NewClientButton
             appBase={appBase}
@@ -68,7 +69,7 @@ export default async function ClientesPage() {
         }
       />
 
-      <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
+      <div className="sales-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
         {dbError ? (
           <Card>
             <div style={{ fontSize: 13, color: "var(--warn)", fontWeight: 500 }}>
@@ -125,6 +126,7 @@ export default async function ClientesPage() {
         ) : (
           <Card padding={0}>
             <div
+              className="sales-hide-mobile"
               style={{
                 padding: "12px 22px",
                 borderBottom: "1px solid var(--line)",

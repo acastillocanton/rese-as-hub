@@ -101,3 +101,116 @@ button {
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Mobile (≤767px) — exclusivo del rol sales.
+ *
+ * Reglas con prefijo `sales-*` para garantizar que NO afectan a
+ * (admin), (manager) ni (profile). El sidebar se oculta, aparece la
+ * MobileTabBar fija inferior, y los grids fijos colapsan a 1 columna.
+ *
+ * NUNCA usar estas clases fuera de `app/(sales)/` ni de
+ * `components/layout/MobileTabBar.tsx`.
+ * ──────────────────────────────────────────────────────────────────── */
+
+/* Helpers de visibilidad — se aplican siempre, no solo en mobile, pero
+   el efecto solo se nota cuando hay media queries que las cambian. */
+.sales-hide-desktop {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  /* Visibilidad inversa: el sidebar desaparece, la tab bar aparece. */
+  .sales-hide-mobile {
+    display: none !important;
+  }
+  .sales-hide-desktop {
+    display: block;
+  }
+  .sales-mobile-only {
+    display: block;
+  }
+
+  /* Reserva espacio para la tab bar fija (56px) + safe area iOS. */
+  .sales-main {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Topbar compacto — padding y tipografía más pequeños, breadcrumb oculto. */
+  .sales-topbar-compact {
+    padding: 14px 16px 10px !important;
+  }
+  .sales-topbar-compact .sales-topbar-title {
+    font-size: 22px !important;
+  }
+  .sales-topbar-compact .sales-topbar-breadcrumb {
+    display: none !important;
+  }
+  .sales-topbar-compact .sales-topbar-right {
+    width: 100%;
+  }
+
+  /* Padding del contenido de la página. */
+  .sales-page-pad {
+    padding: 16px 16px 24px !important;
+  }
+
+  /* Hero del panel: 1.2fr / 1fr → 1 columna. */
+  .sales-grid-hero {
+    grid-template-columns: 1fr !important;
+    gap: 22px !important;
+  }
+  /* Ring + texto objetivo — apilados. */
+  .sales-ring-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+  }
+
+  /* Grids de stats con número fijo de columnas. */
+  .sales-stats-3 {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+  .sales-stats-4 {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+
+  /* QR + Mensaje en /panel/enlace y /clientes/[slug] — 1 columna. */
+  .sales-qr-grid {
+    grid-template-columns: 1fr !important;
+    gap: 18px !important;
+  }
+
+  /* Detalle de cliente: dos columnas → una. */
+  .sales-detail-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Lista de reseñas — el grid 32px 1fr auto se queda en 2 columnas y
+     se permite que la pill caiga debajo (segunda fila). */
+  .sales-review-row {
+    grid-template-columns: 32px 1fr !important;
+    padding: 14px 16px !important;
+  }
+  .sales-review-pill {
+    grid-column: 2 !important;
+    margin-top: 8px;
+  }
+
+  /* RangePicker — el popover de 320px no debe desbordar. */
+  .sales-rangepicker-popover {
+    width: calc(100vw - 24px) !important;
+    max-width: 320px !important;
+    right: 0 !important;
+  }
+}
+
+@media (min-width: 768px) {
+  /* Cualquier elemento marcado como mobile-only no se ve en desktop. */
+  .sales-mobile-only {
+    display: none !important;
+  }
+}

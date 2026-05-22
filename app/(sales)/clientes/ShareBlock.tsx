@@ -89,6 +89,7 @@ export function ShareBlock({
       </div>
 
       <div
+        className="sales-qr-grid"
         style={{
           marginTop: 18,
           display: "grid",
