@@ -17,8 +17,10 @@ const CSP = [
   "default-src 'self'",
   "img-src 'self' https: data: blob:",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
-  "font-src 'self' data:",
+  // fonts.googleapis.com es el CSS de Google Fonts (Inter); fonts.gstatic.com
+  // sirve los .woff2 reales.
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.googleapis.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
