@@ -224,9 +224,9 @@ export const SALES_SIDEBAR_GROUPS: SidebarGroup[] = [
     id: "main",
     items: [
       { id: "panel", label: "Mi panel", href: "/panel", icon: LayoutDashboard },
-      { id: "link", label: "Mi enlace", href: "/panel#enlace", icon: Link2 },
+      { id: "link", label: "Mi enlace", href: "/panel/enlace", icon: Link2 },
       { id: "clients", label: "Mis clientes", href: "/clientes", icon: Users },
-      { id: "reviews", label: "Mis reseñas", href: "/panel#resenas", icon: Star },
+      { id: "reviews", label: "Mis reseñas", href: "/panel/resenas", icon: Star },
     ],
   },
 ];
