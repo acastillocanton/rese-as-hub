@@ -2,6 +2,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isSafeNext } from "@/lib/url-validation";
 
+/**
+ * HEAD handler explícito. Sin esto, Next.js auto-genera HEAD a partir del GET
+ * — incluyendo ejecutar el handler completo solo para "calcular los headers".
+ * Eso hace que email scanners (Microsoft Safe Links, antivirus, link-preview)
+ * que hacen HEAD al recibir el email consuman el token OTP antes de que el
+ * usuario pulse, y al pulsar después salta "otp_expired".
+ * Aquí devolvemos 200 vacío sin tocar Supabase.
+ */
+export async function HEAD() {
+  return new NextResponse(null, { status: 200 });
+}
+
 const ALLOWED_TYPES = new Set([
   "magiclink",
   "invite",
