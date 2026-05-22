@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { createClient as createPlainSupabaseClient } from "@supabase/supabase-js";
 import { GhostBtn } from "@/components/ui/GhostBtn";
-import { createClient } from "@/lib/supabase/client";
 
 type Props = {
   next?: string;
@@ -28,11 +28,24 @@ export function LoginForm({ next, error, sent }: Props) {
       return;
     }
     startTransition(async () => {
-      // Sin emailRedirectTo: Supabase genera un token OTP (no PKCE) que el
-      // handler /auth/confirm puede verificar con verifyOtp({ token_hash, type }).
-      // Pasar emailRedirectTo forzaría flujo PKCE y el token llegaría con prefijo
-      // pkce_, incompatible con la plantilla del email que usa {{ .TokenHash }}.
-      const supabase = createClient();
+      // Usamos cliente vanilla @supabase/supabase-js (no @supabase/ssr) porque
+      // @supabase/ssr fuerza PKCE en el browser-client ignorando flowType:
+      // 'implicit'. Eso hace que signInWithOtp emita tokens con prefijo
+      // `pkce_` en el email, incompatibles con el handler /auth/confirm que
+      // hace verifyOtp({ token_hash, type }). El cliente vanilla SÍ respeta
+      // flowType: 'implicit' y genera tokens OTP normales. No persiste sesión
+      // porque la sesión se materializa server-side en /auth/confirm.
+      const supabase = createPlainSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          auth: {
+            flowType: "implicit",
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        },
+      );
       const { error: signInError } = await supabase.auth.signInWithOtp({
         email: rawEmail,
         options: {
