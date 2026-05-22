@@ -202,11 +202,21 @@ button {
     margin-top: 8px;
   }
 
-  /* RangePicker — el popover de 320px no debe desbordar. */
+  /* RangePicker — el popover de 320px en absolute con right:0 se sale
+     por la izquierda cuando el botón flex-wrappea en mobile. Lo pasamos
+     a position fixed centrado bajo el topbar, ocupando casi todo el
+     ancho del viewport con margen lateral. */
   .sales-rangepicker-popover {
-    width: calc(100vw - 24px) !important;
-    max-width: 320px !important;
-    right: 0 !important;
+    position: fixed !important;
+    top: 88px !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: auto !important;
+    width: auto !important;
+    max-width: 420px !important;
+    margin: 0 auto !important;
+    max-height: 70vh !important;
+    overflow-y: auto !important;
   }
 }
 
