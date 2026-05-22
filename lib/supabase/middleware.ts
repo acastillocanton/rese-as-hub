@@ -12,6 +12,38 @@ const ROLE_HOME: Record<Role, string> = {
   reviews_manager: "/dashboard",
 };
 
+// Bots, crawlers y link-previewers. Reciben 403 incluso en rutas públicas
+// (login, /c/..., legales). Capa adicional sobre X-Robots-Tag — aquel evita
+// que indexen, esto evita que hagan fetch siquiera.
+//
+// El check va ANTES de isPublicPath para que cubra TODA la app. Email
+// scanners (Microsoft Safe Links, etc.) NO incluyen "bot" en su UA, así que
+// el HEAD a /auth/confirm sigue funcionando (§4.9 del CLAUDE.md). Vercel
+// Cron usa "vercel-cron/1.0" → tampoco matchea.
+const BLOCKED_UA_KEYWORDS = [
+  // Detectores genéricos
+  "bot", "crawler", "spider", "scraper", "crawling",
+  // Buscadores principales
+  "googlebot", "bingbot", "baidu", "yandex", "duckduckgo",
+  // Previewers sociales / mensajería
+  "facebookexternalhit", "facebot", "twitterbot", "linkedinbot",
+  "slackbot", "whatsapp", "telegrambot", "discordbot",
+  // Apple
+  "applebot",
+  // LLM / AI crawlers
+  "gptbot", "ccbot", "claudebot", "claude-web", "anthropic-ai",
+  "perplexitybot", "chatgpt-user", "google-extended", "amazonbot",
+  // SEO / scrapers misc.
+  "bytespider", "petalbot", "ahrefsbot", "semrushbot",
+  "mj12bot", "dotbot",
+];
+
+function isBlockedBot(ua: string | null): boolean {
+  if (!ua) return false;
+  const lower = ua.toLowerCase();
+  return BLOCKED_UA_KEYWORDS.some((k) => lower.includes(k));
+}
+
 // Routes accessible without an authenticated session.
 //  - /login            sign-in page
 //  - /accept-invite    initial onboarding from emailed invite
@@ -69,6 +101,18 @@ function pathAllowedForRole(pathname: string, role: Role): boolean {
 }
 
 export async function updateSession(request: NextRequest) {
+  // Block bots/crawlers antes que cualquier otra cosa. Garantiza que ni
+  // siquiera /login, /c/... o /privacidad les responda con HTML utilizable.
+  if (isBlockedBot(request.headers.get("user-agent"))) {
+    return new NextResponse("Forbidden", {
+      status: 403,
+      headers: {
+        "X-Robots-Tag": "noindex, nofollow, noarchive, nosnippet",
+        "Content-Type": "text/plain; charset=utf-8",
+      },
+    });
+  }
+
   let response = NextResponse.next({ request });
 
   // Demo mode: Supabase not yet connected. Let every request through so the
