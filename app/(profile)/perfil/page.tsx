@@ -97,7 +97,7 @@ export default async function PerfilPage() {
           maxWidth: 760,
         }}
       >
-        <Card padding={28}>
+        <Card padding={28} className="profile-card">
           <div
             style={{
               fontSize: 11.5,
@@ -116,7 +116,7 @@ export default async function PerfilPage() {
           />
         </Card>
 
-        <Card padding={28}>
+        <Card padding={28} className="profile-card">
           <div
             style={{
               fontSize: 11.5,
@@ -164,7 +164,7 @@ export default async function PerfilPage() {
           </p>
         </Card>
 
-        <Card padding={28}>
+        <Card padding={28} className="profile-card">
           <div
             style={{
               fontSize: 11.5,
@@ -178,6 +178,7 @@ export default async function PerfilPage() {
             Sesión
           </div>
           <div
+            className="profile-session-row"
             style={{
               display: "flex",
               alignItems: "center",
@@ -229,6 +230,7 @@ function Field({
 }) {
   return (
     <div
+      className="profile-field"
       style={{
         display: "grid",
         gridTemplateColumns: "160px 1fr",
@@ -243,6 +245,7 @@ function Field({
           color: "var(--ink)",
           fontFamily: mono ? "var(--font-mono)" : "inherit",
           fontWeight: typeof value === "string" ? 500 : undefined,
+          wordBreak: "break-word",
         }}
       >
         {value}

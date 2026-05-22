@@ -216,3 +216,28 @@ button {
     display: none !important;
   }
 }
+
+/* /perfil — afinar para mobile. Aplica a cualquier rol que abra /perfil
+   en un viewport ≤767px (en producción solo sales, pero seguro para
+   admin/manager si abren por error). */
+@media (max-width: 767px) {
+  .profile-card {
+    padding: 18px !important;
+  }
+  .profile-field {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+    align-items: flex-start !important;
+  }
+  .profile-session-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .profile-session-row form {
+    width: 100%;
+  }
+  .profile-session-row form button {
+    width: 100%;
+    justify-content: center;
+  }
+}
