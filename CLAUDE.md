@@ -17,7 +17,7 @@ Tres roles:
 
 **Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{sales-slug}/{client-slug}` → cliente cae directo en "Escribir reseña" en Google (302) → cron sincroniza vía Google Business Profile API → algoritmo atribuye al comercial por ventana temporal + nombre del cliente.
 
-**Stack**: Next.js 15.5.18 App Router + Turbopack · TypeScript strict · Supabase (Postgres + Auth + RLS) · Google Business Profile API + OAuth (una credencial por ficha) · Brevo SMTP (vía Supabase para magic-links/invites; vía Nodemailer en [lib/email/brevo.ts](lib/email/brevo.ts) para notificaciones transaccionales — claves SMTP independientes) · Vercel Hobby + cron diario `0 9 * * *` UTC · ExcelJS · qrcode.react · Zod · lucide-react.
+**Stack**: Next.js 15.5.18 App Router + Turbopack · TypeScript strict + `noUncheckedIndexedAccess` · Supabase (Postgres + Auth + RLS) · Google Business Profile API + OAuth (una credencial por ficha) · Brevo SMTP (vía Supabase para magic-links/invites; vía Nodemailer en [lib/email/brevo.ts](lib/email/brevo.ts) para notificaciones transaccionales — claves SMTP independientes) · Vercel Hobby + cron diario `0 9 * * *` UTC · ExcelJS (dynamic import) · qrcode.react · Zod · lucide-react · Vitest para tests unit.
 
 **Producción**: [`https://resenas.marinadorconstrucciones.com`](https://resenas.marinadorconstrucciones.com). DNS en SiteGround.
 
@@ -31,6 +31,8 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint
+npm test               # Vitest unit tests (matcher + date-range, 36 tests)
+npm run test:watch     # Vitest en modo watch
 ```
 
 Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numérico (`001_*`, `002_*`, …). Las migraciones son `Ask first` (ver §6).
@@ -47,9 +49,9 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | 2 · Admin (`/dashboard`, `/comerciales`, `/gestores`, `/fichas`, `/resenas/verificacion`) | ✅ |
 | 3 · Sales desktop (`/panel`, `/panel/enlace`, `/panel/resenas`, `/clientes`, `/clientes/[slug]`) | ✅ |
 | 3.b · Sales mobile (ver subsección) | ✅ |
-| 4 · Google sync + matching | ⚠️ código listo, esperando cuota |
+| 4 · Google sync + matching | ⚠️ código listo + hardened, esperando cuota |
 | 5 · Reviews manager (`/manager/resenas`, `/manager/export`) | ✅ |
-| 6 · Polish | ⚠️ parcial — falta a11y, loading states, tests, seed |
+| 6 · Polish / hardening (auditoría 18 items) | ✅ |
 | 7 · Deploy producción | ✅ |
 | Perfil global (`/perfil` + avatares) | ✅ |
 | Páginas legales (`/privacidad`, `/terminos`) | ✅ |
@@ -68,15 +70,52 @@ Clases mobile (todas `!important` para vencer al inline `style={{}}` desktop): `
 `ClientRowItem` mantiene dos sub-layouts coexistentes (desktop grid 5 cols + mobile card vertical) compartiendo estado.
 
 ### Fase 4 · Google (detalle)
-Código completo en [`lib/google/business-profile.ts`](lib/google/business-profile.ts) (cliente OAuth + reviews v4 con `fetchWithRetry` para 429/5xx), [`lib/matching/attribute-review.ts`](lib/matching/attribute-review.ts) (ventana 48h + similitud Unicode-aware; thresholds 75/40), [`/api/cron/sync-google-reviews`](app/api/cron/sync-google-reviews/route.ts) (paginación + early-exit + idempotencia por `unique (location_id, google_review_id)`), [`/api/google/oauth/*`](app/api/google/oauth/) (consent + token swap + state CSRF), [`/fichas/[id]/conectar`](app/(admin)/fichas/[id]/conectar/page.tsx) (UI selección). Email transaccional al comercial cuando entra `counted` en [`lib/email/notify-new-review.ts`](lib/email/notify-new-review.ts) con `escapeHtml` aplicado a todo input externo.
+Código completo en [`lib/google/business-profile.ts`](lib/google/business-profile.ts) (cliente OAuth + reviews v4 con `fetchWithRetry` para 429/5xx), [`lib/matching/attribute-review.ts`](lib/matching/attribute-review.ts) (ventana 48h + similitud Unicode-aware; thresholds 75/40, **modo `anonymous_author` cuando Google no devuelve displayName: usa ventana corta 4h y solo asigna `pending` si hay UN único candidato**), [`/api/cron/sync-google-reviews`](app/api/cron/sync-google-reviews/route.ts) (paginación + early-exit + idempotencia por `unique (location_id, google_review_id)` + **lock optimista contra solapamiento** + **email notificación en batch con `Promise.allSettled` al final** + `.limit(10000)` defensivo en share_links), [`/api/google/oauth/*`](app/api/google/oauth/) (consent + token swap + state CSRF), [`/fichas/[id]/conectar`](app/(admin)/fichas/[id]/conectar/page.tsx) (UI selección). Email transaccional al comercial cuando entra `counted` en [`lib/email/notify-new-review.ts`](lib/email/notify-new-review.ts) con `escapeHtml` aplicado a todo input externo. Endpoint admin [`/api/admin/notify-failed`](app/api/admin/notify-failed/route.ts) (GET lista pendientes, POST reintenta) para emails de notificación que fallaron — registra `notify_retry_ok` / `notify_retry_failed` en `audit_log`.
 
 OAuth flow validado E2E. Único pendiente: cuota Google. Mientras tanto las APIs `mybusiness*` devuelven 429 RESOURCE_EXHAUSTED.
+
+Tests unit del matcher en [`lib/matching/__tests__/attribute-review.test.ts`](lib/matching/__tests__/attribute-review.test.ts) (22 tests cubriendo `nameSimilarity` + flujo con autor real + modo anonymous).
 
 ### Fase 5 · Gestor (detalle)
 Decisión: el gestor unifica vista con admin en lugar de un universo paralelo `/manager/*`. Comparte `/dashboard` y `/comerciales/*` con plenos permisos sobre sales. Pantallas propias: [`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) y [`/manager/export`](app/(manager)/manager/export/page.tsx) (.xlsx con detalle + resumen dashboard). Gating: helper [`assertCanManageSales()`](app/(admin)/comerciales/actions.ts) en las 4 acciones de comerciales. RLS: migración [`005_manager_sales_admin.sql`](supabase/migrations/005_manager_sales_admin.sql) — `with check` impide escalar un sales a admin/manager.
 
-### Pendiente Fase 6 (Polish)
-A11y, loading states, seed realista, tests Vitest + Playwright, `noUncheckedIndexedAccess` en tsconfig, política INSERT en `audit_log` (hoy parcheado vía service-client en [`recordAudit()`](lib/audit.ts)).
+### Fase 6 · Polish / hardening (auditoría 18 items, 2026-05-22)
+
+Auditoría exhaustiva (seguridad + bugs + rendimiento) con 18 hallazgos. Resueltos todos en commits `849c63f`, `69c610a`, `0b656d7`:
+
+**🔴 Críticos resueltos**:
+- `.limit(5000)` en `/api/export/reviews` y `.limit(50000)` en share_links → evita timeout Vercel con volumen real.
+- Email batch en cron (`Promise.allSettled` al final del loop) → si Brevo timeout en uno, el cron no muere.
+- Tests Vitest unit del matcher + date-range (36 tests).
+
+**🟠 Altos resueltos**:
+- CSP completo en `next.config.ts` (Supabase + Google + Google Fonts + imágenes).
+- Error handling reforzado en `(perfil)/actions` (publicUrl) y `(admin)/fichas/actions` (desconectar Google aborta si falla borrar location_secrets).
+- Migración 007 con índices compuestos `(sales_id, google_created_at desc)`, `(location_id, ...)`, `(client_id, ...)` parcial, `(match_state, ...)` en `reviews`.
+- `count: "planned"` en KPIs no comparativos (clients total en dashboard, visitas QR totales en /panel/enlace).
+
+**🟡 Medios resueltos**:
+- Lock optimista en cron (`UPDATE oauth_last_sync_at` atómico con filtro temporal → skip si otro corrió en <60s).
+- Endpoint `/api/admin/notify-failed` (admin only) para listar y reenviar emails fallidos.
+- `parseRange()` cae al mes actual si `from > to` (antes invertía silencioso).
+- Modo `anonymous_author` en matcher (sin nombre + 1 candidato cercano → pending; antes caía a unmatched siempre).
+- `.limit(10000)` defensivo en share_links del cron + `order opened_at desc`.
+
+**🟢 Bajos resueltos**:
+- Validación defensiva del token_hash en `/login/manual` (formato base64url-ish, longitud 20-200).
+- `export const dynamic = "force-dynamic"` en `/panel`, `/panel/enlace`, `/panel/resenas`, `/dashboard`.
+- `noUncheckedIndexedAccess: true` en `tsconfig.json` + arreglados ~60 errores resultantes en 9 archivos.
+- Migración 008: columna `actor_id` en `audit_log` + policy `audit_log_self_insert`.
+- ExcelJS pasa a dynamic import en `/api/export/reviews`.
+
+**Skipped (documentado)**:
+- `revalidateTag` en server actions: requiere envolver TODAS las queries Supabase en `unstable_cache`. Refactor grande sin valor inmediato (las páginas son `dynamic`, no hay caché que invalidar). Pendiente para cuando haya `unstable_cache`.
+
+**Pendiente de Fase 6** (no aborda la auditoría, son items separados):
+- A11y (audit Lighthouse + arreglos puntuales).
+- Loading states (`loading.tsx` por route group).
+- Seed más realista para dev (datos de prueba que reflejen escala futura).
+- Tests E2E Playwright (happy paths: login → panel → crear cliente → compartir enlace; cron con fixture).
 
 ---
 
@@ -116,7 +155,7 @@ Hay un `package-lock.json` huérfano en `/Users/usuario/` que confunde a Next 15
 [`next.config.ts`](next.config.ts) tiene `turbopack: { root: __dirname }` + `outputFileTracingRoot: __dirname`. **NO QUITAR**.
 
 ### 4.6 `audit_log` siempre via service-client
-La tabla tiene RLS habilitada sin política de INSERT — diseño: el usuario no fabrica entradas de auditoría. Insert desde cookie-context falla silenciosamente. Usar [`recordAudit()`](lib/audit.ts) en código server-only (bypasea RLS).
+La tabla tiene RLS habilitada. Desde migración 008 hay policy `audit_log_self_insert` que permite a cualquier authenticated insertar SOLO si `actor_id = auth.uid()`. El helper [`recordAudit()`](lib/audit.ts) sigue usando service-client (bypasea RLS) para casos donde el actor es el sistema (cron, webhooks) o cuando no se pasa actor_id. Si se quisiera permitir audits con actor humano desde cookie-context, pasar `actor_id` y usar el client server normal.
 
 ### 4.7 Eliminar y recrear perfiles → liberar `auth.users`
 `generateLink({ type: "invite" })` rechaza con `email_exists` si queda el `auth.user`. `deleteSales` / `deleteReviewsManager` borran ambos (profile + auth.user) vía service-client. Para recuperar acceso sin perder historial, usar **"Reenviar acceso"** en lugar de eliminar + reinvitar.
@@ -154,6 +193,14 @@ Settings → Seguridad → IP autorizadas → toggle "Claves SMTP" debe estar **
 
 Ambas comparten login (`7e1a24001@smtp-brevo.com`) y remitente (`info@marinadorconstrucciones.com`). Brevo solo enseña el valor al crear la key — si se pierde, regenerar y actualizar `.env.local` + Vercel + redeploy.
 
+### 4.15 Cron — lock optimista contra solapamiento
+[`/api/cron/sync-google-reviews`](app/api/cron/sync-google-reviews/route.ts) hace un `UPDATE locations SET oauth_last_sync_at = now() WHERE id = $1 AND (oauth_last_sync_at IS NULL OR oauth_last_sync_at < now() - 60s)` con `.select("id")` al inicio de cada location. Si la fila devuelta está vacía, otro cron procesó esa location hace menos de 60s → el actual hace skip con `entry.error = "skipped_concurrent_run"`. Atómico en Postgres (UPDATE+WHERE en una transacción).
+
+Esto evita trabajo duplicado y emails dobles cuando el botón "Run" manual de Vercel Cron Jobs UI coincide con el schedule diario.
+
+### 4.16 Cron — email transaccional en batch al final del loop
+Los emails al comercial cuando entra `counted` ya NO se envían `await` dentro del loop. Se acumulan en `pendingNotifications[]` durante todo el cron y al final se disparan con `Promise.allSettled(...)` en paralelo. Si entran 50 reseñas, son 50 SMTP simultáneos en lugar de 50 secuenciales (el cron no excede 60s). Los fallos se registran en `audit_log` como `notify_failed` y pueden reenviarse desde [`/api/admin/notify-failed`](app/api/admin/notify-failed/route.ts).
+
 ### 4.14 Clases `sales-*` solo dentro del scope sales
 Las clases con prefijo `sales-*` en [`app/globals.css`](app/globals.css) usan `!important` para vencer al inline `style={{}}`. Eso permite mobile sin tocar desktop, pero contaminarían admin/manager/profile si se aplicaran fuera. Usar **solo** dentro de `app/(sales)/` o de [`MobileTabBar.tsx`](components/layout/MobileTabBar.tsx).
 
@@ -189,7 +236,7 @@ Excepciones controladas:
 - Aplicar RLS en toda tabla con datos sensibles. `location_secrets` tiene RLS sin políticas — solo service-role.
 - Usar `createServiceClient` **solo** desde código server-only. Nunca importarlo desde un componente cliente.
 - Usar `recordAudit()` para escribir en `audit_log`. Nunca insert directo desde cookie-context (§4.6).
-- `npm run typecheck` antes de cerrar tarea.
+- `npm run typecheck` antes de cerrar tarea. `npm test` también si has tocado `lib/matching/` o `lib/date-range`.
 - Actualizar `spec.md` cuando una decisión cambie.
 
 ### Ask first
@@ -211,7 +258,7 @@ Excepciones controladas:
 
 ## 7. Estado real de Supabase
 
-- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones 001-006 aplicadas. Próxima (007) será para el ranking (pendiente de diseño).
+- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones **001-008 aplicadas**. 007 = índices compuestos en `reviews`. 008 = `actor_id` + policy `audit_log_self_insert`. Próxima (009) será para el ranking (pendiente de diseño).
 - **URL Configuration**: Site URL = `https://resenas.marinadorconstrucciones.com`; Redirect URLs incluyen `http://localhost:3000/**` + URL prod con `/**`.
 - **Email Templates**: Magic Link con `type=email`, Invite con `type=invite` (ver §4.1).
 - **Storage**: bucket público `avatars` con 3 policies (insert/update/delete propio en `{user_id}/`). Avatar upload vía server action con service-role en [`(profile)/perfil/actions.ts`](app/(profile)/perfil/actions.ts) (bypasea RLS por simplicidad).
@@ -231,8 +278,12 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
 1. **Esperar aprobación Google** (caso `5-5855000041022`, ETA ~2026-06-04). Sin cuota, las APIs `mybusiness*` devuelven 429 y el cron no trae reseñas — el resto de la app es funcional.
 2. **Cuando Google apruebe**: probar OAuth E2E (`listAccounts` / `listLocations` / `listReviews`). Si va bien, conectar las 7 fichas desde `/fichas` en prod. El redirect URI de prod ya está añadido en Google Cloud Console.
 3. **Publicar consent screen fuera de Testing** (Verification de Google) si en el futuro hay testers externos al equipo interno actual.
-4. **Polish opcional**: a11y, loading states, seed más realista, tests Vitest + Playwright, `noUncheckedIndexedAccess`, política INSERT en `audit_log`.
-5. **Ranking del comercial**: migración 007 + UI real para `/panel/ranking` (hoy ComingSoon).
+4. **Polish restante** (no resuelto en la auditoría):
+   - A11y (audit Lighthouse + arreglos puntuales).
+   - Loading states (`loading.tsx` por route group).
+   - Seed más realista para dev.
+   - Tests E2E Playwright (login → panel → crear cliente → compartir enlace; cron con fixture del Google API).
+5. **Ranking del comercial**: migración 009 + UI real para `/panel/ranking` (hoy ComingSoon).
 6. **Ajustes globales** (`/ajustes`): la ruta existe pero está **oculta del sidebar admin** hasta tener contenido (era un stub `ComingSoon` que confundía). Cuando se implemente alguna de las funcionalidades planeadas (reglas de matching configurables, plantilla del email de invitación, schedule del cron, plantilla del mensaje de WhatsApp), añadir de vuelta el item `{ id: "settings", label: "Ajustes", href: "/ajustes", icon: Settings }` en `ADMIN_SIDEBAR_GROUPS` de [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) (junto a "Fichas Google"). Sigue siendo solo-admin por middleware.
 
 ---

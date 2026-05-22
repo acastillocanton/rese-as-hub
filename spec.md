@@ -2,7 +2,7 @@
 
 > **Fuente de verdad del MVP.** Este documento define qué construimos, por qué, y cómo sabemos que está hecho. Si un cambio (de código, scope, o decisión arquitectónica) entra en conflicto con este archivo, **se actualiza la spec primero** y luego se implementa.
 >
-> Documento vivo · versión 0.2 · última edición 2026-05-21 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
+> Documento vivo · versión 0.3 · última edición 2026-05-22 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
 
 ---
 
@@ -28,17 +28,18 @@
 
 | Capa | Tecnología | Versión |
 |------|------------|---------|
-| Framework | Next.js (App Router, Turbopack) | 15.1.0 |
-| Lenguaje | TypeScript strict | 5.7 |
+| Framework | Next.js (App Router, Turbopack) | 15.5.18 |
+| Lenguaje | TypeScript strict (+ `noUncheckedIndexedAccess`) | 5.7 |
 | UI | React 19 + CSS variables (tokens del diseño) + Tailwind | 4.x utility classes |
 | Backend / DB | Supabase (Postgres + Auth + RLS) | hosted |
-| Auth | Magic-link vía Supabase Auth + roles aplicados con middleware + RLS | — |
+| Auth | Magic-link vía Supabase Auth (Brevo SMTP) + roles aplicados con middleware + RLS | — |
 | Integración externa | Google Business Profile API v1 + OAuth 2.0 (una credencial por ficha) | — |
-| Email transaccional | Resend (invitaciones + notificaciones) | — |
-| Hosting + Cron | Vercel + Vercel Cron | — |
-| Excel | ExcelJS (server-side) | 4.4 |
+| Email transaccional | Brevo SMTP vía Nodemailer (notificaciones al comercial cuando entra reseña counted) | — |
+| Hosting + Cron | Vercel Hobby + Vercel Cron diario `0 9 * * *` UTC | — |
+| Excel | ExcelJS (server-side, dynamic import) | 4.4 |
 | QR | qrcode.react | 4.2 |
 | Validación | Zod | 3.23 |
+| Tests | Vitest (unit, en `lib/__tests__` y `lib/matching/__tests__`) | 4.x |
 
 **Single-tenant**: una sola empresa (Inseryal). No multi-empresa.
 
@@ -55,6 +56,8 @@ npm run build          # build de producción (verifica tipos y compila)
 npm run start          # server de producción tras npm run build
 npm run typecheck      # tsc --noEmit
 npm run lint           # next lint
+npm test               # Vitest unit (matcher + date-range, 36 tests)
+npm run test:watch     # Vitest en modo watch
 ```
 
 **Operaciones con la base de datos** (cuando Supabase esté conectado):
@@ -63,13 +66,12 @@ npm run lint           # next lint
 # Ejecutar migraciones en el SQL Editor del dashboard de Supabase, en orden:
 #   supabase/migrations/001_initial_schema.sql
 #   supabase/migrations/002_rls_policies.sql
-#   supabase/migrations/003_seed_demo.sql
-
-# Cuando linkemos el proyecto con Supabase CLI:
-npx supabase login
-npx supabase link --project-ref <ref>
-npx supabase db push
-npx supabase gen types typescript --linked > lib/supabase/types.generated.ts
+#   supabase/migrations/003_seed_demo.sql       (opcional, datos demo)
+#   supabase/migrations/004_google_oauth.sql
+#   supabase/migrations/005_manager_sales_admin.sql
+#   supabase/migrations/006_profile_avatars.sql
+#   supabase/migrations/007_reviews_composite_indices.sql
+#   supabase/migrations/008_audit_log_insert_policy.sql
 ```
 
 **Disparar el cron manualmente** (con `CRON_SECRET` configurado):
@@ -187,23 +189,30 @@ export default function DashboardPage() {
 Nivel **mínimo** acordado para el MVP. Objetivo: cubrir lo que duele si rompe, no perseguir cobertura.
 
 **Frameworks**:
-- **Vitest** para unit tests de `lib/*` (matching, validation, utils).
-- **Playwright** para tres flujos e2e críticos:
-  1. Admin invita comercial → recibe email → completa alta.
-  2. Comercial genera enlace personalizado → abre desde otro navegador → 302 a Google.
-  3. Cron ejecuta sync (con fixtures de respuesta GBP) → reseña aparece atribuida en la pantalla del comercial.
+- **Vitest** para unit tests de `lib/*` (matching, validation, utils). ✅ Configurado con `vitest.config.ts` (alias `@/*`, stub para `server-only`).
+- **Playwright** para flujos E2E críticos. ⏳ Pendiente.
 
-**Ubicaciones**:
+**Estado actual** (versión 0.3):
+
 ```
-tests/                            Vitest unit tests
-  matching/                       Tests del algoritmo de atribución
-  url-validation.test.ts
-  landing.test.ts
-e2e/                              Playwright
-  invite-flow.spec.ts
-  share-link.spec.ts
-  cron-attribution.spec.ts
+lib/__tests__/
+  date-range.test.ts                 ✅ 14 tests (parseRange, thisMonthRange, lastMonth,
+                                        lastQuarter, isFullNaturalMonth — incl. from > to,
+                                        formato inválido, salto de año)
+lib/matching/__tests__/
+  attribute-review.test.ts           ✅ 22 tests (nameSimilarity completa, flujo con
+                                        autor real, modo anonymous_author)
+test/
+  server-only-stub.ts                Stub para que Vitest pueda importar módulos con
+                                     `import "server-only"`.
+
+e2e/                                 ⏳ Pendiente — Playwright sin instalar
+  invite-flow.spec.ts                ⏳
+  share-link.spec.ts                 ⏳
+  cron-attribution.spec.ts           ⏳
 ```
+
+Tests existentes: **36 pasando**. `npm test` en <1s.
 
 **Sin objetivo numérico de cobertura**. El criterio es: ¿este código fallaría silenciosamente en producción si lo rompemos? Si la respuesta es sí, hay test.
 
@@ -264,9 +273,10 @@ El MVP está hecho cuando **todas** estas condiciones son verdad:
 - [ ] **Tiempo de detección de reseña < 10 minutos** desde su publicación en Google hasta su aparición en el panel del comercial (medido vía timestamp `google_created_at` vs `fetched_at`).
 
 **No-funcionales (mínimos, no objetivos duros)**:
-- [ ] `npm run build` y `npm run typecheck` pasan sin errores ni warnings nuevos.
+- [x] `npm run build` y `npm run typecheck` pasan sin errores ni warnings nuevos. ✅ Validado 2026-05-22.
+- [x] `npm test` pasa (36 tests verdes). ✅
 - [ ] El servidor responde 200 en todas las rutas autenticadas con un usuario válido de cada rol.
-- [ ] Cabeceras de seguridad presentes (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `HSTS`).
+- [x] Cabeceras de seguridad presentes (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `HSTS`). ✅ CSP añadido 2026-05-22.
 - [ ] No hay regresiones en el smoke test del README.
 
 ---
