@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { createClient } from "@/lib/supabase/client";
-import { isSafeNext } from "@/lib/url-validation";
 
 type Props = {
   next?: string;
@@ -28,21 +27,15 @@ export function LoginForm({ next, error, sent }: Props) {
       setErrorMessage("Introduce un email válido.");
       return;
     }
-    const rawNext = String(formData.get("next") ?? "");
-    const safeNext = isSafeNext(rawNext) ? rawNext : "/";
-
     startTransition(async () => {
-      // PKCE requires the verifier to live in cookies the client can read on
-      // the callback. We must call signInWithOtp from the browser client so
-      // it's persisted via document.cookie — initiating from a server action
-      // leaves the verifier server-side only and the callback fails with
-      // "PKCE code verifier not found in storage".
+      // Sin emailRedirectTo: Supabase genera un token OTP (no PKCE) que el
+      // handler /auth/confirm puede verificar con verifyOtp({ token_hash, type }).
+      // Pasar emailRedirectTo forzaría flujo PKCE y el token llegaría con prefijo
+      // pkce_, incompatible con la plantilla del email que usa {{ .TokenHash }}.
       const supabase = createClient();
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeNext)}`;
       const { error: signInError } = await supabase.auth.signInWithOtp({
         email: rawEmail,
         options: {
-          emailRedirectTo: redirectTo,
           shouldCreateUser: false,
         },
       });
