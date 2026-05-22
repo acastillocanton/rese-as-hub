@@ -2,20 +2,19 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
 import { Avatar } from "@/components/ui/Avatar";
 import { GhostBtn } from "@/components/ui/GhostBtn";
+import { uploadAvatar, removeAvatar } from "./actions";
 
 type Props = {
-  userId: string;
   name: string;
   initialAvatarUrl: string | null;
 };
 
-const MAX_BYTES = 4 * 1024 * 1024; // 4 MB
+const MAX_BYTES = 4 * 1024 * 1024;
 const ACCEPTED = ["image/png", "image/jpeg", "image/webp"];
 
-export function PhotoUpload({ userId, name, initialAvatarUrl }: Props) {
+export function PhotoUpload({ name, initialAvatarUrl }: Props) {
   const router = useRouter();
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl);
   const [busy, setBusy] = useState(false);
@@ -35,45 +34,14 @@ export function PhotoUpload({ userId, name, initialAvatarUrl }: Props) {
 
     setBusy(true);
     try {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      );
-
-      // Path por usuario: `{userId}/avatar.{ext}`. Mantenemos un único fichero
-      // por usuario sobreescribiendo (upsert: true). Cache-busting con un
-      // timestamp en el query string para que el navegador no muestre la
-      // versión vieja tras un re-upload.
-      const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-      const path = `${userId}/avatar.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(path, file, {
-          upsert: true,
-          contentType: file.type,
-          cacheControl: "3600",
-        });
-
-      if (uploadError) throw new Error(uploadError.message);
-
-      const { data: publicUrlData } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(path);
-      const newUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
-
-      // Persistimos la URL en profiles.avatar_url. RLS profiles_self_update
-      // permite UPDATE a la propia fila siempre que `role` no cambie.
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ avatar_url: newUrl })
-        .eq("id", userId);
-
-      if (updateError) throw new Error(updateError.message);
-
-      setAvatarUrl(newUrl);
-      // Refresca server components (sidebar, etc.) para que reflejen la foto
-      // sin necesidad de F5 manual.
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await uploadAvatar(formData);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setAvatarUrl(result.url);
       router.refresh();
     } catch (e) {
       console.error("[avatar upload]", e);
@@ -87,29 +55,11 @@ export function PhotoUpload({ userId, name, initialAvatarUrl }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      );
-
-      // Borramos ambos formatos posibles por si quedó un huérfano de un
-      // upload anterior con otra extensión. Las que no existan, fallan
-      // silenciosamente y no es problema.
-      await supabase.storage
-        .from("avatars")
-        .remove([
-          `${userId}/avatar.png`,
-          `${userId}/avatar.jpg`,
-          `${userId}/avatar.webp`,
-        ]);
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ avatar_url: null })
-        .eq("id", userId);
-
-      if (updateError) throw new Error(updateError.message);
-
+      const result = await removeAvatar();
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       setAvatarUrl(null);
       router.refresh();
     } catch (e) {
@@ -132,7 +82,6 @@ export function PhotoUpload({ userId, name, initialAvatarUrl }: Props) {
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) handleFile(f);
-            // Reset para que el mismo archivo pueda re-subirse después.
             if (inputRef.current) inputRef.current.value = "";
           }}
           style={{ display: "none" }}

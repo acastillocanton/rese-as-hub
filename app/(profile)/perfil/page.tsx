@@ -107,7 +107,6 @@ export default async function PerfilPage() {
             Foto de perfil
           </div>
           <PhotoUpload
-            userId={profile.id}
             name={profile.full_name}
             initialAvatarUrl={profile.avatar_url}
           />
