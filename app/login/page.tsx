@@ -22,38 +22,18 @@ export default async function LoginPage({
     >
       <div style={{ width: "100%", maxWidth: 380 }}>
         <div style={{ textAlign: "center", marginBottom: 22 }}>
-          <div
-            aria-hidden="true"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              background: "#1D1D1F",
-              color: "#fff",
-              display: "grid",
-              placeItems: "center",
-              fontWeight: 700,
-              fontSize: 18,
-              margin: "0 auto 12px",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            r
-          </div>
-          <h1
-            style={{
-              margin: 0,
-              fontFamily: "var(--font-display)",
-              fontSize: 24,
-              fontWeight: 600,
-              letterSpacing: "-0.025em",
-            }}
-          >
-            ReseñaHub
+          <h1 style={{ margin: 0 }}>
+            <img
+              src="/brand/logo-horizontal.png"
+              alt="ReseñaHub"
+              width={220}
+              height={70}
+              style={{ display: "inline-block", height: "auto" }}
+            />
           </h1>
           <p
             style={{
-              margin: "6px 0 0",
+              margin: "10px 0 0",
               color: "var(--ink-3)",
               fontSize: 13,
             }}

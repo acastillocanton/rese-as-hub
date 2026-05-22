@@ -31,26 +31,13 @@ export default function LegalLayout({ children }: { children: ReactNode }) {
               color: "var(--ink)",
             }}
           >
-            <div
-              aria-hidden="true"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
-                background: "#1D1D1F",
-                color: "#fff",
-                display: "grid",
-                placeItems: "center",
-                fontSize: 14,
-                fontWeight: 700,
-                letterSpacing: "-0.02em",
-              }}
-            >
-              r
-            </div>
-            <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: "-0.015em" }}>
-              ReseñaHub
-            </span>
+            <img
+              src="/brand/logo-horizontal.png"
+              alt="ReseñaHub"
+              width={132}
+              height={42}
+              style={{ display: "block", height: "auto" }}
+            />
             <span style={{ fontSize: 12.5, color: "var(--ink-4)" }}>
               · Inseryal by Marina d&apos;Or
             </span>

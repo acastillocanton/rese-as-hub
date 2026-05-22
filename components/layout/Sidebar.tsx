@@ -63,23 +63,14 @@ export function Sidebar({ groups, user }: SidebarProps) {
           padding: "4px 8px",
         }}
       >
-        <div
+        <img
+          src="/brand/logo-cuadrado.png"
+          alt=""
           aria-hidden="true"
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: 8,
-            background: "#1D1D1F",
-            color: "#fff",
-            display: "grid",
-            placeItems: "center",
-            fontSize: 13,
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          r
-        </div>
+          width={26}
+          height={26}
+          style={{ display: "block", borderRadius: 6 }}
+        />
         <div style={{ fontWeight: 600, fontSize: 14, letterSpacing: "-0.015em" }}>
           ReseñaHub
         </div>
