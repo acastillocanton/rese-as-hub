@@ -64,14 +64,13 @@ export default async function ProfileLayout({
 
   return (
     <Frame>
-      {/* Sidebar: desktop siempre, mobile sólo cuando NO es sales
-          (admin/manager no tienen vista mobile, ver el sidebar es
-          aceptable). En sales se oculta vía la misma clase que en
-          (sales)/layout para que el chrome mobile sea consistente. */}
-      <div
-        className={isSales ? "sales-hide-mobile" : undefined}
-        style={{ display: "contents" }}
-      >
+      {/* /perfil es global a los tres roles. En mobile el sidebar SIEMPRE
+          se oculta (de cualquier rol) — un sidebar de 232px aplastaría
+          la página de perfil en un viewport de 375-430px. Para volver
+          al resto de la app, sales tiene la MobileTabBar; admin/manager
+          tienen un botón "← Volver" en el topbar de /perfil (ver
+          ProfileBackButton.tsx). */}
+      <div className="sales-hide-mobile" style={{ display: "contents" }}>
         <Sidebar
           groups={groups}
           user={{
@@ -82,14 +81,13 @@ export default async function ProfileLayout({
         />
       </div>
       <main
-        className={isSales ? "sales-main" : undefined}
+        className="sales-main"
         style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}
       >
         {children}
       </main>
-      {/* Tab bar mobile solo si el rol es sales — para que el comercial
-          tenga navegación de vuelta al panel desde su perfil. No
-          montamos MobileProfileAvatar aquí porque ya estás EN /perfil. */}
+      {/* Tab bar mobile solo si el rol es sales — admin/manager no
+          tienen esa chrome de navegación. */}
       {isSales && (
         <div className="sales-hide-desktop">
           <MobileTabBar />

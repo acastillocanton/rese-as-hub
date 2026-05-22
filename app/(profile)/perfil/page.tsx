@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
@@ -74,6 +75,9 @@ export default async function PerfilPage() {
     : "—";
 
   const isSales = profile.role === "sales";
+  // Admin/manager no tienen MobileTabBar — en mobile necesitan un botón
+  // explícito para volver. Sales no lo necesita (ya tiene la tab bar).
+  const backHref = profile.role === "sales" ? "/panel" : "/dashboard";
 
   return (
     <>
@@ -82,7 +86,26 @@ export default async function PerfilPage() {
         subtitle="Tu información en ReseñaHub"
         breadcrumb="Inseryal"
         range={null}
-        compact={isSales}
+        compact
+        right={
+          !isSales ? (
+            <Link
+              href={backHref}
+              className="sales-mobile-only"
+              style={{
+                padding: "7px 12px",
+                border: "1px solid var(--line-strong)",
+                borderRadius: 9,
+                fontSize: 13,
+                color: "var(--ink-2)",
+                textDecoration: "none",
+                fontWeight: 500,
+              }}
+            >
+              ← Volver
+            </Link>
+          ) : undefined
+        }
       />
 
       <div
