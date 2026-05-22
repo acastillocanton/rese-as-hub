@@ -49,10 +49,12 @@ function pathAllowedForRole(pathname: string, role: Role): boolean {
     );
   }
   if (role === "reviews_manager") {
-    // El gestor comparte vistas con el admin (Dashboard + ficha del comercial)
-    // pero sin poder editar nada — las acciones admin están condicionadas en
-    // las pantallas. Mantenemos /manager/* para los listados read-only
-    // específicos (lista global de reseñas, exportar Excel).
+    // El gestor comparte vistas con el admin (Dashboard + comerciales) y
+    // tiene plenos permisos de administración sobre el rol `sales` (migración
+    // 005): invitar, editar, reenviar acceso, eliminar. Lo que sigue siendo
+    // solo-admin: /gestores, /fichas, /resenas/verificacion, /ajustes.
+    // /manager/* aloja los listados read-only del propio gestor (lista global
+    // de reseñas, exportar Excel).
     return (
       pathname === "/dashboard" ||
       pathname.startsWith("/comerciales") ||

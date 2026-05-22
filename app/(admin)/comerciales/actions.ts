@@ -8,6 +8,31 @@ import { createInvitedProfile } from "@/lib/invite";
 import { generateAccessLink } from "@/lib/auth/resend-link";
 import { slugify } from "@/lib/utils";
 
+/**
+ * Comprueba que el caller puede administrar comerciales (admin o
+ * reviews_manager). Defensa en profundidad sobre el gating de la UI y la
+ * RLS — los server actions son endpoints HTTP y un atacante autenticado
+ * pero sin rol suficiente no debe poder dispararlos aunque conozca la URL.
+ */
+async function assertCanManageSales(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "No autenticado." };
+  const { data: actor } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle<{ role: string }>();
+  if (actor?.role !== "admin" && actor?.role !== "reviews_manager") {
+    return { ok: false, error: "No autorizado." };
+  }
+  return { ok: true };
+}
+
 const inviteSchema = z.object({
   fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
   email: z.string().email("Email inválido."),
@@ -27,6 +52,8 @@ export async function inviteSales(input: InviteSalesInput): Promise<
   | { ok: true; inviteLink: string; email: string }
   | { ok: false; error: string }
 > {
+  const auth = await assertCanManageSales();
+  if (!auth.ok) return auth;
   const parsed = inviteSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
@@ -60,13 +87,17 @@ const updateSchema = z.object({
 export type UpdateSalesInput = z.input<typeof updateSchema>;
 
 export async function updateSales(input: UpdateSalesInput) {
+  const auth = await assertCanManageSales();
+  if (!auth.ok) return { ok: false as const, error: auth.error };
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
 
   const supabase = await createClient();
-  // RLS: only admin can update other profiles (middleware also gates this route).
+  // RLS: admin (profiles_admin_all) + reviews_manager (profiles_manager_update_sales
+  // de la migración 005) son los únicos que pueden hacer UPDATE en filas con
+  // role='sales'. Middleware también gatea esta ruta.
   const { error } = await supabase
     .from("profiles")
     .update({
@@ -92,17 +123,8 @@ export async function resendSalesAccess(id: string): Promise<
   | { ok: false; error: string }
 > {
   if (!id) return { ok: false, error: "Id inválido." };
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "No autenticado." };
-  const { data: actor } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle<{ role: string }>();
-  if (actor?.role !== "admin") return { ok: false, error: "No autorizado." };
+  const auth = await assertCanManageSales();
+  if (!auth.ok) return auth;
 
   const admin = createServiceClient();
   const { data: target } = await admin
@@ -119,9 +141,11 @@ export async function resendSalesAccess(id: string): Promise<
 
 export async function deleteSales(id: string) {
   if (!id) return { error: "Id inválido." };
+  const auth = await assertCanManageSales();
+  if (!auth.ok) return { error: auth.error };
   const supabase = await createClient();
-  // The middleware already enforces admin-only access to this route, and RLS
-  // backs that up: only the admin can delete a sales profile.
+  // RLS: admin + reviews_manager (migración 005) son los únicos roles que
+  // pueden hacer DELETE en filas con role='sales'.
   const { error } = await supabase.from("profiles").delete().eq("id", id);
   if (error) {
     console.error("[comerciales] deleteSales failed:", error);

@@ -46,7 +46,7 @@ export default async function GestoresPage() {
     <>
       <Topbar
         title="Gestores de reseñas"
-        subtitle="Acceso solo lectura · lista de reseñas y descarga Excel"
+        subtitle="Administración total de comerciales + listado de reseñas y descarga Excel"
         range={`${stats.total} en plantilla`}
         breadcrumb="Inseryal"
         right={<InviteManagerButton primary />}
@@ -111,9 +111,10 @@ export default async function GestoresPage() {
                     maxWidth: 560,
                   }}
                 >
-                  El gestor de reseñas tiene acceso solo lectura al listado
-                  global de reseñas y a la descarga del Excel mensual. No ve
-                  clientes ni puede modificar nada.
+                  El gestor de reseñas comparte vista con el admin: gestiona
+                  comerciales (invitar, editar, eliminar) y ve el listado
+                  global de reseñas con descarga del Excel mensual. No accede
+                  a fichas Google, otros gestores ni verificación de reseñas.
                 </p>
                 <InviteManagerButton primary />
               </Card>
@@ -199,7 +200,7 @@ function ManagerRowView({ m, last }: { m: ManagerRow; last: boolean }) {
               color: "var(--ink-4)",
             }}
           >
-            Gestor de reseñas · solo lectura
+            Gestor de reseñas · gestiona comerciales
           </div>
         </div>
       </div>

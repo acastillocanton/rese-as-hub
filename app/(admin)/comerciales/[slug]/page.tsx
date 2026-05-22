@@ -94,7 +94,10 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
       .maybeSingle<{ role: string }>();
     viewerRole = profile?.role ?? null;
   }
-  const canEdit = viewerRole === "admin";
+  // Admin y reviews_manager comparten administración total del comercial
+  // (editar objetivo/ficha/estado, reenviar acceso, eliminar). Ver migración
+  // 005 y assertCanManageSales en actions.ts.
+  const canEdit = viewerRole === "admin" || viewerRole === "reviews_manager";
 
   const [salesRes, locsRes] = await Promise.all([
     supabase

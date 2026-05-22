@@ -117,9 +117,10 @@ export function InviteManagerButton({
                     lineHeight: 1.55,
                   }}
                 >
-                  Acceso solo lectura: lista de reseñas, ranking de comerciales y
-                  descarga del Excel mensual. No ve clientes ni puede modificar
-                  nada.
+                  Gestiona comerciales como el admin (invitar, editar, eliminar)
+                  y ve el listado global de reseñas con descarga del Excel.
+                  No accede a fichas Google, otros gestores ni a la verificación
+                  de reseñas.
                 </p>
               )}
             </div>

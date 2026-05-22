@@ -8,10 +8,12 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 /**
- * Layout del grupo (admin). Algunas pantallas (Dashboard, /comerciales,
- * /comerciales/[slug]) son visibles también para el gestor de reseñas con
- * las acciones de edición ocultas. Por eso este layout detecta el rol y
- * pinta el sidebar correcto: admin o gestor — misma URL, distinto chrome.
+ * Layout del grupo (admin). El gestor de reseñas comparte casi todas las
+ * pantallas con el admin (Dashboard, /comerciales, /comerciales/[slug]) y
+ * ahora con plenos permisos de administración sobre comerciales (ver
+ * migración 005). Lo que sigue siendo solo-admin es /gestores, /fichas,
+ * /resenas/verificacion y /ajustes. Este layout detecta el rol y pinta el
+ * sidebar correcto: admin o gestor — misma URL, distinto chrome.
  */
 export default async function AdminLayout({
   children,
@@ -40,7 +42,7 @@ export default async function AdminLayout({
   const user = isManager
     ? {
         name: profile?.full_name ?? "Gestor de reseñas",
-        subtitle: "Lectura · Inseryal",
+        subtitle: "Gestor · Inseryal",
       }
     : { name: profile?.full_name ?? "Administrador", subtitle: "Admin · Inseryal" };
 

@@ -61,7 +61,10 @@ export default async function ComercialesPage() {
     if (locRes.data) locations = locRes.data as LocationOption[];
   }
 
-  const canEdit = viewerRole === "admin";
+  // Admin y reviews_manager comparten plenamente la administración de
+  // comerciales (invitar, editar, reenviar acceso, eliminar). Ver migración
+  // 005 para las políticas RLS y assertCanManageSales en actions.ts.
+  const canEdit = viewerRole === "admin" || viewerRole === "reviews_manager";
 
   const stats = {
     total: salesList.length,

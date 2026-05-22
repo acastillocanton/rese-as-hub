@@ -10,9 +10,9 @@ Este archivo lo lee Claude Code automáticamente al abrir el repo. Vive en git �
 
 **ReseñaHub** — app interna single-tenant para **Inseryal by Marina d'Or**. Sustituye el "parte semanal de reseñas" que Raquel Piquer compila a mano en Excel. Tres roles:
 
-- **admin**: gestor global. Hoy son 2 personas: Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`).
+- **admin**: gestor global. Hoy son 2 personas: Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`). Acceso total a todo.
 - **sales** (comercial): genera enlaces personalizados por cliente, ve sus reseñas y ranking.
-- **reviews_manager** (Raquel Piquer): solo lectura, ve el mismo Dashboard global que el admin + lista de comerciales (sin editar) + lista global de reseñas + descarga Excel.
+- **reviews_manager** (Raquel Piquer): comparte vista con admin en Dashboard + comerciales + ficha del comercial, **con permisos plenos de administración sobre el rol sales** (invitar, editar, reenviar acceso, eliminar — ver migración 005 y `assertCanManageSales` en `actions.ts`). Adicional: lista global de reseñas + descarga Excel (`/manager/*`). NO accede a: `/gestores`, `/fichas`, `/resenas/verificacion`, `/ajustes` (esos siguen siendo solo-admin).
 
 Flujo: comercial comparte `reseñahub.es/c/{slug-comercial}/{slug-cliente}` → cliente cae directo en "Escribir reseña" en Google (302) → cron sincroniza vía Google Business Profile API → algoritmo atribuye la reseña al comercial mediante ventana temporal + nombre del cliente.
 
@@ -84,7 +84,7 @@ Pendiente:
 - ⏳ **Quota a 0 hasta que Google apruebe acceso a la API**. Solicitud enviada 2026-05-21, **case ID `5-5855000041022`**. ETA ~2026-06-04. Sin esto las APIs `mybusiness*` devuelven 429 RESOURCE_EXHAUSTED.
 
 ### Fase 5 · Reviews manager (Raquel) — ✅ hecha (esperando reseñas reales)
-**Decisión de diseño 2026-05-21**: el gestor unifica con admin en lugar de tener un universo paralelo `/manager/*`. Comparte `/dashboard` y `/comerciales/*` con el admin, con las acciones de edición ocultas vía `canEdit`. Las pantallas viejas `/manager/comerciales` y `/manager/comerciales/[slug]` fueron eliminadas.
+**Decisión de diseño 2026-05-21 + ampliación 2026-05-22**: el gestor unifica con admin en lugar de tener un universo paralelo `/manager/*`. Comparte `/dashboard` y `/comerciales/*` con el admin, **ahora con plenos permisos de administración sobre el rol sales** (invitar, editar, reenviar acceso, eliminar — antes era solo lectura). Las pantallas viejas `/manager/comerciales` y `/manager/comerciales/[slug]` fueron eliminadas.
 
 Sidebar gestor (en [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) → `MANAGER_SIDEBAR_GROUPS`):
 - Dashboard → `/dashboard` (mismo que admin)
