@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Users } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
@@ -187,6 +188,51 @@ export default async function EnlacePage() {
             salesSlug={profile.slug}
           />
         </Card>
+
+        {/* Card "Mis clientes" — solo mobile (en desktop el sidebar ya lo cubre). */}
+        <Link
+          href="/clientes"
+          className="sales-mobile-only"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            padding: "16px 18px",
+            background: "var(--surface)",
+            border: "1px solid var(--line)",
+            borderRadius: 14,
+            textDecoration: "none",
+            color: "var(--ink)",
+            boxShadow: "var(--shadow-card)",
+          }}
+        >
+          <div
+            aria-hidden="true"
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: "var(--surface-2)",
+              display: "grid",
+              placeItems: "center",
+              color: "var(--ink-2)",
+              flexShrink: 0,
+            }}
+          >
+            <Users size={20} strokeWidth={1.75} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>
+              Mis clientes
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-4)", marginTop: 2 }}>
+              Da de alta antes de pedir una reseña
+            </div>
+          </div>
+          <span aria-hidden="true" style={{ color: "var(--ink-4)", fontSize: 18 }}>
+            ›
+          </span>
+        </Link>
 
         {/* Tips */}
         <Card padding={24}>
