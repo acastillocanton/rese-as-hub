@@ -136,9 +136,11 @@ button {
     padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
-  /* Topbar compacto — padding y tipografía más pequeños, breadcrumb oculto. */
+  /* Topbar compacto — padding y tipografía más pequeños, breadcrumb oculto.
+     padding-right extra reserva espacio para el MobileProfileAvatar
+     (fixed top-right, ~34px + 14px margen). */
   .sales-topbar-compact {
-    padding: 14px 16px 10px !important;
+    padding: 14px 60px 10px 16px !important;
   }
   .sales-topbar-compact .sales-topbar-title {
     font-size: 22px !important;

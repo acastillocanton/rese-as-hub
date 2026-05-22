@@ -1,6 +1,7 @@
 import { Frame } from "@/components/layout/Frame";
 import { Sidebar, SALES_SIDEBAR_GROUPS } from "@/components/layout/Sidebar";
 import { MobileTabBar } from "@/components/layout/MobileTabBar";
+import { MobileProfileAvatar } from "@/components/layout/MobileProfileAvatar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -45,8 +46,12 @@ export default async function SalesLayout({
       >
         {children}
       </main>
-      {/* Tab bar mobile: oculta en desktop (CSS), fixed bottom en mobile */}
+      {/* Chrome mobile: oculto en desktop (CSS), fixed en mobile */}
       <div className="sales-hide-desktop">
+        <MobileProfileAvatar
+          name={profile?.full_name ?? "Comercial"}
+          avatarUrl={profile?.avatar_url ?? null}
+        />
         <MobileTabBar />
       </div>
     </Frame>

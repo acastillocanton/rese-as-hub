@@ -73,6 +73,8 @@ export default async function PerfilPage() {
       })
     : "—";
 
+  const isSales = profile.role === "sales";
+
   return (
     <>
       <Topbar
@@ -80,9 +82,11 @@ export default async function PerfilPage() {
         subtitle="Tu información en ReseñaHub"
         breadcrumb="Inseryal"
         range={null}
+        compact={isSales}
       />
 
       <div
+        className={isSales ? "sales-page-pad" : undefined}
         style={{
           flex: 1,
           padding: "24px 32px 32px",
