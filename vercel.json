@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/sync-google-reviews",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
