@@ -51,17 +51,21 @@ npm run lint           # next lint
 | Pantalla | Estado |
 |---|---|
 | [`/dashboard`](app/(admin)/dashboard/page.tsx) | ✅ DB real + **RangePicker funcional en el topbar** (Mes actual / Mes pasado / Último trimestre + rango libre). KPIs + leaderboard + breakdown por ficha se recalculan según rango. Histórico de 6 meses se queda fijo. `DemoFallback` solo si falta `.env`. |
-| [`/comerciales`](app/(admin)/comerciales/page.tsx) | ✅ DB real + invite + reenviar acceso + delete + fila navegable. Sin acciones admin si el viewer es manager (`canEdit` gateado por rol). |
-| [`/comerciales/[slug]`](app/(admin)/comerciales/[slug]/page.tsx) | ✅ **Mini-dashboard del comercial** con RangePicker + botón "Descargar Excel" individual. KPIs por rango (visitas / atribuidas / conversión / valoración media). Para admin: `SalesEditCard` editable; para manager: `SalesReadOnlyCard`. |
+| [`/comerciales`](app/(admin)/comerciales/page.tsx) | ✅ DB real + invite + reenviar acceso + delete + fila navegable. `canEdit` = admin **o** reviews_manager (manager ahora con plenos permisos, ver Fase 5). |
+| [`/comerciales/[slug]`](app/(admin)/comerciales/[slug]/page.tsx) | ✅ **Mini-dashboard del comercial** con RangePicker + botón "Descargar Excel" individual. KPIs por rango (visitas / atribuidas / conversión / valoración media). `SalesEditCard` editable tanto para admin como para reviews_manager. |
 | [`/gestores`](app/(admin)/gestores/page.tsx) | ✅ Página propia (separada de comerciales). Lista + invite + reenviar + delete. Modelo: un gestor (Raquel) pero soporta varios. |
 | [`/resenas/verificacion`](app/(admin)/resenas/verificacion/page.tsx) | ✅ bandeja de reseñas `pending`/`unmatched`. Acciones confirmar / rechazar / reasignar. Auditoría en `audit_log` por cada acción (vía `recordAudit()` con service-client — ver §4.6). |
 | [`/fichas`](app/(admin)/fichas/page.tsx) | ✅ lista + add + delete + Conectar/Desconectar Google + UI selección de Business Profile en `/fichas/[id]/conectar`. |
 
-### Fase 3 · Sales (comercial) — ✅ hecha (validada E2E el 2026-05-21)
-- [`/panel`](app/(sales)/panel/page.tsx) con datos reales del comercial logueado (KPIs propios, proyección ETA, enlace personal). Ranking aparcado como `ComingSoon` (requiere migración nueva).
+### Fase 3 · Sales (comercial) — ✅ hecha (validada E2E el 2026-05-21, ampliada 2026-05-22)
+- [`/panel`](app/(sales)/panel/page.tsx) con datos reales del comercial logueado (KPIs propios, proyección ETA, enlace personal) + **RangePicker funcional en el topbar** (Mes actual / Mes pasado / Último trimestre + rango libre). La pill "vs. mes pasado" solo aparece para meses naturales completos y la proyección ETA solo se calcula si el rango incluye HOY. Ranking aparcado como `ComingSoon` (requiere migración nueva).
+- [`/panel/enlace`](app/(sales)/panel/enlace/page.tsx) — "Sala de armas del comercial": URL del comercial + botón Copiar, QR 200px ([qrcode.react](https://www.npmjs.com/package/qrcode.react)) con "Descargar PNG", plantilla genérica editable (sin `{nombre_cliente}`, pensada para QR de mostrador), deep-links WhatsApp/Email/SMS sin destinatario, 3 KPIs (visitas QR genérico mes / totales / visitas por cliente este mes) + bloque "Cómo sacarle partido".
+- [`/panel/resenas`](app/(sales)/panel/resenas/page.tsx) — Histórico personal del comercial con RangePicker + 4 KPIs (atribuidas / valoración media / excelentes 5★ / rango activo) + lista cronológica con autor, estrellas, fecha, texto, cliente asociado, ficha y Pill de match_state. Empty state con CTAs a `/panel/enlace` y `/clientes`.
 - [`/clientes`](app/(sales)/clientes/page.tsx) entero: lista, alta con server action, dialog con URL + QR + plantilla editable + deep-links WhatsApp/Email/SMS. Fila navegable a detalle.
 - [`/clientes/[slug]`](app/(sales)/clientes/[slug]/page.tsx) detalle del cliente: datos editables inline vía [`ClientEditCard`](app/(sales)/clientes/[slug]/ClientEditCard.tsx), KPIs de visitas, bloque compartir reusado, placeholder reseñas (lista real cuando entre Fase 4), botón eliminar.
 - [`lib/messaging.ts`](lib/messaging.ts) con plantilla por defecto + helpers de deep-link.
+
+> Sidebar antes apuntaba a anchors `/panel#enlace` y `/panel#resenas` que no existían (los links solo recargaban `/panel` sin scroll a nada). Ya migrado a las rutas dedicadas en [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx).
 
 ### Fase 4 · Google sync + matching — ⚠️ código listo, esperando aprobación de Google
 **Es el corazón del producto.** Código entero implementado y OAuth validado E2E. Único bloqueo: la cuota de la API está a 0 hasta que Google apruebe la solicitud (caso `5-5855000041022`, ETA ~2026-06-04).
@@ -73,7 +77,7 @@ Hecho:
 4. [`/fichas/[id]/conectar`](app/(admin)/fichas/[id]/conectar/page.tsx) — UI que lista las cuentas + fichas de Google. Pre-selecciona la que coincide por `google_place_id`.
 5. [`lib/matching/attribute-review.ts`](lib/matching/attribute-review.ts) — algoritmo con ventana temporal (`TEMPORAL_WINDOW_HOURS=48`) + similitud Unicode-aware. Thresholds: `AUTO_THRESHOLD=75` → counted, 40-75 → pending, <40 → unmatched.
 6. [`/api/cron/sync-google-reviews`](app/api/cron/sync-google-reviews/route.ts) — **paginación con nextPageToken** (MAX_PAGES=10) + early-exit cuando la página ya está sincronizada. Idempotente vía `unique (location_id, google_review_id)`. Si Resend falla al notificar, registra `notify_failed` en `audit_log` con el review_id para reconciliar.
-7. [`vercel.json`](vercel.json) — schedule `*/10 * * * *`. Protegido por `CRON_SECRET` con `timingSafeEqual`.
+7. [`vercel.json`](vercel.json) — schedule `0 9 * * *` (diario 09:00 UTC, cambiado de `*/10 * * * *` por límite de Vercel Hobby, ver §4.11). Protegido por `CRON_SECRET` con `timingSafeEqual`.
 8. [`lib/email/notify-new-review.ts`](lib/email/notify-new-review.ts) + [`lib/email/resend.ts`](lib/email/resend.ts) — email al comercial activo cuando entra reseña `counted`. **Todas las cadenas externas se escapan con `escapeHtml`** (authorName, clientFullName, locationName, preheader, firstName). Degrada gracefully si `RESEND_API_KEY` no está set.
 
 Pendiente:
@@ -85,6 +89,8 @@ Pendiente:
 
 ### Fase 5 · Reviews manager (Raquel) — ✅ hecha (esperando reseñas reales)
 **Decisión de diseño 2026-05-21 + ampliación 2026-05-22**: el gestor unifica con admin en lugar de tener un universo paralelo `/manager/*`. Comparte `/dashboard` y `/comerciales/*` con el admin, **ahora con plenos permisos de administración sobre el rol sales** (invitar, editar, reenviar acceso, eliminar — antes era solo lectura). Las pantallas viejas `/manager/comerciales` y `/manager/comerciales/[slug]` fueron eliminadas.
+
+> Gating: helper [`assertCanManageSales()`](app/(admin)/comerciales/actions.ts) (admin o reviews_manager) aplicado a `inviteSales`, `updateSales`, `resendSalesAccess`, `deleteSales`. RLS: migración [`005_manager_sales_admin.sql`](supabase/migrations/005_manager_sales_admin.sql) añade políticas INSERT/UPDATE/DELETE para que `reviews_manager` opere sobre filas `profiles` con `role='sales'`. El `with check` impide escalar un sales a admin/manager. `/gestores`, `/fichas`, `/resenas/verificacion` y `/ajustes` siguen siendo solo-admin.
 
 Sidebar gestor (en [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) → `MANAGER_SIDEBAR_GROUPS`):
 - Dashboard → `/dashboard` (mismo que admin)
@@ -98,6 +104,18 @@ Pantallas propias del manager:
 - [`/api/export/reviews`](app/api/export/reviews/route.ts) — acepta `from`/`to` (yyyy-mm-dd) + filtros opcionales. Devuelve .xlsx con **Hoja 1 Reseñas** (detalle auditable) + **Hoja 2 Resumen dashboard**: cabecera marca, KPIs grandes (reseñas, visitas, conversión global, valoración media, sin atribuir), tabla Comerciales con visitas → reseñas → conversión → objetivo → cumplimiento (verde/ámbar/rojo según ≥100%/≥60%/<60%), tabla Fichas con valoración media. Filename `resenas-{from}_{to}.xlsx`.
 
 El admin tiene en su sidebar los items `Reseñas` y `Exportar Excel` que apuntan a las mismas URLs `/manager/*` (el `(manager)/layout.tsx` detecta el rol del visor y pinta el sidebar adecuado).
+
+### Perfil global (`/perfil`) — ✅ hecho (2026-05-22)
+Ruta accesible a los tres roles bajo route group [`app/(profile)/`](app/(profile)/) con layout propio que detecta el rol del visor y pinta el sidebar adecuado (admin / sales / manager).
+
+- [`/perfil`](app/(profile)/perfil/page.tsx) muestra foto + datos de cuenta (nombre, email, rol, estado, slug, miembro desde).
+- [`PhotoUpload.tsx`](app/(profile)/perfil/PhotoUpload.tsx) sube a Storage con upsert (`{user_id}/avatar.ext`), persiste `profiles.avatar_url` y refresca server components con `router.refresh()`. Cache-busting con `?v={timestamp}`. Validación: PNG/JPG/WebP, máximo 4 MB.
+- Sidebar: la sección user-info pasa a ser un `<Link>` a `/perfil` y al lado [`LogoutButton`](components/layout/LogoutButton.tsx) (form POST a `/auth/signout`). El componente [`Avatar`](components/ui/Avatar.tsx) acepta prop `src` opcional: si la hay pinta `<img>` redondo, si no fallback al círculo con iniciales.
+- Middleware: `/perfil` en allowlist de los tres roles ([`lib/supabase/middleware.ts`](lib/supabase/middleware.ts)).
+- Migración [`006_profile_avatars.sql`](supabase/migrations/006_profile_avatars.sql): columna `profiles.avatar_url` + bucket público `avatars` en Storage + 3 policies (cada usuario solo puede escribir en su carpeta `{user_id}/`, SELECT público para que la PublicUrl se pinte sin auth).
+
+### Páginas legales — ✅ hechas
+- [`/privacidad`](app/(legal)/privacidad/page.tsx) y [`/terminos`](app/(legal)/terminos/page.tsx) bajo route group [`app/(legal)/`](app/(legal)/) con layout propio (sin sidebar, accesible sin auth). Linkadas desde el pie de [`app/login/page.tsx`](app/login/page.tsx).
 
 ### Fase 7 · Deploy producción — ✅ hecha (2026-05-22)
 - **Dominio**: `https://resenas.marinadorconstrucciones.com` con CNAME desde SiteGround DNS apuntando al target específico del proyecto Vercel (`a15b66f05763b0b1.vercel-dns-017.com`). Antes de crear el CNAME hubo que **borrar el subdominio "resenas" en Site Tools de SiteGround**: el sistema había auto-creado A y TXT (SPF/DKIM) defecto que entran en conflicto con CNAME por RFC.
@@ -117,13 +135,14 @@ Hecho (auditoría técnica del 2026-05-21):
 - Indexación bloqueada: [`robots.txt`](app/robots.ts) Disallow:/ + `metadata.robots` noindex/nofollow en layout raíz.
 - Bump Next.js 15.1.0 → 15.5.18 (cubrió 14 advisories incluida 1 critical de Authorization Bypass en Middleware).
 - Sidebar agrupado por dominio + iconos lucide-react (ver §3 cualquier pantalla).
-- RangePicker funcional reusable ([`components/ui/RangePicker.tsx`](components/ui/RangePicker.tsx)) reemplazando al `<DateRange>` decorativo.
+- RangePicker funcional reusable ([`components/ui/RangePicker.tsx`](components/ui/RangePicker.tsx)) reemplazando al `<DateRange>` decorativo. Aplicado a `/dashboard`, `/comerciales/[slug]`, `/manager/resenas`, `/panel` y `/panel/resenas`.
 - Botón "Reenviar acceso" en comerciales y gestores ([`components/ui/ResendAccessButton.tsx`](components/ui/ResendAccessButton.tsx)) — genera magic-link fresco vía service-client sin tener que eliminar y volver a invitar.
 
 Pendiente:
+- ⏳ **Aplicar migraciones 005 y 006 en Supabase Dashboard** (SQL Editor). 005 = políticas RLS para que gestor administre sales. 006 = avatar_url + bucket Storage. Hasta aplicarlas: las acciones admin del gestor sobre comerciales fallan por RLS, y el upload de foto de perfil da 404 al bucket.
 - A11y, loading states, seed realista, tests Vitest + Playwright.
 - `noUncheckedIndexedAccess` en tsconfig (baja prioridad).
-- Migración 005 para añadir política INSERT en audit_log (hoy parcheado vía service-client).
+- Política INSERT en `audit_log` (hoy parcheado vía service-client en [`recordAudit()`](lib/audit.ts) — ver §4.6).
 
 ---
 
@@ -278,7 +297,7 @@ Brevo solo enseña el valor de cada SMTP key **una vez al crearla**. Si se pierd
 
 ## 7. Estado real de Supabase (snapshot 2026-05-22)
 
-- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones 001+002+003+004 aplicadas.
+- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones 001+002+003+004 aplicadas. **Migraciones 005 (manager-sales admin perms) y 006 (avatars + Storage bucket) pendientes de aplicar** — el código en main ya las asume.
 - **URL Configuration** (Authentication → URL Configuration):
   - **Site URL**: `https://resenas.marinadorconstrucciones.com` (cambiado desde localhost el 2026-05-22).
   - **Redirect URLs**: `http://localhost:3000/**` + `https://resenas.marinadorconstrucciones.com/**`.
@@ -288,7 +307,7 @@ Brevo solo enseña el valor de cada SMTP key **una vez al crearla**. Si se pierd
   - **Reset Password**: pendiente — no se usa el flow recovery hoy.
 - **2 admins**: Alejandro Castillo + Rafael Ibáñez (ambos `@inseryal.es`).
 - **1 comercial de prueba**: "Comercial prueba" / `comercial-prueba` / asignado a "Inseryal by Marina d'Or · Chamberí" / status `active`. Email: `a.castillo.esv@gmail.com`.
-- **Gestor de prueba**: creado durante la sesión de auditoría (puede que haya sido eliminado antes de cerrar; verificar con `select * from profiles where role='reviews_manager'`).
+- **2 gestores activos**: Bel (`bel.bernete@inseryal.es`) — la gestora real del cliente — y "Gestor Ale" (`elalecu@gmail.com`) — cuenta de pruebas de Alejandro.
 - **1 cliente de prueba**: "Otto Castillo" / `otto-castillo`.
 - **7 fichas**: 5 "Inseryal by Marina d'Or" (Oropesa + Madrid Pardiñas + Madrid Príncipe de Vergara + Leganés + Chamberí) y 2 "Marina d'Or Construcciones" (Castellón + Valencia). Solo Chamberí tiene `google_place_id`. Todas `oauth_status: disconnected`.
 - **2 share_links** registradas. 0 reseñas.
@@ -301,10 +320,11 @@ Antes de actuar sobre datos, verifica con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
 
 Producto live en `https://resenas.marinadorconstrucciones.com` con login E2E funcionando + emails transaccionales por Brevo SMTP listos. Quedan:
 
-1. **Esperar aprobación Google** (caso `5-5855000041022`, ETA ~2026-06-04). Sin esto las APIs `mybusiness*` devuelven 429 RESOURCE_EXHAUSTED y el cron no puede traer reseñas reales — el resto de la app sigue operativa.
-2. **Cuando Google apruebe**: probar OAuth E2E con `listAccounts`/`listLocations`/`listReviews`. Si todo va bien, conectar las 7 fichas desde `/fichas` en prod. Recordar: el redirect URI de prod ya está añadido en Google Cloud Console (Authorized redirect URIs incluye `https://resenas.marinadorconstrucciones.com/api/google/oauth/callback`).
-3. **Considerar publicar consent screen fuera de Testing en Google** (Verification de Google) cuando se valide OAuth en prod. Solo afecta si invitamos a usuarios externos al equipo de testers — para el equipo interno actual (admins + Raquel + comerciales fijos) Testing basta.
-4. **Polish (Fase 6 restante, opcional)**: a11y, loading states, seed más realista, tests Vitest + Playwright, `noUncheckedIndexedAccess`, migración 005 con política INSERT en audit_log.
+1. **Aplicar migraciones 005 y 006** en Supabase Dashboard → SQL Editor en orden. Hasta que se apliquen: el gestor no puede crear/editar/borrar comerciales en prod (RLS lo niega) y el upload de foto de perfil falla (no existe `profiles.avatar_url` ni el bucket `avatars`).
+2. **Esperar aprobación Google** (caso `5-5855000041022`, ETA ~2026-06-04). Sin esto las APIs `mybusiness*` devuelven 429 RESOURCE_EXHAUSTED y el cron no puede traer reseñas reales — el resto de la app sigue operativa.
+3. **Cuando Google apruebe**: probar OAuth E2E con `listAccounts`/`listLocations`/`listReviews`. Si todo va bien, conectar las 7 fichas desde `/fichas` en prod. Recordar: el redirect URI de prod ya está añadido en Google Cloud Console (Authorized redirect URIs incluye `https://resenas.marinadorconstrucciones.com/api/google/oauth/callback`).
+4. **Considerar publicar consent screen fuera de Testing en Google** (Verification de Google) cuando se valide OAuth en prod. Solo afecta si invitamos a usuarios externos al equipo de testers — para el equipo interno actual (admins + Raquel + comerciales fijos) Testing basta.
+5. **Polish (Fase 6 restante, opcional)**: a11y, loading states, seed más realista, tests Vitest + Playwright, `noUncheckedIndexedAccess`, política INSERT en audit_log.
 
 ---
 
