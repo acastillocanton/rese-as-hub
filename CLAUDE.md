@@ -110,7 +110,7 @@ Ruta accesible a los tres roles bajo route group [`app/(profile)/`](app/(profile
 
 - [`/perfil`](app/(profile)/perfil/page.tsx) muestra foto + datos de cuenta (nombre, email, rol, estado, slug, miembro desde).
 - [`PhotoUpload.tsx`](app/(profile)/perfil/PhotoUpload.tsx) sube a Storage con upsert (`{user_id}/avatar.ext`), persiste `profiles.avatar_url` y refresca server components con `router.refresh()`. Cache-busting con `?v={timestamp}`. Validación: PNG/JPG/WebP, máximo 4 MB.
-- Sidebar: la sección user-info pasa a ser un `<Link>` a `/perfil` y al lado [`LogoutButton`](components/layout/LogoutButton.tsx) (form POST a `/auth/signout`). El componente [`Avatar`](components/ui/Avatar.tsx) acepta prop `src` opcional: si la hay pinta `<img>` redondo, si no fallback al círculo con iniciales.
+- Sidebar: la sección user-info es un `<Link>` único a `/perfil` (sin botón al lado, para evitar misclicks que cerraban sesión sin querer). El "Cerrar sesión" vive dentro de `/perfil` → Card "Sesión" → form POST a `/auth/signout`. El componente [`Avatar`](components/ui/Avatar.tsx) acepta prop `src` opcional: si la hay pinta `<img>` redondo, si no fallback al círculo con iniciales.
 - Middleware: `/perfil` en allowlist de los tres roles ([`lib/supabase/middleware.ts`](lib/supabase/middleware.ts)).
 - Migración [`006_profile_avatars.sql`](supabase/migrations/006_profile_avatars.sql): columna `profiles.avatar_url` + bucket público `avatars` en Storage + 3 policies (cada usuario solo puede escribir en su carpeta `{user_id}/`, SELECT público para que la PublicUrl se pinte sin auth).
 

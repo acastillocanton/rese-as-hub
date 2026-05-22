@@ -1,3 +1,4 @@
+import { LogOut } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
@@ -157,6 +158,56 @@ export default async function PerfilPage() {
             ¿Necesitas cambiar tu nombre, email o rol? Pide al administrador que
             actualice tu ficha desde Comerciales o Gestores.
           </p>
+        </Card>
+
+        <Card padding={28}>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "var(--ink-4)",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              marginBottom: 14,
+              fontWeight: 600,
+            }}
+          >
+            Sesión
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ fontSize: 13.5, color: "var(--ink-3)", lineHeight: 1.5, maxWidth: 460 }}>
+              Cerrarás sesión en este dispositivo. Para volver a entrar tendrás que
+              pedir un nuevo enlace mágico desde la pantalla de login.
+            </div>
+            <form action="/auth/signout" method="post" style={{ margin: 0 }}>
+              <button
+                type="submit"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "9px 14px",
+                  borderRadius: 8,
+                  background: "#fff",
+                  border: "1px solid var(--line)",
+                  color: "#B42318",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <LogOut size={15} strokeWidth={1.75} aria-hidden="true" />
+                Cerrar sesión
+              </button>
+            </form>
+          </div>
         </Card>
       </div>
     </>

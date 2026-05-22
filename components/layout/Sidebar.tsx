@@ -16,7 +16,6 @@ import {
   Link2,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import { LogoutButton } from "./LogoutButton";
 
 export type SidebarItem = {
   id: string;
@@ -167,9 +166,6 @@ export function Sidebar({ groups, user }: SidebarProps) {
       <div
         style={{
           marginTop: "auto",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
           padding: "8px 8px",
           borderTop: "1px solid var(--line)",
           paddingTop: 14,
@@ -181,11 +177,10 @@ export function Sidebar({ groups, user }: SidebarProps) {
             display: "flex",
             alignItems: "center",
             gap: 10,
-            flex: 1,
             minWidth: 0,
             textDecoration: "none",
             color: "inherit",
-            padding: "2px 4px",
+            padding: "6px 8px",
             borderRadius: 8,
           }}
           aria-label="Ver mi perfil"
@@ -206,7 +201,6 @@ export function Sidebar({ groups, user }: SidebarProps) {
             <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>{user.subtitle}</div>
           </div>
         </Link>
-        <LogoutButton />
       </div>
     </aside>
   );
