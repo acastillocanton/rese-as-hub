@@ -1,5 +1,5 @@
 import "server-only";
-import { sendEmail } from "./resend";
+import { sendEmail } from "./brevo";
 
 export type NewReviewNotificationInput = {
   /** Email del comercial al que se le atribuye la reseña. */
