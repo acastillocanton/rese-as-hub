@@ -18,7 +18,7 @@ export default async function ManagerLayout({
 }: {
   children: React.ReactNode;
 }) {
-  let profile: { full_name: string; role: string } | null = null;
+  let profile: { full_name: string; role: string; avatar_url: string | null } | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
@@ -28,9 +28,9 @@ export default async function ManagerLayout({
     if (user) {
       const res = await supabase
         .from("profiles")
-        .select("full_name, role")
+        .select("full_name, role, avatar_url")
         .eq("id", user.id)
-        .maybeSingle<{ full_name: string; role: string }>();
+        .maybeSingle<{ full_name: string; role: string; avatar_url: string | null }>();
       profile = res.data;
     }
   }
@@ -38,10 +38,15 @@ export default async function ManagerLayout({
   const isAdmin = profile?.role === "admin";
   const groups = isAdmin ? ADMIN_SIDEBAR_GROUPS : MANAGER_SIDEBAR_GROUPS;
   const user = isAdmin
-    ? { name: profile?.full_name ?? "Administrador", subtitle: "Admin · Inseryal" }
+    ? {
+        name: profile?.full_name ?? "Administrador",
+        subtitle: "Admin · Inseryal",
+        avatarUrl: profile?.avatar_url,
+      }
     : {
         name: profile?.full_name ?? "Gestor de reseñas",
-        subtitle: "Lectura · Inseryal",
+        subtitle: "Gestor · Inseryal",
+        avatarUrl: profile?.avatar_url,
       };
 
   return (

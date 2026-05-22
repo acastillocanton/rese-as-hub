@@ -20,7 +20,7 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  let profile: { full_name: string; role: string } | null = null;
+  let profile: { full_name: string; role: string; avatar_url: string | null } | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
@@ -30,9 +30,9 @@ export default async function AdminLayout({
     if (user) {
       const res = await supabase
         .from("profiles")
-        .select("full_name, role")
+        .select("full_name, role, avatar_url")
         .eq("id", user.id)
-        .maybeSingle<{ full_name: string; role: string }>();
+        .maybeSingle<{ full_name: string; role: string; avatar_url: string | null }>();
       profile = res.data;
     }
   }
@@ -43,8 +43,13 @@ export default async function AdminLayout({
     ? {
         name: profile?.full_name ?? "Gestor de reseñas",
         subtitle: "Gestor · Inseryal",
+        avatarUrl: profile?.avatar_url,
       }
-    : { name: profile?.full_name ?? "Administrador", subtitle: "Admin · Inseryal" };
+    : {
+        name: profile?.full_name ?? "Administrador",
+        subtitle: "Admin · Inseryal",
+        avatarUrl: profile?.avatar_url,
+      };
 
   return (
     <Frame>

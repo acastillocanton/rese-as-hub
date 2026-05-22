@@ -8,7 +8,7 @@ export default async function SalesLayout({
 }: {
   children: React.ReactNode;
 }) {
-  let profile: { full_name: string } | null = null;
+  let profile: { full_name: string; avatar_url: string | null } | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
@@ -18,9 +18,9 @@ export default async function SalesLayout({
     if (user) {
       const res = await supabase
         .from("profiles")
-        .select("full_name")
+        .select("full_name, avatar_url")
         .eq("id", user.id)
-        .maybeSingle<{ full_name: string }>();
+        .maybeSingle<{ full_name: string; avatar_url: string | null }>();
       profile = res.data;
     }
   }
@@ -32,6 +32,7 @@ export default async function SalesLayout({
         user={{
           name: profile?.full_name ?? "Comercial",
           subtitle: "Comercial",
+          avatarUrl: profile?.avatar_url,
         }}
       />
       <main style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>

@@ -16,6 +16,7 @@ import {
   Link2,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
+import { LogoutButton } from "./LogoutButton";
 
 export type SidebarItem = {
   id: string;
@@ -33,7 +34,7 @@ export type SidebarGroup = {
 
 type SidebarProps = {
   groups: SidebarGroup[];
-  user: { name: string; subtitle: string };
+  user: { name: string; subtitle: string; avatarUrl?: string | null };
 };
 
 /**
@@ -174,11 +175,38 @@ export function Sidebar({ groups, user }: SidebarProps) {
           paddingTop: 14,
         }}
       >
-        <Avatar name={user.name} size={28} />
-        <div style={{ lineHeight: 1.15 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{user.name}</div>
-          <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>{user.subtitle}</div>
-        </div>
+        <Link
+          href="/perfil"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flex: 1,
+            minWidth: 0,
+            textDecoration: "none",
+            color: "inherit",
+            padding: "2px 4px",
+            borderRadius: 8,
+          }}
+          aria-label="Ver mi perfil"
+        >
+          <Avatar name={user.name} size={28} src={user.avatarUrl} />
+          <div style={{ lineHeight: 1.15, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {user.name}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>{user.subtitle}</div>
+          </div>
+        </Link>
+        <LogoutButton />
       </div>
     </aside>
   );
