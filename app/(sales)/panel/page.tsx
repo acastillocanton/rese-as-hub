@@ -1,11 +1,18 @@
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
-import { GhostBtn } from "@/components/ui/GhostBtn";
 import { Ring } from "@/components/charts/Ring";
 import { ComingSoon } from "@/components/ui/ComingSoon";
+import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import {
+  parseRange,
+  defaultShortcuts,
+  isFullNaturalMonth,
+  lastMonthRange,
+  type DateRange,
+} from "@/lib/date-range";
 import { CopyLinkButton } from "./CopyLinkButton";
 
 type PanelData = {
@@ -13,10 +20,14 @@ type PanelData = {
   slug: string;
   reviews: number;
   goal: number;
-  prevReviews: number;
+  /** Reseñas del periodo natural anterior. null si el rango actual no es un
+   *  mes natural completo y la comparativa pierde sentido. */
+  prevReviews: number | null;
   links: number;
   avgRating: number | null;
 };
+
+type PanelSearchParams = Promise<{ from?: string; to?: string }>;
 
 const DEMO_DATA: PanelData = {
   name: "Mateo Salgado",
@@ -28,7 +39,7 @@ const DEMO_DATA: PanelData = {
   avgRating: 4.8,
 };
 
-async function loadPanelData(): Promise<PanelData> {
+async function loadPanelData(range: DateRange): Promise<PanelData> {
   if (!isSupabaseConfigured()) return DEMO_DATA;
 
   const supabase = await createClient();
@@ -45,32 +56,46 @@ async function loadPanelData(): Promise<PanelData> {
 
   if (!profileRes.data) return DEMO_DATA;
 
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+  // La pill "vs. periodo anterior" solo aparece cuando el rango activo es un
+  // mes natural completo. Para custom queda como null y el render la oculta.
+  const isMonth = isFullNaturalMonth(range);
+  const prev = isMonth
+    ? lastMonthRange(parseFromIso(range.from))
+    : null;
 
-  const [reviewsMonth, reviewsPrev, links] = await Promise.all([
+  const baseQueries = [
     supabase
       .from("reviews")
       .select("rating", { count: "exact" })
       .eq("sales_id", user.id)
       .in("match_state", ["counted", "pending"])
-      .gte("google_created_at", monthStart),
-    supabase
-      .from("reviews")
-      .select("id", { count: "exact", head: true })
-      .eq("sales_id", user.id)
-      .in("match_state", ["counted", "pending"])
-      .gte("google_created_at", prevMonthStart)
-      .lt("google_created_at", monthStart),
+      .gte("google_created_at", range.startIso)
+      .lt("google_created_at", range.endIso),
     supabase
       .from("share_links")
       .select("id", { count: "exact", head: true })
       .eq("sales_id", user.id)
-      .gte("opened_at", monthStart),
+      .gte("opened_at", range.startIso)
+      .lt("opened_at", range.endIso),
+  ] as const;
+
+  const prevQuery = prev
+    ? supabase
+        .from("reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("sales_id", user.id)
+        .in("match_state", ["counted", "pending"])
+        .gte("google_created_at", prev.startIso)
+        .lt("google_created_at", prev.endIso)
+    : null;
+
+  const [reviewsRange, links, reviewsPrev] = await Promise.all([
+    baseQueries[0],
+    baseQueries[1],
+    prevQuery ?? Promise.resolve(null),
   ]);
 
-  const ratings = (reviewsMonth.data ?? []) as { rating: number }[];
+  const ratings = (reviewsRange.data ?? []) as { rating: number }[];
   const avgRating =
     ratings.length === 0
       ? null
@@ -79,12 +104,17 @@ async function loadPanelData(): Promise<PanelData> {
   return {
     name: profileRes.data.full_name,
     slug: profileRes.data.slug,
-    reviews: reviewsMonth.count ?? 0,
-    prevReviews: reviewsPrev.count ?? 0,
+    reviews: reviewsRange.count ?? 0,
+    prevReviews: reviewsPrev ? reviewsPrev.count ?? 0 : null,
     links: links.count ?? 0,
     goal: profileRes.data.monthly_goal,
     avgRating,
   };
+}
+
+function parseFromIso(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function formatRating(value: number | null): string {
@@ -92,7 +122,8 @@ function formatRating(value: number | null): string {
   return value.toFixed(1).replace(".", ",");
 }
 
-function deltaPill(current: number, previous: number) {
+function deltaPill(current: number, previous: number | null) {
+  if (previous === null) return null;
   if (previous === 0 && current === 0) return null;
   const diff = current - previous;
   if (diff === 0) return <Pill withDot>=0 vs. mes pasado</Pill>;
@@ -138,15 +169,28 @@ function projection({
   return { remaining, daysLeft, etaLabel: label };
 }
 
-export default async function PanelPage() {
-  const data = await loadPanelData();
+export default async function PanelPage({
+  searchParams,
+}: {
+  searchParams: PanelSearchParams;
+}) {
+  const params = await searchParams;
+  const now = new Date();
+  const range = parseRange(params.from, params.to, now);
+  const shortcuts = defaultShortcuts(now);
+  const isMonth = isFullNaturalMonth(range);
+  // La proyección al objetivo solo tiene sentido cuando seguimos dentro del
+  // rango activo (es decir, el rango incluye hoy). Para meses pasados o
+  // futuros mostramos `reviews / goal` sin ETA.
+  const isCurrentPeriod =
+    new Date(range.startIso).getTime() <= now.getTime() &&
+    now.getTime() < new Date(range.endIso).getTime();
+
+  const data = await loadPanelData(range);
   const appBase = process.env.NEXT_PUBLIC_APP_URL ?? "https://reseñahub.es";
   const link = `${appBase.replace(/^https?:\/\//, "")}/c/${data.slug}`;
   const fullUrl = `${appBase}/c/${data.slug}`;
 
-  const now = new Date();
-  const monthLabel = now.toLocaleDateString("es-ES", { month: "long" });
-  const monthLabelCap = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
   const conversion = data.links > 0 ? Math.round((data.reviews / data.links) * 100) : null;
   const { remaining, daysLeft, etaLabel } = projection({
     reviews: data.reviews,
@@ -154,14 +198,29 @@ export default async function PanelPage() {
     now,
   });
 
+  // Etiqueta corta para el lead-in: "Llevas en <rango>".
+  const periodLabel = isMonth
+    ? range.label.split(" ")[0] // "mayo 2026" → "mayo"
+    : range.label;
+
   return (
     <>
       <Topbar
         title="Mi panel"
         subtitle={`Buenos días, ${data.name.split(" ")[0]}`}
-        range={`Este mes · ${monthLabel}`}
+        range={null}
         breadcrumb="Inseryal"
-        right={<CopyLinkButton url={fullUrl} label="Compartir mi enlace" primary />}
+        right={
+          <>
+            <RangePicker
+              from={range.from}
+              to={range.to}
+              label={range.label}
+              shortcuts={shortcuts}
+            />
+            <CopyLinkButton url={fullUrl} label="Compartir mi enlace" primary />
+          </>
+        }
       />
 
       <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
@@ -176,7 +235,7 @@ export default async function PanelPage() {
           >
             <div>
               <div style={{ fontSize: 13, color: "var(--ink-3)" }}>
-                Llevas en {monthLabel}
+                Llevas en {periodLabel}
               </div>
               <div
                 style={{
@@ -257,7 +316,11 @@ export default async function PanelPage() {
                     maxWidth: 240,
                   }}
                 >
-                  {remaining === 0 ? (
+                  {!isCurrentPeriod ? (
+                    <>
+                      Vista del rango {range.label}. La proyección al objetivo solo se calcula sobre el periodo en curso.
+                    </>
+                  ) : remaining === 0 ? (
                     <>
                       <strong style={{ color: "var(--ok)" }}>Objetivo conseguido.</strong>{" "}
                       Quedan {daysLeft} días para sumar más.
