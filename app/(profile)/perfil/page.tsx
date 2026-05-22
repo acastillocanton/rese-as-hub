@@ -15,7 +15,6 @@ type ProfileRow = {
   slug: string;
   status: "invited" | "active" | "paused";
   avatar_url: string | null;
-  created_at: string;
 };
 
 function roleLabel(role: ProfileRow["role"]): string {
@@ -59,18 +58,20 @@ export default async function PerfilPage() {
 
   const profileRes = await supabase
     .from("profiles")
-    .select("id, full_name, email, role, slug, status, avatar_url, created_at")
+    .select("id, full_name, email, role, slug, status, avatar_url")
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
 
   const profile = profileRes.data;
   if (!profile) redirect("/login");
 
-  const memberSince = new Date(profile.created_at).toLocaleDateString("es-ES", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  const memberSince = user.created_at
+    ? new Date(user.created_at).toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      })
+    : "—";
 
   return (
     <>
