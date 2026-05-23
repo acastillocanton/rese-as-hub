@@ -83,6 +83,7 @@ npm run dev
    supabase/migrations/007_reviews_composite_indices.sql
    supabase/migrations/008_audit_log_insert_policy.sql
    supabase/migrations/009_review_source.sql
+   supabase/migrations/010_review_removed_at.sql
    ```
 4. Auth: usar el flujo OTP `token_hash` documentado en [CLAUDE.md §4.1](CLAUDE.md). Las plantillas de email en Supabase Dashboard → Authentication → Emails deben usar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type={email|invite}`.
 
@@ -171,7 +172,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/gestores`                    | admin             | Lista + invite + delete de gestores                              |
 | `/fichas`                      | admin             | Lista + Conectar/Desconectar Google                              |
 | `/fichas/:id/conectar`         | admin             | UI selección de Business Profile location                        |
-| `/resenas/verificacion`        | admin             | Bandeja pending/unmatched + confirm/reject/reassign              |
+| `/resenas/verificacion`        | admin             | Bandeja pending/unmatched/eliminadas + confirm/reject/reassign/marcar eliminada |
 | `/panel`                       | sales             | KPIs propios + RangePicker + proyección ETA + card mobile clientes |
 | `/panel/enlace`                | sales             | URL + QR + plantilla editable + deep-links WhatsApp/Email/SMS    |
 | `/panel/resenas`               | sales             | Histórico de reseñas atribuidas con RangePicker                  |

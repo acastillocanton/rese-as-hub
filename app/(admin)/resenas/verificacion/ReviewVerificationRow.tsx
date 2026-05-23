@@ -11,6 +11,7 @@ import {
   rejectReview,
   reassignReview,
 } from "./actions";
+import { RemovalControls } from "@/components/ui/RemovalControls";
 
 type Review = {
   id: string;
@@ -21,6 +22,7 @@ type Review = {
   match_state: string;
   match_confidence: number;
   match_evidence: Record<string, unknown> | null;
+  removed_at: string | null;
   sales: { id: string; full_name: string; slug: string } | null;
   client: { id: string; full_name: string } | null;
   location: { id: string; name: string } | null;
@@ -366,25 +368,29 @@ export function ReviewVerificationRow({
           style={{
             marginTop: 16,
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
+            alignItems: "center",
             gap: 8,
             flexWrap: "wrap",
           }}
         >
-          <GhostBtn onClick={onReject} disabled={isPending}>
-            {isPending ? "…" : "Rechazar"}
-          </GhostBtn>
-          <GhostBtn
-            onClick={() => setReassigning(true)}
-            disabled={isPending}
-          >
-            Reasignar
-          </GhostBtn>
-          {review.sales && (
-            <GhostBtn primary onClick={onConfirm} disabled={isPending}>
-              {isPending ? "Guardando…" : `Confirmar a ${review.sales.full_name.split(" ")[0]}`}
+          <RemovalControls reviewId={review.id} removedAt={review.removed_at} size="sm" />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <GhostBtn onClick={onReject} disabled={isPending}>
+              {isPending ? "…" : "Rechazar"}
             </GhostBtn>
-          )}
+            <GhostBtn
+              onClick={() => setReassigning(true)}
+              disabled={isPending}
+            >
+              Reasignar
+            </GhostBtn>
+            {review.sales && (
+              <GhostBtn primary onClick={onConfirm} disabled={isPending}>
+                {isPending ? "Guardando…" : `Confirmar a ${review.sales.full_name.split(" ")[0]}`}
+              </GhostBtn>
+            )}
+          </div>
         </div>
       )}
     </Card>

@@ -93,6 +93,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       .from("reviews")
       .select("id, author_name, rating, text, google_created_at, match_state, match_confidence")
       .eq("client_id", client.id)
+      .is("removed_at", null)
       .order("google_created_at", { ascending: false })
       .returns<ReviewRow[]>(),
   ]);

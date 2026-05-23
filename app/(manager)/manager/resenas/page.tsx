@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { parseRange, defaultShortcuts } from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { SyncNowButton } from "@/components/ui/SyncNowButton";
+import { RemovalControls } from "@/components/ui/RemovalControls";
 
 type SearchParams = Promise<{
   sales_id?: string;
@@ -28,6 +29,7 @@ type ReviewRow = {
   google_created_at: string;
   match_state: string;
   match_confidence: number;
+  removed_at: string | null;
   sales: { full_name: string; slug: string } | null;
   client: { full_name: string } | null;
   location: { name: string } | null;
@@ -63,18 +65,30 @@ export default async function ManagerResenasPage({
   const supabase = await createClient();
   const range = parseRange(params.from, params.to);
 
+  // El filtro "removed" es una pseudo-categoría dentro de match_state: si el
+  // usuario lo elige, mostramos solo eliminadas y no filtramos por match
+  // real. En el resto de casos, filtramos por removed_at IS NULL como en el
+  // resto de pantallas.
+  const showRemoved = params.match_state === "removed";
+
   let query = supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, match_state, match_confidence, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
+      "id, author_name, rating, text, google_created_at, match_state, match_confidence, removed_at, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
     )
     .gte("google_created_at", range.startIso)
     .lt("google_created_at", range.endIso)
     .order("google_created_at", { ascending: false });
 
+  if (showRemoved) {
+    query = query.not("removed_at", "is", null);
+  } else {
+    query = query.is("removed_at", null);
+    if (params.match_state) query = query.eq("match_state", params.match_state);
+  }
+
   if (params.sales_id) query = query.eq("sales_id", params.sales_id);
   if (params.location_id) query = query.eq("location_id", params.location_id);
-  if (params.match_state) query = query.eq("match_state", params.match_state);
 
   const [reviewsRes, salesRes, locationsRes] = await Promise.all([
     query.returns<ReviewRow[]>(),
@@ -215,10 +229,11 @@ export default async function ManagerResenasPage({
                 defaultValue={params.match_state ?? ""}
                 style={inputStyle}
               >
-                <option value="">Todos</option>
+                <option value="">Todos (sin eliminadas)</option>
                 <option value="counted">Atribuidas automáticas</option>
                 <option value="pending">Pendientes verificar</option>
                 <option value="unmatched">Sin atribuir</option>
+                <option value="removed">Eliminadas en Google</option>
               </select>
             </FilterField>
             <button
@@ -364,22 +379,29 @@ export default async function ManagerResenasPage({
                 <div>
                   <Pill
                     tone={
-                      r.match_state === "counted"
-                        ? "ok"
-                        : r.match_state === "pending"
-                          ? "warn"
-                          : "neutral"
+                      r.removed_at
+                        ? "neutral"
+                        : r.match_state === "counted"
+                          ? "ok"
+                          : r.match_state === "pending"
+                            ? "warn"
+                            : "neutral"
                     }
                     withDot
                   >
-                    {r.match_state === "counted"
-                      ? "Atribuida"
-                      : r.match_state === "pending"
-                        ? "Pendiente"
-                        : "Sin atribuir"}
+                    {r.removed_at
+                      ? "Eliminada"
+                      : r.match_state === "counted"
+                        ? "Atribuida"
+                        : r.match_state === "pending"
+                          ? "Pendiente"
+                          : "Sin atribuir"}
                   </Pill>
                   <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 4 }}>
                     Conf. {r.match_confidence}%
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <RemovalControls reviewId={r.id} removedAt={r.removed_at} size="sm" />
                   </div>
                 </div>
               </div>

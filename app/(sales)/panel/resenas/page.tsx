@@ -89,6 +89,7 @@ export default async function MisResenasPage({
       "id, author_name, rating, text, google_created_at, match_state, match_confidence, client:clients(full_name, slug), location:locations(name)",
     )
     .eq("sales_id", user.id)
+    .is("removed_at", null)
     .gte("google_created_at", range.startIso)
     .lt("google_created_at", range.endIso)
     .order("google_created_at", { ascending: false })

@@ -139,6 +139,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
         "id, author_name, rating, text, google_created_at, match_state, match_confidence, client_id",
       )
       .eq("sales_id", sales.id)
+      .is("removed_at", null)
       .gte("google_created_at", range.startIso)
       .lt("google_created_at", range.endIso)
       .order("google_created_at", { ascending: false })

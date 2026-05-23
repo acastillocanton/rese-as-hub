@@ -113,6 +113,7 @@ export async function GET(request: NextRequest) {
     .select(
       "id, google_review_id, author_name, rating, text, google_created_at, match_state, match_confidence, sales_id, location_id, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
     )
+    .is("removed_at", null)
     .gte("google_created_at", range.startIso)
     .lt("google_created_at", range.endIso)
     .order("google_created_at", { ascending: true })
