@@ -13,7 +13,6 @@ import {
   Star,
   Download,
   Link2,
-  FilePlus2,
   LifeBuoy,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
@@ -221,7 +220,6 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
     items: [
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
       { id: "review-list", label: "Lista de reseñas", href: "/manager/resenas", icon: Star },
-      { id: "review-import", label: "Importar reseña", href: "/manager/resenas/importar", icon: FilePlus2 },
       { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },
     ],
   },
@@ -261,7 +259,6 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { id: "team", label: "Comerciales", href: "/comerciales", icon: Users },
       { id: "reviews", label: "Reseñas", href: "/manager/resenas", icon: Star },
-      { id: "review-import", label: "Importar reseña", href: "/manager/resenas/importar", icon: FilePlus2 },
       { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },
     ],
   },

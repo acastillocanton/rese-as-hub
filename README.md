@@ -9,7 +9,7 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 
 **Producción**: [`https://resenas.marinadorconstrucciones.com`](https://resenas.marinadorconstrucciones.com).
 
-**Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{slug-comercial}/{slug-cliente}` → cliente abre y aterriza directamente en la ficha de Google → dos crons diarios (Google Places API + Google Business Profile API) traen las reseñas → el algoritmo las atribuye al comercial mediante ventana temporal y nombre del cliente → el comercial recibe email de notificación (Brevo SMTP, batch al final del cron) y la reseña aparece en su panel. Plus: importador manual `/manager/resenas/importar` para reseñas puntuales que la API no devuelve.
+**Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{slug-comercial}/{slug-cliente}` → cliente abre y aterriza directamente en la ficha de Google → dos crons diarios (Google Places API + Google Business Profile API) + cron horario en GitHub Actions traen las reseñas → el algoritmo las atribuye al comercial mediante ventana temporal y nombre del cliente → el comercial recibe email de notificación (Brevo SMTP, batch al final del cron) y la reseña aparece en su panel.
 
 ---
 
@@ -38,7 +38,7 @@ Por fase:
 - **Fase 2 Admin** — ✅ `/dashboard` con datos reales, `/comerciales` + `/comerciales/[slug]` editable, `/gestores`, `/fichas` con botón Conectar Google + UI selección Business Profile + edición de Place ID, `/resenas/verificacion` con confirm/reject/reassign.
 - **Fase 3 Sales (desktop + mobile)** — ✅ `/panel`, `/panel/enlace`, `/panel/resenas`, `/clientes` con QR + plantilla editable + deep-links, `/clientes/[slug]` con edición inline. Vista mobile (≤767px) con MobileTabBar + avatar fijo top-right.
 - **Fase 4 Google Business Profile sync** — ⚠️ código 100% (OAuth, refresh-token, cliente API, matcher con ventana 48h + similitud + modo anonymous, cron con lock optimista + email batch, notificador Brevo). Esperando aprobación de Google a la cuota de la API.
-- **Fase 4.b Places API fallback + importador manual** — ✅ cron `/api/cron/sync-places-reviews` trae top-5 reseñas/ficha diariamente vía Google Places API (New) sin OAuth + pantalla `/manager/resenas/importar` para meter reseñas a mano. Detalle en [CLAUDE.md §3 Fase 4.b](CLAUDE.md).
+- **Fase 4.b Places API fallback** — ✅ cron `/api/cron/sync-places-reviews` trae las 5 reseñas más recientes por ficha (Places API legacy con `reviews_sort=newest`) sin necesidad de OAuth + cron horario GitHub Action + botón "Sincronizar ahora" en UI. Detalle en [CLAUDE.md §3 Fase 4.b](CLAUDE.md).
 - **Fase 5 Manager (Raquel + Bel)** — ✅ comparte vista con admin en `/dashboard` y `/comerciales` con plenos permisos, `/manager/resenas` con filtros, `/manager/export` y endpoint `/api/export/reviews` con ExcelJS (dos hojas).
 - **Perfil global** — ✅ `/perfil` accesible a los tres roles con avatar upload (bucket Storage).
 - **Fase 6 Polish / hardening** — ✅ auditoría 18 items (críticos + altos + medios + bajos). Tests Vitest, `noUncheckedIndexedAccess`, CSP, índices compuestos, lock cron, email batch, etc. Detalle en [CLAUDE.md §3 Fase 6](CLAUDE.md).
@@ -180,7 +180,6 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/clientes`                    | sales             | Lista + alta + dialog QR/plantilla/deep-links                    |
 | `/clientes/:slug`              | sales             | Ficha cliente editable + visitas + reseñas atribuidas            |
 | `/manager/resenas`             | reviews_manager + admin | Lista global de reseñas con filtros                        |
-| `/manager/resenas/importar`    | reviews_manager + admin | Form para meter reseñas a mano (con o sin atribución forzada) |
 | `/manager/export`              | reviews_manager + admin | Descarga del Excel mensual                                 |
 | `/api/google/oauth/start`      | admin             | Inicia consent OAuth con state CSRF                              |
 | `/api/google/oauth/callback`   | público (Google)  | Token swap + redirige a `/fichas/:id/conectar`                   |
@@ -225,7 +224,6 @@ app/
     clientes/[slug]/
   (manager)/            ─ Pantallas del gestor de reseñas
     manager/resenas/
-    manager/resenas/importar/    Importador manual (admin + manager)
     manager/export/
   (profile)/            ─ Perfil global accesible a los 3 roles
     perfil/

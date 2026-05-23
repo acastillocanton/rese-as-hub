@@ -100,7 +100,6 @@ app/                              Next.js App Router
     clientes/                     Alta cliente + generar enlace
   (manager)/                      Layout + páginas del gestor de reseñas
     manager/resenas/              Listado solo-lectura
-    manager/resenas/importar/     Importador manual (admin + manager)
     manager/export/               Generador Excel
   c/[salesSlug]/                  Landing pública (route handler, sin layout)
   c/[salesSlug]/[clientSlug]/     Landing pública con cliente identificado
