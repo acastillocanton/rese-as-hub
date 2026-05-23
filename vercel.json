@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/sync-google-reviews",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/sync-places-reviews",
+      "schedule": "0 10 * * *"
     }
   ]
 }

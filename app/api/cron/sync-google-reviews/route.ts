@@ -8,10 +8,13 @@ import {
   type GoogleReview,
 } from "@/lib/google/business-profile";
 import {
-  attributeReview,
-  TEMPORAL_WINDOW_HOURS,
-  type ShareLinkCandidate,
-} from "@/lib/matching/attribute-review";
+  processFreshReviews,
+  flushNotifications,
+  type LocationSummary,
+  type SalesInfo,
+  type FreshReview,
+  type PendingNotification,
+} from "@/lib/cron/process-reviews";
 import { notifyNewReview } from "@/lib/email/notify-new-review";
 
 export const runtime = "nodejs";
@@ -61,7 +64,7 @@ export async function GET(request: NextRequest) {
   ]);
   const connectedLocations = locationsRes.data ?? null;
   const locsErr = locationsRes.error;
-  const salesById = new Map<string, { full_name: string; email: string | null; status: string }>();
+  const salesById = new Map<string, SalesInfo>();
   for (const s of salesRes.data ?? []) {
     salesById.set(s.id, { full_name: s.full_name, email: s.email, status: s.status });
   }
@@ -77,38 +80,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, locations_processed: 0 });
   }
 
-  const summary: Array<{
-    location_id: string;
-    location_name: string;
-    fetched: number;
-    new_reviews: number;
-    counted: number;
-    pending: number;
-    unmatched: number;
-    error?: string;
-  }> = [];
+  const summary: LocationSummary[] = [];
 
   // Acumulamos las notificaciones de TODAS las locations y las enviamos en
   // paralelo al final (Promise.allSettled). Antes hacíamos await dentro del
   // loop por cada reseña → si entraban 50, eran 50 envíos SMTP secuenciales
   // y el cron podía exceder los 60s de Vercel.
-  type PendingNotification = {
-    salesEmail: string;
-    salesName: string;
-    rating: number;
-    reviewText: string | null;
-    authorName: string;
-    clientFullName: string | null;
-    locationName: string;
-    matchConfidence: number;
-    reviewDbId: string;
-    salesId: string;
-    googleReviewId: string;
-  };
   const pendingNotifications: PendingNotification[] = [];
 
   for (const loc of connectedLocations) {
-    const entry = {
+    const entry: LocationSummary = {
       location_id: loc.id,
       location_name: loc.name,
       fetched: 0,
@@ -116,7 +97,6 @@ export async function GET(request: NextRequest) {
       counted: 0,
       pending: 0,
       unmatched: 0,
-      error: undefined as string | undefined,
     };
 
     // Lock optimista contra solapamiento: si otro cron procesó esta
@@ -204,118 +184,32 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // Cargamos share_links de la location en una sola query, cubriendo la
-      // ventana más antigua entre las reseñas nuevas. Luego attributeReview
-      // filtra por ventana específica por reseña.
-      const oldestReviewMs = fresh
-        .map((r) => new Date(r.createTime).getTime())
-        .reduce((min, t) => Math.min(min, t), Number.POSITIVE_INFINITY);
-      const windowStart = new Date(
-        oldestReviewMs - TEMPORAL_WINDOW_HOURS * 3_600_000,
-      ).toISOString();
-
-      // Límite defensivo: si en 48h una location acumula >10K visitas,
-      // algo raro pasa (spam, scraping). Cortamos para no saturar memoria.
-      // Con `share_links_location_opened_idx` desc la query es índice puro.
-      const { data: shareRows } = await admin
-        .from("share_links")
-        .select(
-          "id, sales_id, client_id, opened_at, clients:clients(full_name)",
-        )
-        .eq("location_id", loc.id)
-        .gte("opened_at", windowStart)
-        .order("opened_at", { ascending: false })
-        .limit(10000)
-        .returns<
-          {
-            id: string;
-            sales_id: string;
-            client_id: string | null;
-            opened_at: string;
-            clients: { full_name: string } | null;
-          }[]
-        >();
-
-      const allCandidates: ShareLinkCandidate[] = (shareRows ?? []).map((s) => ({
-        id: s.id,
-        sales_id: s.sales_id,
-        client_id: s.client_id,
-        client_full_name: s.clients?.full_name ?? null,
-        opened_at: s.opened_at,
-      }));
-
-      for (const gr of fresh) {
+      // Convertimos las reseñas de Google al shape común y delegamos en el
+      // helper compartido con el cron de Places (matcher + insert + notif).
+      const freshNormalized: FreshReview[] = fresh.map((gr) => {
         const rawAuthor = gr.reviewer?.displayName?.trim() ?? "";
         const hasAuthorName = rawAuthor.length > 0;
-        const result = attributeReview(
-          {
-            google_review_id: gr.reviewId,
-            author_name: hasAuthorName ? rawAuthor : "Anónimo",
-            hasAuthorName,
-            google_created_at: gr.createTime,
-          },
-          allCandidates,
-        );
-
-        const row = {
-          location_id: loc.id,
+        return {
           google_review_id: gr.reviewId,
-          author_name: gr.reviewer?.displayName ?? "Anónimo",
+          author_name: hasAuthorName ? rawAuthor : "Anónimo",
+          hasAuthorName,
           rating: starRatingToInt(gr.starRating),
           text: gr.comment ?? null,
           google_created_at: gr.createTime,
-          fetched_at: new Date().toISOString(),
-          sales_id: result.sales_id ?? null,
-          client_id: result.client_id ?? null,
-          share_link_id: result.share_link_id ?? null,
-          match_confidence: result.match_confidence,
-          match_state: result.match_state,
-          match_evidence: result.match_evidence,
         };
+      });
 
-        const { data: inserted, error: insErr } = await admin
-          .from("reviews")
-          .insert(row as never)
-          .select("id")
-          .single<{ id: string }>();
-
-        if (insErr || !inserted) {
-          console.error("[cron] insert review failed:", insErr, gr.reviewId);
-          continue;
-        }
-
-        entry.new_reviews++;
-        if (result.match_state === "counted") {
-          entry.counted++;
-          // Solo encolamos la notificación. El envío real se hace en batch al
-          // final del cron (Promise.allSettled) para no bloquear el loop.
-          if (result.sales_id) {
-            const sales = salesById.get(result.sales_id);
-            if (sales?.email && sales.status === "active") {
-              const clientName =
-                (result.match_evidence?.client_full_name as string | undefined) ??
-                null;
-              pendingNotifications.push({
-                salesEmail: sales.email,
-                salesName: sales.full_name,
-                rating: starRatingToInt(gr.starRating),
-                reviewText: gr.comment ?? null,
-                authorName: gr.reviewer?.displayName ?? "Anónimo",
-                clientFullName: clientName,
-                locationName: loc.name,
-                matchConfidence: result.match_confidence,
-                reviewDbId: inserted.id,
-                salesId: result.sales_id,
-                googleReviewId: gr.reviewId,
-              });
-            }
-          }
-        } else if (result.match_state === "pending") {
-          entry.pending++;
-        } else {
-          entry.unmatched++;
-        }
-      }
+      const notifs = await processFreshReviews(
+        {
+          admin,
+          location: { id: loc.id, name: loc.name },
+          fresh: freshNormalized,
+          salesById,
+          source: "business_profile",
+        },
+        entry,
+      );
+      pendingNotifications.push(...notifs);
 
       await markSyncOk(admin, loc.id);
     } catch (err) {
@@ -328,82 +222,18 @@ export async function GET(request: NextRequest) {
     summary.push(entry);
   }
 
-  // Envío en paralelo de todas las notificaciones acumuladas. Si una falla,
-  // dejamos rastro en audit_log con el formato 'notify_failed' (igual que
-  // antes pero ahora sin bloquear el cron).
-  let notifyAttempted = 0;
-  let notifyFailed = 0;
-  if (pendingNotifications.length > 0) {
-    notifyAttempted = pendingNotifications.length;
-    const results = await Promise.allSettled(
-      pendingNotifications.map((p) =>
-        notifyNewReview({
-          salesEmail: p.salesEmail,
-          salesName: p.salesName,
-          rating: p.rating,
-          reviewText: p.reviewText,
-          authorName: p.authorName,
-          clientFullName: p.clientFullName,
-          locationName: p.locationName,
-          matchConfidence: p.matchConfidence,
-          appBase,
-        }),
-      ),
-    );
-
-    const failedAuditRows: Array<Record<string, unknown>> = [];
-    for (let i = 0; i < results.length; i++) {
-      const r = results[i];
-      const p = pendingNotifications[i];
-      if (!r || !p) continue;
-      if (r.status === "rejected") {
-        notifyFailed++;
-        failedAuditRows.push({
-          entity_type: "review",
-          entity_id: p.reviewDbId,
-          action: "notify_failed",
-          payload: {
-            sales_id: p.salesId,
-            sales_email: p.salesEmail,
-            google_review_id: p.googleReviewId,
-            error: r.reason instanceof Error ? r.reason.message : String(r.reason),
-          },
-        });
-        continue;
-      }
-      const sendRes = r.value;
-      if (!sendRes.ok && !("skipped" in sendRes && sendRes.skipped)) {
-        notifyFailed++;
-        failedAuditRows.push({
-          entity_type: "review",
-          entity_id: p.reviewDbId,
-          action: "notify_failed",
-          payload: {
-            sales_id: p.salesId,
-            sales_email: p.salesEmail,
-            google_review_id: p.googleReviewId,
-            status: "status" in sendRes ? sendRes.status : null,
-            error: "error" in sendRes ? sendRes.error : null,
-          },
-        });
-      }
-    }
-
-    if (failedAuditRows.length > 0) {
-      const { error: auditErr } = await admin
-        .from("audit_log")
-        .insert(failedAuditRows as never);
-      if (auditErr) {
-        console.error("[cron] failed to write notify_failed audit rows:", auditErr);
-      }
-    }
-  }
+  const notifResult = await flushNotifications(
+    admin,
+    pendingNotifications,
+    notifyNewReview,
+    appBase,
+  );
 
   return NextResponse.json({
     ok: true,
     locations_processed: summary.length,
-    notify_attempted: notifyAttempted,
-    notify_failed: notifyFailed,
+    notify_attempted: notifResult.attempted,
+    notify_failed: notifResult.failed,
     summary,
   });
 }

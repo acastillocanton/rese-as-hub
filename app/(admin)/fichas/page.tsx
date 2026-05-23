@@ -9,6 +9,7 @@ import { AddFichaButton } from "./AddFichaButton";
 import { DeleteFichaButton } from "./DeleteFichaButton";
 import { DisconnectGoogleButton } from "./DisconnectGoogleButton";
 import { DismissibleBanner } from "./DismissibleBanner";
+import { EditPlaceIdButton } from "./EditPlaceIdButton";
 
 type LocationRow = {
   id: string;
@@ -141,7 +142,7 @@ export default async function FichasPage({
                 padding: "12px 22px",
                 borderBottom: "1px solid var(--line)",
                 display: "grid",
-                gridTemplateColumns: "1.8fr 1.3fr 1.1fr 0.9fr 230px",
+                gridTemplateColumns: "1.8fr 1.3fr 1.1fr 0.9fr 360px",
                 gap: 14,
                 fontSize: 11,
                 color: "var(--ink-4)",
@@ -185,7 +186,7 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
         padding: "14px 22px",
         borderBottom: last ? "none" : "1px solid var(--line)",
         display: "grid",
-        gridTemplateColumns: "1.8fr 1.3fr 1.1fr 0.9fr 230px",
+        gridTemplateColumns: "1.8fr 1.3fr 1.1fr 0.9fr 360px",
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
@@ -250,6 +251,7 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
           alignItems: "center",
         }}
       >
+        <EditPlaceIdButton id={loc.id} currentPlaceId={loc.google_place_id} />
         {loc.oauth_status === "connected" ? (
           <DisconnectGoogleButton id={loc.id} name={loc.name} />
         ) : (

@@ -192,6 +192,7 @@ export async function importManualReview(
     match_confidence: match.match_confidence,
     match_state: match.match_state,
     match_evidence: match.match_evidence,
+    source: "manual" as const,
   };
 
   const { data: inserted, error: insErr } = await admin

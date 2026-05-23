@@ -124,6 +124,49 @@ export async function disconnectGoogleLocation(locationId: string) {
   return { ok: true };
 }
 
+const placeIdSchema = z.object({
+  locationId: z.string().uuid("Id inválido."),
+  googlePlaceId: z
+    .string()
+    .max(250)
+    .nullable()
+    .transform((v) => (v && v.trim() !== "" ? v.trim() : null))
+    .refine(
+      (v) => v === null || /^[A-Za-z0-9_\-]{10,250}$/.test(v),
+      "Place ID inválido. Debe tener 10-250 caracteres alfanuméricos, '_' o '-'.",
+    ),
+});
+
+/**
+ * Permite al admin editar el `google_place_id` de una ficha después de
+ * crearla. Útil para fichas creadas antes de que la cuota oficial de
+ * Business Profile estuviera disponible: el Place ID se rellena a mano y
+ * habilita el cron de Places API (que solo necesita esto, no OAuth).
+ */
+export async function updateLocationPlaceId(input: z.input<typeof placeIdSchema>) {
+  const parsed = placeIdSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  // Service client: /fichas es admin-only por middleware, pero el unique
+  // constraint sobre google_place_id puede chocar con RLS de update. Mejor
+  // bypasear y dejar que la unique decida.
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("locations")
+    .update({ google_place_id: parsed.data.googlePlaceId } as never)
+    .eq("id", parsed.data.locationId);
+  if (error) {
+    if (error.code === "23505") {
+      return { ok: false as const, error: "Ya existe otra ficha con ese Place ID." };
+    }
+    console.error("[fichas] updateLocationPlaceId failed:", error);
+    return { ok: false as const, error: error.message };
+  }
+  revalidatePath("/fichas");
+  return { ok: true as const };
+}
+
 export async function deleteLocation(id: string) {
   if (!id || typeof id !== "string") {
     return { error: "Id inválido." };
