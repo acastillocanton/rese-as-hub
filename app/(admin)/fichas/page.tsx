@@ -158,7 +158,7 @@ export default async function FichasPage({
             >
               <span>Ficha</span>
               <span>Cuenta Google</span>
-              <span>Estado OAuth</span>
+              <span>Sincronización</span>
               <span>Alta</span>
               <span></span>
             </div>
@@ -173,18 +173,23 @@ export default async function FichasPage({
 }
 
 function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
-  const oauthTone =
-    loc.oauth_status === "connected"
-      ? "ok"
-      : loc.oauth_status === "error"
-        ? "warn"
-        : "neutral";
-  const oauthLabel =
-    loc.oauth_status === "connected"
-      ? "Conectada"
-      : loc.oauth_status === "error"
-        ? "Error de conexión"
-        : "Sin conectar";
+  // Estado consolidado de sincronización: la ficha trae reseñas si tiene
+  // Business Profile conectado (preferido, paginable) o Places API vía
+  // google_place_id. Si tiene OAuth en error pero NO tiene place_id, queda
+  // sin sincronizar.
+  const hasPlaceId = loc.google_place_id !== null;
+  const isBpConnected = loc.oauth_status === "connected";
+  const isBpError = loc.oauth_status === "error";
+
+  const syncTone: "ok" | "warn" | "neutral" =
+    isBpConnected || hasPlaceId ? "ok" : isBpError ? "warn" : "neutral";
+  const syncLabel = isBpConnected
+    ? "Business Profile"
+    : hasPlaceId
+      ? "Places API"
+      : isBpError
+        ? "Error OAuth"
+        : "Sin Place ID";
 
   return (
     <div
@@ -238,8 +243,8 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
         {loc.google_account_email ?? "—"}
       </span>
       <span>
-        <Pill tone={oauthTone} withDot>
-          {oauthLabel}
+        <Pill tone={syncTone} withDot>
+          {syncLabel}
         </Pill>
       </span>
       <span style={{ fontSize: 12.5, color: "var(--ink-4)" }}>
