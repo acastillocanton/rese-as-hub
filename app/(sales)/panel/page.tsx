@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Users } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
+import { SyncNowButton } from "@/components/ui/SyncNowButton";
 
 // Forzamos render dinámico: la página usa `new Date()` para proyección ETA
 // y deltas vs mes pasado. Si Next cachea la respuesta, los relativos
@@ -220,6 +221,7 @@ export default async function PanelPage({
         compact
         right={
           <>
+            <SyncNowButton label="Buscar mis reseñas" size="sm" variant="ghost" />
             <RangePicker
               from={range.from}
               to={range.to}

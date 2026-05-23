@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   isValidPlaceId,
-  extractReviewId,
+  synthesizeReviewId,
   mapPlacesReview,
   listPlaceReviews,
   PlacesApiError,
 } from "../places";
+
+const VALID_PLACE = "ChIJN1t_tDeuEmsRUsoyG83frY4";
 
 describe("isValidPlaceId", () => {
   it("acepta IDs típicos de Google Places", () => {
@@ -24,131 +26,95 @@ describe("isValidPlaceId", () => {
   });
 });
 
-describe("extractReviewId", () => {
-  it("extrae el último segmento del name", () => {
-    expect(
-      extractReviewId("places/ChIJN1t_tDeuEmsRUsoyG83frY4/reviews/AbcDef123"),
-    ).toBe("AbcDef123");
+describe("synthesizeReviewId", () => {
+  it("genera ID estable y determinista para misma entrada", () => {
+    const a = synthesizeReviewId("ChIJ-test", 1716480000, "Antonio Ramírez");
+    const b = synthesizeReviewId("ChIJ-test", 1716480000, "Antonio Ramírez");
+    expect(a).toBe(b);
+    expect(a).toMatch(/^ChIJ-test_1716480000_[a-f0-9]{8}$/);
   });
 
-  it("devuelve el name tal cual si no contiene barras", () => {
-    expect(extractReviewId("raw_id")).toBe("raw_id");
+  it("genera IDs distintos para autores distintos", () => {
+    const a = synthesizeReviewId("ChIJ-test", 1716480000, "Antonio");
+    const b = synthesizeReviewId("ChIJ-test", 1716480000, "Maria");
+    expect(a).not.toBe(b);
   });
 
-  it("devuelve el name tal cual si termina en barra", () => {
-    expect(extractReviewId("places/X/reviews/")).toBe("places/X/reviews/");
+  it("genera IDs distintos para timestamps distintos", () => {
+    const a = synthesizeReviewId("ChIJ-test", 1716480000, "Antonio");
+    const b = synthesizeReviewId("ChIJ-test", 1716480001, "Antonio");
+    expect(a).not.toBe(b);
   });
 });
 
 describe("mapPlacesReview", () => {
   it("normaliza una reseña típica con todos los campos", () => {
-    const mapped = mapPlacesReview({
-      name: "places/ChIJ-abc/reviews/AbcDef123",
+    const mapped = mapPlacesReview(VALID_PLACE, {
+      author_name: "Antonio Ramírez",
       rating: 5,
-      text: { text: "Buen servicio", languageCode: "es" },
-      authorAttribution: { displayName: "Antonio Ramírez" },
-      publishTime: "2026-05-01T10:00:00Z",
+      text: "Buen servicio",
+      language: "es",
+      time: 1716480000,
     });
     expect(mapped).not.toBeNull();
-    expect(mapped!.google_review_id).toBe("places:AbcDef123");
+    expect(mapped!.google_review_id).toMatch(
+      /^places:ChIJN1t_tDeuEmsRUsoyG83frY4_1716480000_[a-f0-9]{8}$/,
+    );
     expect(mapped!.author_name).toBe("Antonio Ramírez");
     expect(mapped!.hasAuthorName).toBe(true);
     expect(mapped!.rating).toBe(5);
     expect(mapped!.text).toBe("Buen servicio");
-    expect(mapped!.google_created_at).toBe("2026-05-01T10:00:00Z");
+    expect(mapped!.google_created_at).toBe("2024-05-23T16:00:00.000Z");
   });
 
-  it("marca hasAuthorName=false cuando el autor es 'Un usuario de Google'", () => {
-    const mapped = mapPlacesReview({
-      name: "places/X/reviews/Y",
+  it("marca hasAuthorName=false cuando autor es 'Un usuario de Google'", () => {
+    const mapped = mapPlacesReview(VALID_PLACE, {
+      author_name: "Un usuario de Google",
       rating: 4,
-      authorAttribution: { displayName: "Un usuario de Google" },
-      publishTime: "2026-05-01T10:00:00Z",
+      time: 1716480000,
     });
     expect(mapped).not.toBeNull();
     expect(mapped!.hasAuthorName).toBe(false);
     expect(mapped!.author_name).toBe("Anónimo");
   });
 
-  it("marca hasAuthorName=false si falta displayName", () => {
-    const mapped = mapPlacesReview({
-      name: "places/X/reviews/Y",
-      rating: 3,
-      publishTime: "2026-05-01T10:00:00Z",
-    });
-    expect(mapped).not.toBeNull();
-    expect(mapped!.hasAuthorName).toBe(false);
+  it("ignora reseñas sin time válido", () => {
+    expect(mapPlacesReview(VALID_PLACE, { author_name: "X", rating: 5 })).toBeNull();
+    expect(
+      mapPlacesReview(VALID_PLACE, { author_name: "X", rating: 5, time: 0 }),
+    ).toBeNull();
   });
 
-  it("usa originalText cuando text está vacío", () => {
-    const mapped = mapPlacesReview({
-      name: "places/X/reviews/Y",
-      rating: 5,
-      text: { text: "" },
-      originalText: { text: "Texto original", languageCode: "es" },
-      authorAttribution: { displayName: "Antonio" },
-      publishTime: "2026-05-01T10:00:00Z",
-    });
-    expect(mapped!.text).toBe("Texto original");
+  it("ignora reseñas con rating fuera de 1-5", () => {
+    expect(
+      mapPlacesReview(VALID_PLACE, { author_name: "X", rating: 0, time: 100 }),
+    ).toBeNull();
+    expect(
+      mapPlacesReview(VALID_PLACE, { author_name: "X", rating: 6, time: 100 }),
+    ).toBeNull();
   });
 
-  it("devuelve text=null cuando ambos están vacíos", () => {
-    const mapped = mapPlacesReview({
-      name: "places/X/reviews/Y",
+  it("text vacío o solo whitespace → null", () => {
+    const mapped = mapPlacesReview(VALID_PLACE, {
+      author_name: "Antonio",
       rating: 5,
-      text: { text: "" },
-      originalText: { text: "" },
-      authorAttribution: { displayName: "Antonio" },
-      publishTime: "2026-05-01T10:00:00Z",
+      text: "   ",
+      time: 1716480000,
     });
     expect(mapped!.text).toBeNull();
   });
 
-  it("redondea ratings decimales (Places puede devolver 4.0)", () => {
-    const mapped = mapPlacesReview({
-      name: "places/X/reviews/Y",
+  it("redondea ratings decimales", () => {
+    const mapped = mapPlacesReview(VALID_PLACE, {
+      author_name: "Antonio",
       rating: 4.0,
-      authorAttribution: { displayName: "Antonio" },
-      publishTime: "2026-05-01T10:00:00Z",
+      time: 1716480000,
     });
     expect(mapped!.rating).toBe(4);
-  });
-
-  it("devuelve null si falta name o publishTime", () => {
-    expect(
-      mapPlacesReview({
-        rating: 5,
-        publishTime: "2026-05-01T10:00:00Z",
-      }),
-    ).toBeNull();
-    expect(
-      mapPlacesReview({
-        name: "places/X/reviews/Y",
-        rating: 5,
-      }),
-    ).toBeNull();
-  });
-
-  it("devuelve null si rating está fuera de 1-5", () => {
-    expect(
-      mapPlacesReview({
-        name: "places/X/reviews/Y",
-        rating: 0,
-        publishTime: "2026-05-01T10:00:00Z",
-      }),
-    ).toBeNull();
-    expect(
-      mapPlacesReview({
-        name: "places/X/reviews/Y",
-        rating: 6,
-        publishTime: "2026-05-01T10:00:00Z",
-      }),
-    ).toBeNull();
   });
 });
 
 describe("listPlaceReviews — integración con fetch", () => {
-  const VALID_PLACE = "ChIJN1t_tDeuEmsRUsoyG83frY4";
   let originalKey: string | undefined;
 
   beforeEach(() => {
@@ -165,24 +131,26 @@ describe("listPlaceReviews — integración con fetch", () => {
     vi.restoreAllMocks();
   });
 
-  it("mapea respuesta exitosa", async () => {
+  it("mapea respuesta exitosa OK con reseñas", async () => {
     const mockResponse = {
-      id: VALID_PLACE,
-      reviews: [
-        {
-          name: `places/${VALID_PLACE}/reviews/RVW_1`,
-          rating: 5,
-          text: { text: "Excelente" },
-          authorAttribution: { displayName: "María" },
-          publishTime: "2026-05-01T10:00:00Z",
-        },
-        {
-          name: `places/${VALID_PLACE}/reviews/RVW_2`,
-          rating: 3,
-          authorAttribution: { displayName: "Un usuario de Google" },
-          publishTime: "2026-05-02T10:00:00Z",
-        },
-      ],
+      status: "OK",
+      result: {
+        name: "Negocio Test",
+        reviews: [
+          {
+            author_name: "María",
+            rating: 5,
+            text: "Excelente",
+            time: 1716480000,
+            language: "es",
+          },
+          {
+            author_name: "Un usuario de Google",
+            rating: 3,
+            time: 1716393600,
+          },
+        ],
+      },
     };
 
     vi.spyOn(global, "fetch").mockResolvedValue(
@@ -194,27 +162,41 @@ describe("listPlaceReviews — integración con fetch", () => {
 
     const out = await listPlaceReviews(VALID_PLACE);
     expect(out).toHaveLength(2);
-    expect(out[0]!.google_review_id).toBe("places:RVW_1");
+    expect(out[0]!.google_review_id).toMatch(/^places:/);
     expect(out[0]!.author_name).toBe("María");
     expect(out[1]!.hasAuthorName).toBe(false);
   });
 
-  it("devuelve [] cuando Places no incluye reviews", async () => {
+  it("devuelve [] con status ZERO_RESULTS", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ id: VALID_PLACE }), { status: 200 }),
+      new Response(JSON.stringify({ status: "ZERO_RESULTS" }), { status: 200 }),
     );
-    const out = await listPlaceReviews(VALID_PLACE);
-    expect(out).toEqual([]);
+    expect(await listPlaceReviews(VALID_PLACE)).toEqual([]);
   });
 
-  it("lanza PlacesApiError si Google rechaza", async () => {
+  it("devuelve [] con status NOT_FOUND", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ status: "NOT_FOUND" }), { status: 200 }),
+    );
+    expect(await listPlaceReviews(VALID_PLACE)).toEqual([]);
+  });
+
+  it("lanza PlacesApiError con REQUEST_DENIED", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
-          error: { code: 403, message: "API key not valid.", status: "PERMISSION_DENIED" },
+          status: "REQUEST_DENIED",
+          error_message: "API key not valid.",
         }),
-        { status: 403 },
+        { status: 200 },
       ),
+    );
+    await expect(listPlaceReviews(VALID_PLACE)).rejects.toBeInstanceOf(PlacesApiError);
+  });
+
+  it("lanza PlacesApiError con OVER_QUERY_LIMIT", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ status: "OVER_QUERY_LIMIT" }), { status: 200 }),
     );
     await expect(listPlaceReviews(VALID_PLACE)).rejects.toBeInstanceOf(PlacesApiError);
   });
@@ -230,14 +212,18 @@ describe("listPlaceReviews — integración con fetch", () => {
     await expect(listPlaceReviews(VALID_PLACE)).rejects.toBeInstanceOf(PlacesApiError);
   });
 
-  it("añade header X-Goog-Api-Key", async () => {
+  it("llama al endpoint legacy con reviews_sort=newest", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ reviews: [] }), { status: 200 }),
+      new Response(
+        JSON.stringify({ status: "OK", result: { reviews: [] } }),
+        { status: 200 },
+      ),
     );
     await listPlaceReviews(VALID_PLACE);
-    const call = fetchSpy.mock.calls[0]!;
-    const init = call[1] as RequestInit;
-    const headers = init.headers as Record<string, string>;
-    expect(headers["X-Goog-Api-Key"]).toBe("test-key");
+    const url = fetchSpy.mock.calls[0]![0] as string;
+    expect(url).toContain("maps.googleapis.com/maps/api/place/details/json");
+    expect(url).toContain("reviews_sort=newest");
+    expect(url).toContain(`place_id=${VALID_PLACE}`);
+    expect(url).toContain("key=test-key");
   });
 });

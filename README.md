@@ -17,10 +17,10 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 
 - **Next.js 15.5.18** App Router + TypeScript strict (`noUncheckedIndexedAccess`) + Turbopack
 - **Supabase** Postgres + Auth + Row Level Security + Storage (bucket `avatars`)
-- **Google Places API (New) v1** con API key (vía de respaldo activa — sin OAuth, top-5 reseñas por ficha)
+- **Google Places API legacy** con API key (vía de respaldo activa — sin OAuth, `reviews_sort=newest`, top-5 más recientes por ficha)
 - **Google Business Profile API** con OAuth por ficha (Account Management + Business Information + Reviews v4) — esperando aprobación de cuota
 - **Brevo SMTP** dos claves independientes: una para Supabase Auth (magic-links + invites) y otra para notificaciones transaccionales (Nodemailer en [`lib/email/brevo.ts`](lib/email/brevo.ts))
-- **Vercel Hobby** hosting + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC ≈ 6-7 AM España)
+- **Vercel Hobby** hosting + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC ≈ 6-7 AM España) + **GitHub Action horario** (cada hora 06-23 UTC) llamando al cron Places para fichas activas + botón **"Sincronizar ahora"** en UI (admin/gestor/comercial)
 - **ExcelJS** (dynamic import server-side) para export mensual del gestor
 - **qrcode.react** + Zod + middleware con RLS y redirección por rol
 - **Vitest** unit tests (matcher + date-range + schema importador + cliente Places, 70 verdes)

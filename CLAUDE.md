@@ -79,14 +79,26 @@ Tests unit del matcher en [`lib/matching/__tests__/attribute-review.test.ts`](li
 
 ### Fase 4.b · Places API fallback + importador manual (detalle)
 
-Vía de respaldo para no depender de la aprobación de cuota de Business Profile. Implementado en commits `6aaae66` + `aa10f09` + `dea348d` (rama `feature/places-fallback`, mergeada a main).
+Vía de respaldo para no depender de la aprobación de cuota de Business Profile. Iterado en dos rondas: la inicial con Places API (New) que devolvía top-5 "relevantes" (insuficiente para fichas con histórico largo), y la actual con **Places API legacy + `reviews_sort=newest`** que devuelve las 5 **más recientes**.
 
 **Cron Places** ([`/api/cron/sync-places-reviews`](app/api/cron/sync-places-reviews/route.ts)):
-- Cliente [`lib/google/places.ts`](lib/google/places.ts) consume Google Places API (New) v1 (`places.googleapis.com/v1/places/{id}?fields=reviews,id`) con header `X-Goog-Api-Key`. Solo necesita una API key — sin OAuth, sin verificación, sin aprobación.
-- Devuelve hasta 5 reseñas top por ficha, sin paginación. Para Inseryal con bajo volumen → suficiente. Limitación temporal: si una ficha recibe >5 reseñas en 24h, las antiguas se pierden hasta que llegue Business Profile.
-- Cuota gratis: 1000 req/día. Coste real ~0 € (7 fichas × 1 cron/día).
-- Helper compartido [`lib/cron/process-reviews.ts`](lib/cron/process-reviews.ts) con `processFreshReviews()` + `flushNotifications()` — mismo flujo (matcher + insert + email batch) usado por ambos crons (Places y Business Profile).
+- Cliente [`lib/google/places.ts`](lib/google/places.ts) consume el endpoint **legacy** `maps.googleapis.com/maps/api/place/details/json?fields=reviews&reviews_sort=newest&language=es&key=…`. La API key (`GOOGLE_PLACES_API_KEY`) vive en query string. Necesita habilitada "Places API" (sin "New") en Google Cloud Console — la "New" no soporta este parámetro.
+- Devuelve las 5 más recientes por ficha. No pagina. Mismo patrón que usa el plugin propio Reviby en producción.
+- `google_review_id` se **sintetiza** como `places:{place_id}_{unix_time}_{md5(author).slice(0,8)}` porque el endpoint legacy no devuelve `review_id` estable.
+- Cuota gratis Google Maps Platform ($200/mes free credit ≈ 11.000 Place Details). Coste real Inseryal con cron horario × 7 fichas × 18h/día ≈ 126 req/día → cero coste.
+- Helper compartido [`lib/cron/process-reviews.ts`](lib/cron/process-reviews.ts) con `processFreshReviews()` + `flushNotifications()`. Toda la orquestación específica de Places vive en [`lib/google/sync-places.ts`](lib/google/sync-places.ts) (`syncPlaces({ locationIds? })`).
 - Lock optimista compartido vía `oauth_last_sync_at`: si un cron procesó una ficha hace <60s, el otro hace skip.
+
+**Cron horario externo** ([`.github/workflows/sync-places-hourly.yml`](.github/workflows/sync-places-hourly.yml)):
+- GitHub Action diariamente cada hora a y media (minuto 30, 06-23 UTC) llama al mismo endpoint del cron Vercel con `Authorization: Bearer ${CRON_SECRET}`.
+- Razón: Vercel Hobby solo permite cron diario. Places no pagina; un solo sync/día perdería reseñas en fichas activas. Con sync cada hora, una ficha tendría que recibir >5 reseñas en menos de 1 hora para perder alguna — improbable.
+- Requiere dos secrets en GitHub repo → Settings → Secrets: `APP_URL` (URL de prod) y `CRON_SECRET` (mismo valor que en Vercel).
+
+**Sincronización manual** ([`/api/sync/now`](app/api/sync/now/route.ts)):
+- POST autenticado por cookie de sesión (no por CRON_SECRET).
+- Admin / reviews_manager sin body → todas las fichas; con `{ location_id }` → solo esa.
+- Sales → ignora body; sincroniza únicamente su `profiles.location_id`.
+- Botón [`<SyncNowButton />`](components/ui/SyncNowButton.tsx) reutilizable en `/fichas` (admin: global + por fila), `/manager/resenas` (gestor) y `/panel` (comercial).
 
 **Importador manual** ([`/manager/resenas/importar`](app/(manager)/manager/resenas/importar/page.tsx)):
 - Pantalla admin + reviews_manager para meter a mano una reseña visible en Google Maps que el sincronizador automático no ha traído.
@@ -241,9 +253,18 @@ Excepciones controladas:
 **Nunca quitar el prefijo `places:` ni `manual:`**: rompería la idempotencia y crearía colisiones reales al activar Business Profile.
 
 ### 4.18 `GOOGLE_PLACES_API_KEY` — API key sin restricción de IP
-La API key de Places vive en Google Cloud Console → proyecto `resenas-inseryal` (number `628454280082`) → APIs & Services → Credentials → "Maps Platform API Key". Restringida a **Places API (New)** únicamente. Application restrictions = **None** (Vercel usa IPs dinámicas; la cuota gratis de 1000 req/día acota el blast radius si se filtrara).
+La API key de Places vive en Google Cloud Console → proyecto `resenas-inseryal` (number `628454280082`) → APIs & Services → Credentials → "Maps Platform API Key". Tiene que tener acceso a las **dos APIs**:
+- "Places API (New)" — habilitada inicialmente (no se usa en código activo pero deja la puerta abierta).
+- "Places API" (legacy, sin "New") — la que consume el cron actual via `reviews_sort=newest`.
 
-En Vercel: añadida en Settings → Environment Variables (los 3 environments). Si rotas la key, redeploy obligatorio.
+Application restrictions = **None** (Vercel usa IPs dinámicas; el coste por uso acota el blast radius si se filtrara). En Vercel: añadida en Settings → Environment Variables (los 3 environments). Si rotas la key, redeploy obligatorio.
+
+### 4.19 Cron horario externo via GitHub Actions
+Vercel Hobby solo permite cron diario. Places API no pagina → con 1 sync/día perdemos reseñas en fichas activas. Workflow [`.github/workflows/sync-places-hourly.yml`](.github/workflows/sync-places-hourly.yml) dispara `/api/cron/sync-places-reviews` cada hora (minuto 30, 06-23 UTC). Requiere dos secrets en repo GitHub:
+- `APP_URL` = `https://resenas.marinadorconstrucciones.com`
+- `CRON_SECRET` = mismo valor que en Vercel
+
+Si el endpoint devuelve != 200, el workflow falla y GitHub manda email al maintainer. Botón "Run workflow" disponible en la pestaña Actions para disparos a demanda.
 
 ---
 

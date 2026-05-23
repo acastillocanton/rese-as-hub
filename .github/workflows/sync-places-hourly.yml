@@ -1,0 +1,62 @@
+# Sincronización horaria contra Google Places API
+#
+# Por qué este workflow existe:
+#   Vercel Hobby solo permite crons diarios. Places API devuelve top-5 sin
+#   paginación: con 1 sync al día perdemos reseñas si una ficha recibe >5 en
+#   24h. Disparando el endpoint cada hora desde GitHub Actions, casi nunca
+#   habrá >5 reseñas entre dos llamadas consecutivas (asumiendo bajo volumen
+#   por hora típico de Inseryal).
+#
+# Cuándo se ejecuta:
+#   Cada hora a y media (las 30 del minuto), entre las 06:00 y las 23:00 UTC.
+#   En total ~18 ejecuciones/día × 7 fichas = 126 requests/día. Muy dentro
+#   del free tier de Google Maps Platform.
+#
+# Secrets necesarios (Repository Settings → Secrets and variables → Actions):
+#   - APP_URL    → https://resenas.marinadorconstrucciones.com
+#   - CRON_SECRET → mismo valor que la env var de Vercel
+#
+# Si quieres ejecutarlo a demanda: pestaña Actions → "Sync Places hourly" →
+# "Run workflow".
+
+name: Sync Places hourly
+
+on:
+  schedule:
+    # cron en UTC: minuto 30 de cada hora entre las 06 y las 23 UTC.
+    # Cubre el día completo de actividad en España (08-01 hora local).
+    - cron: "30 6-23 * * *"
+  workflow_dispatch: # botón manual disponible en la pestaña Actions
+
+concurrency:
+  # Si una ejecución se cruza con otra (lenta), la nueva espera a que la
+  # anterior termine. El lock optimista del endpoint también lo cubriría,
+  # pero esto evita llamadas duplicadas innecesarias.
+  group: sync-places
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call Places sync endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Faltan secrets APP_URL o CRON_SECRET en GitHub."
+            exit 1
+          fi
+          response=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/sync-places-reviews")
+          status=$(echo "$response" | tail -n1 | sed 's/HTTP_STATUS://')
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP $status"
+          echo "$body" | head -c 2000
+          if [ "$status" != "200" ]; then
+            echo "::error::Endpoint devolvió $status"
+            exit 1
+          fi
