@@ -12,7 +12,7 @@ Hacer cada captura desde producción (https://resenas.marinadorconstrucciones.co
 | `02-panel-sales.png` | El panel del comercial (`/panel`) con sus KPIs visibles (visitas, reseñas del mes, % objetivo, ring de progreso). |
 | `03-clientes-lista.png` | Pantalla `/clientes` con varios clientes ya dados de alta y el botón "+ Nuevo cliente" arriba a la derecha visible. |
 | `04-cliente-detalle-share.png` | Pantalla `/clientes/{slug}` con la URL personalizada, el QR y los tres botones (WhatsApp / Email / SMS) bien visibles. |
-| `05-qr-modal.png` | El modal del QR ampliado tras pulsar "Ver QR". |
+| `05-qr-modal.png` | Pantalla `/panel/enlace` con URL del comercial, QR grande descargable, plantilla de mensaje y botones de compartir. |
 | `06-flujo-atribucion.png` | Diagrama del flujo: cliente abre enlace → escribe reseña en Google → cron → matcher → panel + email. Esta SÍ es ilustrativa, puedes hacerla en Figma/Canva con flechas y cajas. |
 | `07-mis-resenas.png` | Listado de `/panel/resenas` con 2-3 reseñas de ejemplo, mostrando autor, estrellas, texto y fecha. |
 | `08-boton-sincronizar.png` | Detalle del topbar de `/panel` mostrando el botón "Buscar mis reseñas" arriba a la derecha. Recorte zoom suficiente para que se vea bien. |

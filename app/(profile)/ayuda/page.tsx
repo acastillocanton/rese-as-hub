@@ -262,16 +262,27 @@ export default function AyudaPage() {
               <li>Revisa y envía.</li>
             </ol>
 
-            <h4 style={h4Style}>📷 QR (cara a cara o en papel)</h4>
+            <h4 style={h4Style}>📷 QR (cara a cara, mostrador o impreso)</h4>
             <p style={pStyle}>
-              Útil cuando estás con el cliente en persona: pulsa{" "}
-              <strong>&ldquo;Ver QR&rdquo;</strong> y le enseñas el código.
-              Lo escanea con su móvil y aterriza directamente en Google.
-              También puedes imprimirlo en una tarjeta o un folleto.
+              Tienes dos QRs distintos:
             </p>
+            <ul style={ulStyle}>
+              <li>
+                <strong>QR de tu enlace personal genérico</strong> (en{" "}
+                <strong>&ldquo;Mi enlace&rdquo;</strong> del menú izquierdo).
+                Es tu URL sin cliente identificado. Útil para imprimirlo y
+                ponerlo en el mostrador, una tarjeta o un display físico —
+                cualquiera que lo escanee deja reseña asociada a ti.
+              </li>
+              <li>
+                <strong>QR específico por cliente</strong> (en cada ficha de
+                cliente). Tiene el slug del cliente concreto, mejora la
+                atribución cuando el cliente lo escanea.
+              </li>
+            </ul>
             <HelpFigure
               src="/help/05-qr-modal.png"
-              caption="QR ampliado listo para que el cliente lo escanee con la cámara del móvil."
+              caption="Pantalla 'Mi enlace' con tu URL personal, QR descargable, plantilla de mensaje y botones de compartir."
             />
 
             <Callout tone="warn">
