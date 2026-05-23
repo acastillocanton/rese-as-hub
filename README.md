@@ -166,6 +166,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/c/:sales/:client`            | público           | Registra share_link y 302 a Google                               |
 | `/privacidad`, `/terminos`     | público           | Páginas legales (linkadas desde login)                           |
 | `/perfil`                      | admin + sales + manager | Foto + datos de cuenta + cerrar sesión                     |
+| `/ayuda`                       | admin + sales + manager | Manual del comercial (10 secciones + 9 capturas + lightbox) |
 | `/dashboard`                   | admin + manager   | KPIs reales: visitas/comerciales/fichas + chart 6 meses + leaderboard |
 | `/comerciales`                 | admin + manager   | Lista + invite + delete + fila navegable                         |
 | `/comerciales/:slug`           | admin + manager   | Ficha editable: datos, KPIs, clientes, reseñas                   |
@@ -225,8 +226,9 @@ app/
   (manager)/            ─ Pantallas del gestor de reseñas
     manager/resenas/
     manager/export/
-  (profile)/            ─ Perfil global accesible a los 3 roles
-    perfil/
+  (profile)/            ─ Pantallas accesibles a los 3 roles
+    perfil/                          Foto + datos de cuenta + cerrar sesión
+    ayuda/                           Manual del comercial con capturas + lightbox
   (legal)/              ─ Privacidad + términos (públicas)
     privacidad/
     terminos/
@@ -241,12 +243,17 @@ app/
     admin/notify-failed/             ─ Admin: listar + reenviar emails fallidos
   login/                ─ /login + /login/manual (workaround tokens)
 components/
-  ui/                   ─ Card, Stat, Pill, Avatar, Stars, Progress, RangePicker, …
+  ui/                   ─ Card, Stat, Pill, Avatar, Stars, Progress, RangePicker,
+                          SyncNowButton, RemovalControls, …
   charts/               ─ Sparkline, AreaChart, MonthBars, Ring
   layout/               ─ Frame, Sidebar, Topbar, MobileTabBar, MobileProfileAvatar
+  help/HelpFigure       ─ Imagen del manual /ayuda con placeholder + lightbox
+
+public/help/            ─ Capturas del manual (01-09 + README.md con instrucciones)
+
 lib/
   google/business-profile.ts        ─ Cliente API + refresh-token + fetchWithRetry
-  google/places.ts                  ─ Cliente Places API (New) v1 — sin OAuth
+  google/places.ts                  ─ Cliente Places API legacy (reviews_sort=newest)
   google/__tests__/places.test.ts   ─ Tests Vitest del cliente Places (20)
   matching/attribute-review.ts      ─ Algoritmo (ventana 48h + nombre + modo anonymous)
   matching/__tests__/               ─ Tests Vitest del matcher (22)

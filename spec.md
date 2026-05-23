@@ -101,6 +101,9 @@ app/                              Next.js App Router
   (manager)/                      Layout + páginas del gestor de reseñas
     manager/resenas/              Listado solo-lectura
     manager/export/               Generador Excel
+  (profile)/                      Layout compartido (3 roles)
+    perfil/                       Foto + datos + cerrar sesión
+    ayuda/                        Manual del comercial (10 secciones + capturas)
   c/[salesSlug]/                  Landing pública (route handler, sin layout)
   c/[salesSlug]/[clientSlug]/     Landing pública con cliente identificado
   auth/                           callback (magic-link) + signout

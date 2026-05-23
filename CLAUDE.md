@@ -50,13 +50,14 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | 3 · Sales desktop (`/panel`, `/panel/enlace`, `/panel/resenas`, `/clientes`, `/clientes/[slug]`) | ✅ |
 | 3.b · Sales mobile (ver subsección) | ✅ |
 | 4 · Google Business Profile sync + matching | ⚠️ código listo + hardened, esperando cuota Google |
-| 4.b · Places API fallback (legacy + sort=newest) + importador manual | ✅ trayendo reseñas reales en prod desde 2026-05-23 |
+| 4.b · Places API fallback (legacy + sort=newest) | ✅ trayendo reseñas reales en prod desde 2026-05-23 |
 | 4.c · Sync manual + cron horario GitHub Action + soft-delete + estado consolidado | ✅ |
 | 5 · Reviews manager (`/manager/resenas`, `/manager/export`) | ✅ |
 | 6 · Polish / hardening (auditoría 18 items) | ✅ |
 | 7 · Deploy producción | ✅ |
 | Perfil global (`/perfil` + avatares) | ✅ |
 | Páginas legales (`/privacidad`, `/terminos`) | ✅ |
+| Centro de ayuda (`/ayuda`) con manual del comercial + lightbox | ✅ |
 
 ### Vista mobile del comercial (Fase 3.b)
 Solo el rol sales tiene vista mobile (`≤767px`). Admin/gestor/profile siguen desktop-only por diseño (oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `sales-*` al final de [`app/globals.css`](app/globals.css).
@@ -78,7 +79,7 @@ OAuth flow validado E2E. Único pendiente: cuota Google. Mientras tanto las APIs
 
 Tests unit del matcher en [`lib/matching/__tests__/attribute-review.test.ts`](lib/matching/__tests__/attribute-review.test.ts) (22 tests cubriendo `nameSimilarity` + flujo con autor real + modo anonymous).
 
-### Fase 4.b · Places API fallback + importador manual (detalle)
+### Fase 4.b · Places API fallback (detalle)
 
 Vía de respaldo para no depender de la aprobación de cuota de Business Profile. Iterado en dos rondas: la inicial con Places API (New) que devolvía top-5 "relevantes" (insuficiente para fichas con histórico largo), y la actual con **Places API legacy + `reviews_sort=newest`** que devuelve las 5 **más recientes**.
 
@@ -112,6 +113,17 @@ Vía de respaldo para no depender de la aprobación de cuota de Business Profile
 
 ### Fase 5 · Gestor (detalle)
 Decisión: el gestor unifica vista con admin en lugar de un universo paralelo `/manager/*`. Comparte `/dashboard` y `/comerciales/*` con plenos permisos sobre sales. Pantallas propias: [`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) y [`/manager/export`](app/(manager)/manager/export/page.tsx) (.xlsx con detalle + resumen dashboard). Gating: helper [`assertCanManageSales()`](app/(admin)/comerciales/actions.ts) en las 4 acciones de comerciales. RLS: migración [`005_manager_sales_admin.sql`](supabase/migrations/005_manager_sales_admin.sql) — `with check` impide escalar un sales a admin/manager.
+
+### Centro de ayuda (`/ayuda`) — manual del comercial
+
+Pantalla [`app/(profile)/ayuda/page.tsx`](app/(profile)/ayuda/page.tsx) accesible a los **tres roles** desde el sidebar (item "Ayuda" abajo del todo, encima del avatar, icono LifeBuoy). Manual de 10 secciones con tabla de contenidos sticky, callouts azules/amarillos, FAQ desplegable y 9 capturas reales.
+
+- Capturas en [`public/help/`](public/help/) (`01-email-magic-link.png` ... `09-perfil.png`) — 6 generadas vía Playwright headless logueado como Comercial Demo en producción; `06-flujo-atribucion.png` es un diagrama generado con Pillow.
+- README en [`public/help/README.md`](public/help/README.md) con la lista exacta de archivos esperados.
+- Componente [`<HelpFigure />`](components/help/HelpFigure.tsx) con doble función: placeholder cuando la imagen no existe (para añadir capturas a posteriori) **y lightbox** al hacer click (overlay fullscreen, cierre con Esc, clic fuera o botón ×).
+- Permitido en middleware (`/ayuda` siempre accesible). KPI "Ficha más activa" en `/manager/resenas` se sustituye dinámicamente por "% con comentario" cuando hay filtro de ficha aplicado (PR #7).
+
+**Importador manual ❌ eliminado 2026-05-23** (PR #9): existía `/manager/resenas/importar` para meter reseñas a mano, pero el cron diario + cron horario GitHub + botón "Sincronizar ahora" cubren todos los casos. Se eliminó para limpiar UI y evitar reseñas inventadas. El enum `review_source_enum` mantiene `'manual'` por compatibilidad pero ya no entran filas nuevas. Resucitable desde commit `6aaae66` si hace falta.
 
 ### Fase 6 · Polish / hardening (auditoría 18 items, 2026-05-22)
 
