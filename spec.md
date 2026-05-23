@@ -33,9 +33,9 @@
 | UI | React 19 + CSS variables (tokens del diseño) + Tailwind | 4.x utility classes |
 | Backend / DB | Supabase (Postgres + Auth + RLS) | hosted |
 | Auth | Magic-link vía Supabase Auth (Brevo SMTP) + roles aplicados con middleware + RLS | — |
-| Integración externa | Google Business Profile API v1 + OAuth 2.0 (una credencial por ficha) | — |
+| Integración externa | Google Places API (New) v1 (API key, sin OAuth — vía activa) + Google Business Profile API v1 + OAuth 2.0 (pendiente de cuota) | — |
 | Email transaccional | Brevo SMTP vía Nodemailer (notificaciones al comercial cuando entra reseña counted) | — |
-| Hosting + Cron | Vercel Hobby + Vercel Cron diario `0 9 * * *` UTC | — |
+| Hosting + Cron | Vercel Hobby + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC) | — |
 | Excel | ExcelJS (server-side, dynamic import) | 4.4 |
 | QR | qrcode.react | 4.2 |
 | Validación | Zod | 3.23 |
@@ -56,7 +56,7 @@ npm run build          # build de producción (verifica tipos y compila)
 npm run start          # server de producción tras npm run build
 npm run typecheck      # tsc --noEmit
 npm run lint           # next lint
-npm test               # Vitest unit (matcher + date-range, 36 tests)
+npm test               # Vitest unit (matcher + date-range + schemas + Places client, 70 tests)
 npm run test:watch     # Vitest en modo watch
 ```
 
@@ -72,11 +72,13 @@ npm run test:watch     # Vitest en modo watch
 #   supabase/migrations/006_profile_avatars.sql
 #   supabase/migrations/007_reviews_composite_indices.sql
 #   supabase/migrations/008_audit_log_insert_policy.sql
+#   supabase/migrations/009_review_source.sql
 ```
 
-**Disparar el cron manualmente** (con `CRON_SECRET` configurado):
+**Disparar los crons manualmente** (con `CRON_SECRET` configurado):
 
 ```bash
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/sync-places-reviews
 curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/sync-google-reviews
 ```
 
@@ -98,11 +100,13 @@ app/                              Next.js App Router
     clientes/                     Alta cliente + generar enlace
   (manager)/                      Layout + páginas del gestor de reseñas
     manager/resenas/              Listado solo-lectura
+    manager/resenas/importar/     Importador manual (admin + manager)
     manager/export/               Generador Excel
   c/[salesSlug]/                  Landing pública (route handler, sin layout)
   c/[salesSlug]/[clientSlug]/     Landing pública con cliente identificado
   auth/                           callback (magic-link) + signout
-  api/cron/sync-google-reviews/   Cron protegido con CRON_SECRET
+  api/cron/sync-google-reviews/   Cron Business Profile (pendiente cuota)
+  api/cron/sync-places-reviews/   Cron Places API (activo, sin OAuth)
   login/                          Pantalla de login + server action
   accept-invite/[token]/          Onboarding del comercial invitado
 
@@ -116,9 +120,9 @@ lib/
   supabase/                       client.ts (browser) · server.ts (RSC) ·
                                   middleware.ts (edge auth) · service.ts (service role) ·
                                   config.ts (isSupabaseConfigured) · types.ts (Database)
-  matching/                       (pendiente) attribute-review.ts + fixtures
-  google/                         (pendiente) business-profile.ts wrapper API
-  excel/                          (pendiente) export-reviews.ts (ExcelJS)
+  matching/                       attribute-review.ts + tests (22)
+  google/                         business-profile.ts (OAuth) + places.ts (API key)
+  cron/                           process-reviews.ts (helper compartido)
   landing.ts                      Lógica del /c/* (service-role insert + redirect)
   url-validation.ts               isSafeNext, isValidSlug
   utils.ts                        cn, slugify, initials, avatarColor
@@ -273,8 +277,8 @@ El MVP está hecho cuando **todas** estas condiciones son verdad:
 - [ ] **Tiempo de detección de reseña < 10 minutos** desde su publicación en Google hasta su aparición en el panel del comercial (medido vía timestamp `google_created_at` vs `fetched_at`).
 
 **No-funcionales (mínimos, no objetivos duros)**:
-- [x] `npm run build` y `npm run typecheck` pasan sin errores ni warnings nuevos. ✅ Validado 2026-05-22.
-- [x] `npm test` pasa (36 tests verdes). ✅
+- [x] `npm run build` y `npm run typecheck` pasan sin errores ni warnings nuevos. ✅ Validado 2026-05-23.
+- [x] `npm test` pasa (70 tests verdes — matcher 22 + date-range 14 + schema importador 14 + cliente Places 20). ✅
 - [ ] El servidor responde 200 en todas las rutas autenticadas con un usuario válido de cada rol.
 - [x] Cabeceras de seguridad presentes (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `HSTS`). ✅ CSP añadido 2026-05-22.
 - [ ] No hay regresiones en el smoke test del README.

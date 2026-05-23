@@ -15,9 +15,9 @@ Tres roles:
 - **sales** (comercial) — genera enlaces personalizados por cliente, ve sus reseñas, su ranking.
 - **reviews_manager** (Raquel + Bel) — comparte vista con admin en Dashboard y comerciales, **con plenos permisos de administración sobre el rol sales** (invitar / editar / reenviar acceso / eliminar). Adicional: `/manager/resenas` y `/manager/export`. NO accede a `/gestores`, `/fichas`, `/resenas/verificacion`, `/ajustes`.
 
-**Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{sales-slug}/{client-slug}` → cliente cae directo en "Escribir reseña" en Google (302) → cron sincroniza vía Google Business Profile API → algoritmo atribuye al comercial por ventana temporal + nombre del cliente.
+**Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{sales-slug}/{client-slug}` → cliente cae directo en "Escribir reseña" en Google (302) → dos crons diarios (Google Places API + Google Business Profile API) traen las reseñas → algoritmo atribuye al comercial por ventana temporal + nombre del cliente. Plus: importador manual `/manager/resenas/importar` para reseñas puntuales que la API no devuelve.
 
-**Stack**: Next.js 15.5.18 App Router + Turbopack · TypeScript strict + `noUncheckedIndexedAccess` · Supabase (Postgres + Auth + RLS) · Google Business Profile API + OAuth (una credencial por ficha) · Brevo SMTP (vía Supabase para magic-links/invites; vía Nodemailer en [lib/email/brevo.ts](lib/email/brevo.ts) para notificaciones transaccionales — claves SMTP independientes) · Vercel Hobby + cron diario `0 9 * * *` UTC · ExcelJS (dynamic import) · qrcode.react · Zod · lucide-react · Vitest para tests unit.
+**Stack**: Next.js 15.5.18 App Router + Turbopack · TypeScript strict + `noUncheckedIndexedAccess` · Supabase (Postgres + Auth + RLS) · Google Places API (New) v1 con API key + Google Business Profile API con OAuth · Brevo SMTP (vía Supabase para magic-links/invites; vía Nodemailer en [lib/email/brevo.ts](lib/email/brevo.ts) para notificaciones transaccionales — claves SMTP independientes) · Vercel Hobby + crons diarios `0 5 * * *` Places y `5 5 * * *` Business Profile UTC · ExcelJS (dynamic import) · qrcode.react · Zod · lucide-react · Vitest para tests unit.
 
 **Producción**: [`https://resenas.marinadorconstrucciones.com`](https://resenas.marinadorconstrucciones.com). DNS en SiteGround.
 
@@ -31,7 +31,7 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint
-npm test               # Vitest unit tests (matcher + date-range, 36 tests)
+npm test               # Vitest unit tests (matcher + date-range + schemas + Places, 70 tests)
 npm run test:watch     # Vitest en modo watch
 ```
 
@@ -41,7 +41,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 
 ## 3. Estado del proyecto
 
-> Producto live y validado E2E en producción. Único bloqueo activo: **aprobación de la cuota de Google Business Profile API** (caso `5-5855000041022`, ETA ~2026-06-04). Sin cuota, el cron no trae reseñas reales; el resto de la app es funcional.
+> Producto live y trayendo reseñas reales desde **2026-05-23** vía Google Places API (vía de respaldo mientras esperamos cuota de Business Profile API — caso `5-5855000041022`, ETA ~2026-06-04). El cron oficial de Business Profile sigue activo en paralelo; cuando Google apruebe, retomará automáticamente sin redeploy.
 
 | Fase | Estado |
 |---|---|
@@ -49,7 +49,8 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | 2 · Admin (`/dashboard`, `/comerciales`, `/gestores`, `/fichas`, `/resenas/verificacion`) | ✅ |
 | 3 · Sales desktop (`/panel`, `/panel/enlace`, `/panel/resenas`, `/clientes`, `/clientes/[slug]`) | ✅ |
 | 3.b · Sales mobile (ver subsección) | ✅ |
-| 4 · Google sync + matching | ⚠️ código listo + hardened, esperando cuota |
+| 4 · Google Business Profile sync + matching | ⚠️ código listo + hardened, esperando cuota Google |
+| 4.b · Places API fallback + importador manual | ✅ trayendo reseñas reales en prod desde 2026-05-23 |
 | 5 · Reviews manager (`/manager/resenas`, `/manager/export`) | ✅ |
 | 6 · Polish / hardening (auditoría 18 items) | ✅ |
 | 7 · Deploy producción | ✅ |
@@ -75,6 +76,30 @@ Código completo en [`lib/google/business-profile.ts`](lib/google/business-profi
 OAuth flow validado E2E. Único pendiente: cuota Google. Mientras tanto las APIs `mybusiness*` devuelven 429 RESOURCE_EXHAUSTED.
 
 Tests unit del matcher en [`lib/matching/__tests__/attribute-review.test.ts`](lib/matching/__tests__/attribute-review.test.ts) (22 tests cubriendo `nameSimilarity` + flujo con autor real + modo anonymous).
+
+### Fase 4.b · Places API fallback + importador manual (detalle)
+
+Vía de respaldo para no depender de la aprobación de cuota de Business Profile. Implementado en commits `6aaae66` + `aa10f09` + `dea348d` (rama `feature/places-fallback`, mergeada a main).
+
+**Cron Places** ([`/api/cron/sync-places-reviews`](app/api/cron/sync-places-reviews/route.ts)):
+- Cliente [`lib/google/places.ts`](lib/google/places.ts) consume Google Places API (New) v1 (`places.googleapis.com/v1/places/{id}?fields=reviews,id`) con header `X-Goog-Api-Key`. Solo necesita una API key — sin OAuth, sin verificación, sin aprobación.
+- Devuelve hasta 5 reseñas top por ficha, sin paginación. Para Inseryal con bajo volumen → suficiente. Limitación temporal: si una ficha recibe >5 reseñas en 24h, las antiguas se pierden hasta que llegue Business Profile.
+- Cuota gratis: 1000 req/día. Coste real ~0 € (7 fichas × 1 cron/día).
+- Helper compartido [`lib/cron/process-reviews.ts`](lib/cron/process-reviews.ts) con `processFreshReviews()` + `flushNotifications()` — mismo flujo (matcher + insert + email batch) usado por ambos crons (Places y Business Profile).
+- Lock optimista compartido vía `oauth_last_sync_at`: si un cron procesó una ficha hace <60s, el otro hace skip.
+
+**Importador manual** ([`/manager/resenas/importar`](app/(manager)/manager/resenas/importar/page.tsx)):
+- Pantalla admin + reviews_manager para meter a mano una reseña visible en Google Maps que el sincronizador automático no ha traído.
+- Form: Ficha · Autor · Estrellas · Fecha · Texto · [opcional] Atribución manual (sales → clients).
+- Si rellena atribución manual → bypass matcher (`match_state='counted'`, `confidence=100`). Si no → matcher normal en ventana 48h.
+- Server action [`importManualReview`](app/(manager)/manager/resenas/importar/actions.ts) con Zod + `assertCanManageSales` + audit `manual_import`.
+
+**Migración 009 — columna `source` enum**:
+- `business_profile` (default) | `places_api` | `manual`.
+- Prefijo en `google_review_id`: raw para Business Profile, `places:{id}` para Places, `manual:{uuid}` para importador. Evita colisiones del `unique (location_id, google_review_id)`.
+- ⚠️ **Duplicados conocidos**: la misma reseña puede entrar como `places_api` y luego como `business_profile` cuando llegue la cuota (los IDs no están garantizados a coincidir). Pendiente: script de dedup one-shot tras primer run exitoso de Business Profile (preferir `business_profile` autoritativo, borrar clones `places_api` por match de `author_name + rating + |google_created_at - X| < 1h`).
+
+**Tests**: 14 del schema del importador manual + 20 del cliente Places API (`lib/google/__tests__/places.test.ts`).
 
 ### Fase 5 · Gestor (detalle)
 Decisión: el gestor unifica vista con admin en lugar de un universo paralelo `/manager/*`. Comparte `/dashboard` y `/comerciales/*` con plenos permisos sobre sales. Pantallas propias: [`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) y [`/manager/export`](app/(manager)/manager/export/page.tsx) (.xlsx con detalle + resumen dashboard). Gating: helper [`assertCanManageSales()`](app/(admin)/comerciales/actions.ts) en las 4 acciones de comerciales. RLS: migración [`005_manager_sales_admin.sql`](supabase/migrations/005_manager_sales_admin.sql) — `with check` impide escalar un sales a admin/manager.
@@ -179,7 +204,7 @@ Email scanners (Microsoft Safe Links, antivirus, link previewers) hacen `HEAD` a
 [`LoginForm.tsx`](app/login/LoginForm.tsx) importa `createClient` directamente de `@supabase/supabase-js` con `flowType: 'implicit'`, `persistSession: false`, `autoRefreshToken: false`. La sesión la materializa server-side `/auth/confirm`. El resto de la app sigue con `@supabase/ssr`; la excepción es solo el LoginForm.
 
 ### 4.11 Vercel Hobby — cron diario máximo
-Vercel Hobby rechaza schedules sub-diarios. [`vercel.json`](vercel.json) tiene `0 9 * * *` (09:00 UTC). Trade-off: reseñas con delay máx 24h en lugar de 10 min. Alternativas si urge inmediatez:
+Vercel Hobby rechaza schedules sub-diarios. [`vercel.json`](vercel.json) tiene dos crons: `0 5 * * *` para Places y `5 5 * * *` para Business Profile (5 min de margen, lock optimista compartido). Ambos a las 05:00 UTC ≈ 6 AM España invierno / 7 AM verano. Trade-off: reseñas con delay máx 24h en lugar de 10 min. Alternativas si urge inmediatez:
 - Botón "Run" manual en Vercel Cron Jobs UI.
 - Cron externo (cron-job.org, GitHub Actions) que llame al endpoint con `Authorization: Bearer <CRON_SECRET>`.
 - Upgrade a Pro (~$20/mes).
@@ -208,6 +233,18 @@ Excepciones controladas:
 - [`Topbar.tsx`](components/layout/Topbar.tsx) acepta prop `compact?: boolean` que pinta clases `sales-topbar-*`. Default `false`; solo páginas sales la pasan.
 - [`RangePicker.tsx`](components/ui/RangePicker.tsx) lleva siempre `sales-rangepicker-popover`. En desktop no hace nada; en mobile evita que el popover de 320px desborde.
 
+### 4.17 Cron Places API — prefijo `places:` y duplicados al activar Business Profile
+[`/api/cron/sync-places-reviews`](app/api/cron/sync-places-reviews/route.ts) consume Google Places API (New) sin OAuth. El `google_review_id` se prefija con `places:` (extrayendo el último segmento de `places/{place_id}/reviews/{review_id}`) y la columna `source` se rellena con `places_api`. El importador manual hace lo mismo con `manual:{uuid}` y `source='manual'`.
+
+⚠️ **Duplicados conocidos**: cuando llegue la cuota de Business Profile, las mismas reseñas pueden entrar dos veces (una con `places:` y otra con el `reviewId` raw de Business Profile) porque los IDs de cada API no coinciden. El `unique (location_id, google_review_id)` impide colisión técnica, pero visualmente verás duplicados en `/manager/resenas`. Resolución: script one-shot tras el primer run exitoso de Business Profile que preferirá `business_profile` autoritativo y borrará los clones `places_api` por match de `author_name + rating + |google_created_at - X| < 1h`. No urgente — el sistema funciona con duplicados temporales.
+
+**Nunca quitar el prefijo `places:` ni `manual:`**: rompería la idempotencia y crearía colisiones reales al activar Business Profile.
+
+### 4.18 `GOOGLE_PLACES_API_KEY` — API key sin restricción de IP
+La API key de Places vive en Google Cloud Console → proyecto `resenas-inseryal` (number `628454280082`) → APIs & Services → Credentials → "Maps Platform API Key". Restringida a **Places API (New)** únicamente. Application restrictions = **None** (Vercel usa IPs dinámicas; la cuota gratis de 1000 req/día acota el blast radius si se filtrara).
+
+En Vercel: añadida en Settings → Environment Variables (los 3 environments). Si rotas la key, redeploy obligatorio.
+
 ---
 
 ## 5. Setup en otro Mac
@@ -222,7 +259,8 @@ Excepciones controladas:
    - `CRON_SECRET` — `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
    - `NEXT_PUBLIC_APP_URL=http://localhost:3000`.
    - `BREVO_SMTP_USER` / `BREVO_SMTP_PASS` / `BREVO_FROM_EMAIL` para emails transaccionales reales en dev.
-   - Opcionales (integración Google): `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_OAUTH_REDIRECT_URI`.
+   - `GOOGLE_PLACES_API_KEY` (formato `AIza…`) para que el cron de Places API funcione en local. Crear en Google Cloud Console → proyecto `resenas-inseryal` → Credentials. Ver §4.18.
+   - Opcionales (integración Business Profile cuando llegue cuota): `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_OAUTH_REDIRECT_URI`.
 3. `npm run dev` → http://localhost:3000.
 4. Login: `/login` con `alejandro.castillo@inseryal.es`, magic-link al email.
 
@@ -253,12 +291,13 @@ Excepciones controladas:
 - Tocar `_design_package/` (referencia de diseño, no código fuente).
 - Quitar `turbopack.root` ni `outputFileTracingRoot` de `next.config.ts` (§4.5).
 - Usar clases `sales-*` fuera de `app/(sales)/` o `MobileTabBar.tsx` (§4.14).
+- Quitar los prefijos `places:` / `manual:` del `google_review_id` (§4.17) — rompería la idempotencia.
 
 ---
 
 ## 7. Estado real de Supabase
 
-- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones **001-008 aplicadas**. 007 = índices compuestos en `reviews`. 008 = `actor_id` + policy `audit_log_self_insert`. Próxima (009) será para el ranking (pendiente de diseño).
+- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones **001-009 aplicadas**. 007 = índices compuestos en `reviews`. 008 = `actor_id` + policy `audit_log_self_insert`. 009 = enum `review_source_enum` (`business_profile`/`places_api`/`manual`) + columna `source` en `reviews`. Próxima (010) será para el ranking (pendiente de diseño).
 - **URL Configuration**: Site URL = `https://resenas.marinadorconstrucciones.com`; Redirect URLs incluyen `http://localhost:3000/**` + URL prod con `/**`.
 - **Email Templates**: Magic Link con `type=email`, Invite con `type=invite` (ver §4.1).
 - **Storage**: bucket público `avatars` con 3 policies (insert/update/delete propio en `{user_id}/`). Avatar upload vía server action con service-role en [`(profile)/perfil/actions.ts`](app/(profile)/perfil/actions.ts) (bypasea RLS por simplicidad).
@@ -267,7 +306,8 @@ Excepciones controladas:
   - 1 comercial prueba: "Comercial prueba" / `comercial-prueba` / "Inseryal by Marina d'Or · Chamberí" / `a.castillo.esv@gmail.com`.
   - 2 gestores activos: Bel (`bel.bernete@inseryal.es`, real) + "Gestor Ale" (`elalecu@gmail.com`, pruebas).
   - 1 cliente prueba: "Otto Castillo" / `otto-castillo`.
-- **7 fichas**: 5 Inseryal (Oropesa, Pardiñas, Príncipe de Vergara, Leganés, Chamberí) + 2 Marina d'Or Construcciones (Castellón, Valencia). Solo Chamberí tiene `google_place_id`. Todas `oauth_status: disconnected` (esperando cuota Google).
+- **7 fichas**: 5 Inseryal (Oropesa, Pardiñas, Príncipe de Vergara, Leganés, Chamberí) + 2 Marina d'Or Construcciones (Castellón, Valencia). **Todas tienen `google_place_id` configurado** (verificado 2026-05-23 con primer run del cron Places). Todas `oauth_status: disconnected` para Business Profile (esperando cuota Google).
+- **Reseñas reales en BD**: ~35 con `source='places_api'` desde 2026-05-23 (primer run en producción). Idempotencia confirmada con segundo run = 0 nuevas. Todas entraron como `unmatched` (no había share_links coincidentes con esas fechas históricas) — visibles en `/resenas/verificacion?state=unmatched`.
 
 Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v1/<tabla>?select=... -H "apikey: $SUPABASE_SERVICE_ROLE_KEY"`. La BD evoluciona.
 
@@ -275,15 +315,29 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
 
 ## 8. Próximo paso
 
-1. **Esperar aprobación Google** (caso `5-5855000041022`, ETA ~2026-06-04). Sin cuota, las APIs `mybusiness*` devuelven 429 y el cron no trae reseñas — el resto de la app es funcional.
-2. **Cuando Google apruebe**: probar OAuth E2E (`listAccounts` / `listLocations` / `listReviews`). Si va bien, conectar las 7 fichas desde `/fichas` en prod. El redirect URI de prod ya está añadido en Google Cloud Console.
+1. **Esperar aprobación Google Business Profile** (caso `5-5855000041022`, ETA ~2026-06-04). Mientras tanto el cron de Places API (§4.b) ya está trayendo reseñas reales diariamente a las 5:00 UTC.
+2. **Cuando Google apruebe Business Profile**:
+   - Probar OAuth E2E (`listAccounts` / `listLocations` / `listReviews`).
+   - Conectar las 7 fichas desde `/fichas` en prod (el redirect URI de prod ya está añadido en Google Cloud Console).
+   - Tras el primer run exitoso del cron Business Profile, ejecutar **script de dedup one-shot** (§4.17) para limpiar los clones `places_api` ↔ `business_profile` de la misma reseña. Script SQL aproximado (validar antes de correr):
+     ```sql
+     -- borra clones places_api cuando hay una versión business_profile equivalente
+     delete from reviews places
+     using reviews biz
+     where places.source = 'places_api'
+       and biz.source = 'business_profile'
+       and places.location_id = biz.location_id
+       and places.author_name = biz.author_name
+       and places.rating = biz.rating
+       and abs(extract(epoch from (places.google_created_at - biz.google_created_at))) < 3600;
+     ```
 3. **Publicar consent screen fuera de Testing** (Verification de Google) si en el futuro hay testers externos al equipo interno actual.
 4. **Polish restante** (no resuelto en la auditoría):
    - A11y (audit Lighthouse + arreglos puntuales).
    - Loading states (`loading.tsx` por route group).
    - Seed más realista para dev.
    - Tests E2E Playwright (login → panel → crear cliente → compartir enlace; cron con fixture del Google API).
-5. **Ranking del comercial**: migración 009 + UI real para `/panel/ranking` (hoy ComingSoon).
+5. **Ranking del comercial**: migración 010 + UI real para `/panel/ranking` (hoy ComingSoon).
 6. **Ajustes globales** (`/ajustes`): la ruta existe pero está **oculta del sidebar admin** hasta tener contenido (era un stub `ComingSoon` que confundía). Cuando se implemente alguna de las funcionalidades planeadas (reglas de matching configurables, plantilla del email de invitación, schedule del cron, plantilla del mensaje de WhatsApp), añadir de vuelta el item `{ id: "settings", label: "Ajustes", href: "/ajustes", icon: Settings }` en `ADMIN_SIDEBAR_GROUPS` de [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) (junto a "Fichas Google"). Sigue siendo solo-admin por middleware.
 
 ---
