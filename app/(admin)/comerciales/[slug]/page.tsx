@@ -167,6 +167,11 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     reviews: reviewsByClient.get(c.id) ?? 0,
   }));
 
+  // Lookup id → nombre completo para enseñar a qué cliente está atribuida
+  // cada reseña en la lista de abajo (sin hacer una query extra).
+  const clientNameById = new Map<string, string>();
+  for (const c of clientsRaw) clientNameById.set(c.id, c.full_name);
+
   // ─── KPIs del rango ────────────────────────────────────────────────────
   // shares y reviews ya vienen filtrados por SQL al rango activo.
   const visitsInRange = shares.length;
@@ -556,12 +561,25 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
-                      alignItems: "center",
+                      alignItems: "flex-start",
                       gap: 12,
                     }}
                   >
-                    <div style={{ fontWeight: 600, letterSpacing: "-0.005em" }}>
-                      {r.author_name}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, letterSpacing: "-0.005em" }}>
+                        {r.author_name}
+                      </div>
+                      {r.client_id && clientNameById.get(r.client_id) && (
+                        <div
+                          style={{
+                            marginTop: 2,
+                            fontSize: 11.5,
+                            color: "var(--ink-4)",
+                          }}
+                        >
+                          Cliente: {clientNameById.get(r.client_id)}
+                        </div>
+                      )}
                     </div>
                     <Stars value={r.rating} />
                   </div>
