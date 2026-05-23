@@ -14,6 +14,7 @@ import {
   Download,
   Link2,
   FilePlus2,
+  LifeBuoy,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { pickActiveId } from "./active-item";
@@ -137,8 +138,40 @@ export function Sidebar({ groups, user }: SidebarProps) {
           padding: "8px 8px",
           borderTop: "1px solid var(--line)",
           paddingTop: 14,
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
         }}
       >
+        {/* Centro de ayuda — accesible a los tres roles. Pintado justo
+            encima del avatar de perfil para que esté visible siempre sin
+            ocupar espacio de la navegación principal. */}
+        <Link
+          href="/ayuda"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "7px 10px",
+            borderRadius: 8,
+            background: pathname.startsWith("/ayuda") ? "rgba(0,0,0,0.05)" : "transparent",
+            color: pathname.startsWith("/ayuda") ? "var(--ink)" : "var(--ink-3)",
+            fontSize: 13.5,
+            fontWeight: pathname.startsWith("/ayuda") ? 600 : 500,
+            textDecoration: "none",
+          }}
+        >
+          <LifeBuoy
+            aria-hidden="true"
+            size={16}
+            strokeWidth={pathname.startsWith("/ayuda") ? 2 : 1.75}
+            style={{
+              color: pathname.startsWith("/ayuda") ? "var(--ink)" : "var(--ink-4)",
+              flexShrink: 0,
+            }}
+          />
+          <span>Ayuda</span>
+        </Link>
         <Link
           href="/perfil"
           style={{
