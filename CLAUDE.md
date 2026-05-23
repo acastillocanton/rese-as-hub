@@ -15,7 +15,7 @@ Tres roles:
 - **sales** (comercial) — genera enlaces personalizados por cliente, ve sus reseñas, su ranking.
 - **reviews_manager** (Raquel + Bel) — comparte vista con admin en Dashboard y comerciales, **con plenos permisos de administración sobre el rol sales** (invitar / editar / reenviar acceso / eliminar). Adicional: `/manager/resenas` y `/manager/export`. NO accede a `/gestores`, `/fichas`, `/resenas/verificacion`, `/ajustes`.
 
-**Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{sales-slug}/{client-slug}` → cliente cae directo en "Escribir reseña" en Google (302) → dos crons diarios (Google Places API + Google Business Profile API) traen las reseñas → algoritmo atribuye al comercial por ventana temporal + nombre del cliente. Plus: importador manual `/manager/resenas/importar` para reseñas puntuales que la API no devuelve.
+**Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{sales-slug}/{client-slug}` → cliente cae directo en "Escribir reseña" en Google (302) → dos crons diarios (Google Places API + Google Business Profile API) traen las reseñas → algoritmo atribuye al comercial por ventana temporal + nombre del cliente.
 
 **Stack**: Next.js 15.5.18 App Router + Turbopack · TypeScript strict + `noUncheckedIndexedAccess` · Supabase (Postgres + Auth + RLS) · Google Places API (New) v1 con API key + Google Business Profile API con OAuth · Brevo SMTP (vía Supabase para magic-links/invites; vía Nodemailer en [lib/email/brevo.ts](lib/email/brevo.ts) para notificaciones transaccionales — claves SMTP independientes) · Vercel Hobby + crons diarios `0 5 * * *` Places y `5 5 * * *` Business Profile UTC · ExcelJS (dynamic import) · qrcode.react · Zod · lucide-react · Vitest para tests unit.
 
@@ -101,18 +101,14 @@ Vía de respaldo para no depender de la aprobación de cuota de Business Profile
 - Sales → ignora body; sincroniza únicamente su `profiles.location_id`.
 - Botón [`<SyncNowButton />`](components/ui/SyncNowButton.tsx) reutilizable en `/fichas` (admin: global + por fila), `/manager/resenas` (gestor) y `/panel` (comercial).
 
-**Importador manual** ([`/manager/resenas/importar`](app/(manager)/manager/resenas/importar/page.tsx)):
-- Pantalla admin + reviews_manager para meter a mano una reseña visible en Google Maps que el sincronizador automático no ha traído.
-- Form: Ficha · Autor · Estrellas · Fecha · Texto · [opcional] Atribución manual (sales → clients).
-- Si rellena atribución manual → bypass matcher (`match_state='counted'`, `confidence=100`). Si no → matcher normal en ventana 48h.
-- Server action [`importManualReview`](app/(manager)/manager/resenas/importar/actions.ts) con Zod + `assertCanManageSales` + audit `manual_import`.
+**Importador manual** ❌ ELIMINADO 2026-05-23: existía la pantalla `/manager/resenas/importar` para meter reseñas a mano, pero el cron horario + el botón "Sincronizar ahora" cubren el 99% de casos. Se eliminó para simplificar y evitar el riesgo de reseñas inventadas. El enum `review_source_enum` mantiene el valor `'manual'` por compatibilidad pero ya no entra ningún registro nuevo con esa fuente. Si en el futuro hace falta, está en el historial git de la rama `feature/places-fallback` (commit `6aaae66`).
 
 **Migración 009 — columna `source` enum**:
-- `business_profile` (default) | `places_api` | `manual`.
-- Prefijo en `google_review_id`: raw para Business Profile, `places:{id}` para Places, `manual:{uuid}` para importador. Evita colisiones del `unique (location_id, google_review_id)`.
+- `business_profile` (default) | `places_api` | `manual` (legacy, ver arriba).
+- Prefijo en `google_review_id`: raw para Business Profile, `places:{id}` para Places. Evita colisiones del `unique (location_id, google_review_id)`.
 - ⚠️ **Duplicados conocidos**: la misma reseña puede entrar como `places_api` y luego como `business_profile` cuando llegue la cuota (los IDs no están garantizados a coincidir). Pendiente: script de dedup one-shot tras primer run exitoso de Business Profile (preferir `business_profile` autoritativo, borrar clones `places_api` por match de `author_name + rating + |google_created_at - X| < 1h`).
 
-**Tests**: 14 del schema del importador manual + 20 del cliente Places API (`lib/google/__tests__/places.test.ts`).
+**Tests**: 20 del cliente Places API (`lib/google/__tests__/places.test.ts`) + 5 del helper de reconciliación.
 
 ### Fase 5 · Gestor (detalle)
 Decisión: el gestor unifica vista con admin en lugar de un universo paralelo `/manager/*`. Comparte `/dashboard` y `/comerciales/*` con plenos permisos sobre sales. Pantallas propias: [`/manager/resenas`](app/(manager)/manager/resenas/page.tsx) y [`/manager/export`](app/(manager)/manager/export/page.tsx) (.xlsx con detalle + resumen dashboard). Gating: helper [`assertCanManageSales()`](app/(admin)/comerciales/actions.ts) en las 4 acciones de comerciales. RLS: migración [`005_manager_sales_admin.sql`](supabase/migrations/005_manager_sales_admin.sql) — `with check` impide escalar un sales a admin/manager.
