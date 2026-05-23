@@ -10,6 +10,7 @@ import { DeleteFichaButton } from "./DeleteFichaButton";
 import { DisconnectGoogleButton } from "./DisconnectGoogleButton";
 import { DismissibleBanner } from "./DismissibleBanner";
 import { EditPlaceIdButton } from "./EditPlaceIdButton";
+import { SyncNowButton } from "@/components/ui/SyncNowButton";
 
 type LocationRow = {
   id: string;
@@ -65,7 +66,12 @@ export default async function FichasPage({
         subtitle="Fichas de Google Business Profile"
         range={`${locations.length} ${locations.length === 1 ? "ficha" : "fichas"}`}
         breadcrumb="Inseryal"
-        right={<AddFichaButton />}
+        right={
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <SyncNowButton label="Sincronizar todas" variant="ghost" />
+            <AddFichaButton />
+          </div>
+        }
       />
 
       <div
@@ -142,7 +148,7 @@ export default async function FichasPage({
                 padding: "12px 22px",
                 borderBottom: "1px solid var(--line)",
                 display: "grid",
-                gridTemplateColumns: "1.8fr 1.3fr 1.1fr 0.9fr 360px",
+                gridTemplateColumns: "1.7fr 1.2fr 1fr 0.8fr 480px",
                 gap: 14,
                 fontSize: 11,
                 color: "var(--ink-4)",
@@ -186,7 +192,7 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
         padding: "14px 22px",
         borderBottom: last ? "none" : "1px solid var(--line)",
         display: "grid",
-        gridTemplateColumns: "1.8fr 1.3fr 1.1fr 0.9fr 360px",
+        gridTemplateColumns: "1.7fr 1.2fr 1fr 0.8fr 480px",
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
@@ -251,6 +257,14 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
           alignItems: "center",
         }}
       >
+        {loc.google_place_id && (
+          <SyncNowButton
+            locationId={loc.id}
+            label="Sincronizar"
+            size="sm"
+            variant="ghost"
+          />
+        )}
         <EditPlaceIdButton id={loc.id} currentPlaceId={loc.google_place_id} />
         {loc.oauth_status === "connected" ? (
           <DisconnectGoogleButton id={loc.id} name={loc.name} />

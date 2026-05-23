@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { parseRange, defaultShortcuts } from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
+import { SyncNowButton } from "@/components/ui/SyncNowButton";
 
 type SearchParams = Promise<{
   sales_id?: string;
@@ -129,6 +130,7 @@ export default async function ManagerResenasPage({
         breadcrumb="Inseryal"
         right={
           <>
+            <SyncNowButton label="Sincronizar" variant="ghost" />
             <RangePicker
               from={range.from}
               to={range.to}
