@@ -259,6 +259,22 @@ La API key de Places vive en Google Cloud Console → proyecto `resenas-inseryal
 
 Application restrictions = **None** (Vercel usa IPs dinámicas; el coste por uso acota el blast radius si se filtrara). En Vercel: añadida en Settings → Environment Variables (los 3 environments). Si rotas la key, redeploy obligatorio.
 
+### 4.20 Soft delete de reseñas eliminadas en Google
+La tabla `reviews` tiene columna `removed_at` (migración 010). Cuando es NOT NULL:
+- La reseña NO aparece en listados (`/manager/resenas`, `/dashboard`, `/comerciales/:slug`, `/panel`, `/panel/resenas`, `/clientes/:slug`, `/api/export/reviews`).
+- NO cuenta en KPIs.
+- SÍ se conserva en BD (con su `match_state`, `sales_id`, `client_id` intactos) por si Google la restaura.
+
+Dos vías para que se marque:
+- **Automática** (cubre borrados recientes): `lib/google/sync-places.ts` → función `reconcileRemoved`. Cada sync compara las reseñas en BD dentro de la ventana cubierta por las 5 que Google devuelve. Si una desaparece de la respuesta de Places → `removed_at = now()`. Si reaparece más tarde → `removed_at = null`. Solo aplica a reseñas con `google_review_id LIKE 'places:%'` para no tocar manuales ni futuras de Business Profile.
+- **Manual** (cubre antiguas o casos edge): server actions `markReviewRemoved` / `restoreReview` en `app/(admin)/resenas/verificacion/actions.ts`. Componente client `<RemovalControls />` integrado en `/resenas/verificacion` (todas las pestañas) y en cada fila de `/manager/resenas`. Acceso: admin + reviews_manager.
+
+Filtros UI:
+- `/resenas/verificacion?state=removed` → tercera pestaña "Eliminadas (N)".
+- `/manager/resenas?match_state=removed` → opción del select "Estado matching".
+
+⚠️ **No quitar el filtro `.is("removed_at", null)`** de los listados de reseñas: las eliminadas no deben aparecer en stats. Para mostrarlas explícitamente, usar los filtros documentados arriba.
+
 ### 4.19 Cron horario externo via GitHub Actions
 Vercel Hobby solo permite cron diario. Places API no pagina → con 1 sync/día perdemos reseñas en fichas activas. Workflow [`.github/workflows/sync-places-hourly.yml`](.github/workflows/sync-places-hourly.yml) dispara `/api/cron/sync-places-reviews` cada hora (minuto 30, 06-23 UTC). Requiere dos secrets en repo GitHub:
 - `APP_URL` = `https://resenas.marinadorconstrucciones.com`
@@ -318,7 +334,7 @@ Si el endpoint devuelve != 200, el workflow falla y GitHub manda email al mainta
 
 ## 7. Estado real de Supabase
 
-- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones **001-009 aplicadas**. 007 = índices compuestos en `reviews`. 008 = `actor_id` + policy `audit_log_self_insert`. 009 = enum `review_source_enum` (`business_profile`/`places_api`/`manual`) + columna `source` en `reviews`. Próxima (010) será para el ranking (pendiente de diseño).
+- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones **001-010 aplicadas**. 007 = índices compuestos en `reviews`. 008 = `actor_id` + policy `audit_log_self_insert`. 009 = enum `review_source_enum` (`business_profile`/`places_api`/`manual`) + columna `source` en `reviews`. 010 = columna `removed_at` + índice parcial + view `reviews_active`. Próxima (011) será para el ranking (pendiente de diseño).
 - **URL Configuration**: Site URL = `https://resenas.marinadorconstrucciones.com`; Redirect URLs incluyen `http://localhost:3000/**` + URL prod con `/**`.
 - **Email Templates**: Magic Link con `type=email`, Invite con `type=invite` (ver §4.1).
 - **Storage**: bucket público `avatars` con 3 policies (insert/update/delete propio en `{user_id}/`). Avatar upload vía server action con service-role en [`(profile)/perfil/actions.ts`](app/(profile)/perfil/actions.ts) (bypasea RLS por simplicidad).
@@ -358,7 +374,7 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
    - Loading states (`loading.tsx` por route group).
    - Seed más realista para dev.
    - Tests E2E Playwright (login → panel → crear cliente → compartir enlace; cron con fixture del Google API).
-5. **Ranking del comercial**: migración 010 + UI real para `/panel/ranking` (hoy ComingSoon).
+5. **Ranking del comercial**: migración 011 + UI real para `/panel/ranking` (hoy ComingSoon).
 6. **Ajustes globales** (`/ajustes`): la ruta existe pero está **oculta del sidebar admin** hasta tener contenido (era un stub `ComingSoon` que confundía). Cuando se implemente alguna de las funcionalidades planeadas (reglas de matching configurables, plantilla del email de invitación, schedule del cron, plantilla del mensaje de WhatsApp), añadir de vuelta el item `{ id: "settings", label: "Ajustes", href: "/ajustes", icon: Settings }` en `ADMIN_SIDEBAR_GROUPS` de [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) (junto a "Fichas Google"). Sigue siendo solo-admin por middleware.
 
 ---

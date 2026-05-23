@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
       "id, author_name, rating, text, match_confidence, sales_id, sales:profiles!reviews_sales_id_fkey(full_name, email, status), location:locations(name), client:clients(full_name)",
     )
     .in("id", reviewIds)
+    .is("removed_at", null)
     .returns<
       Array<{
         id: string;

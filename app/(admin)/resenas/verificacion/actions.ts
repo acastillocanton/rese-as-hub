@@ -21,6 +21,30 @@ async function getAdminUserId(): Promise<string | null> {
   return profile?.role === "admin" ? user.id : null;
 }
 
+/**
+ * Para acciones operativas (marcar eliminada, restaurar) admitimos también
+ * al gestor de reseñas. Estas acciones no afectan a matching ni a stats
+ * permanentes; solo soft-delete + soft-restore con audit trail.
+ */
+async function getAdminOrManagerUserId(): Promise<
+  { userId: string; role: "admin" | "reviews_manager" } | null
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle<{ role: string }>();
+  if (profile?.role === "admin") return { userId: user.id, role: "admin" };
+  if (profile?.role === "reviews_manager")
+    return { userId: user.id, role: "reviews_manager" };
+  return null;
+}
+
 async function audit(
   entityId: string,
   action: string,
@@ -136,5 +160,78 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
     new_client_id: parsed.data.clientId ?? null,
   });
   revalidatePath("/resenas/verificacion");
+  return { ok: true as const };
+}
+
+/**
+ * Marca una reseña como eliminada en Google (soft delete). Usado para
+ * casos que el cron de Places API no puede detectar automáticamente
+ * (reseñas antiguas fuera del top-5, modificaciones que Google reordena
+ * etc.). Admin y reviews_manager.
+ *
+ * No tocamos sales_id/client_id ni match_state — si Google la vuelve a
+ * mostrar y la restauramos, el matching propuesto sigue ahí.
+ */
+export async function markReviewRemoved(reviewId: string) {
+  const parsed = reviewIdSchema.safeParse(reviewId);
+  if (!parsed.success) return { ok: false as const, error: "Id inválido." };
+
+  const actor = await getAdminOrManagerUserId();
+  if (!actor) return { ok: false as const, error: "No autorizado." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("reviews")
+    .update({ removed_at: new Date().toISOString() } as never)
+    .eq("id", parsed.data)
+    .is("removed_at", null);
+  if (error) {
+    console.error("[verificacion] markReviewRemoved failed:", error);
+    return { ok: false as const, error: error.message };
+  }
+
+  await audit(parsed.data, "mark_removed", {
+    removed_by: actor.userId,
+    actor_role: actor.role,
+    source: "manual",
+  });
+  revalidatePath("/resenas/verificacion");
+  revalidatePath("/manager/resenas");
+  revalidatePath("/dashboard");
+  return { ok: true as const };
+}
+
+/**
+ * Restaura una reseña que estaba marcada como eliminada (volver a
+ * removed_at = NULL). Usado cuando se marcó por error, o cuando Google
+ * la vuelve a mostrar y el admin quiere reactivarla a mano (el cron lo
+ * haría también en el siguiente run, pero acelera).
+ */
+export async function restoreReview(reviewId: string) {
+  const parsed = reviewIdSchema.safeParse(reviewId);
+  if (!parsed.success) return { ok: false as const, error: "Id inválido." };
+
+  const actor = await getAdminOrManagerUserId();
+  if (!actor) return { ok: false as const, error: "No autorizado." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("reviews")
+    .update({ removed_at: null } as never)
+    .eq("id", parsed.data)
+    .not("removed_at", "is", null);
+  if (error) {
+    console.error("[verificacion] restoreReview failed:", error);
+    return { ok: false as const, error: error.message };
+  }
+
+  await audit(parsed.data, "restore", {
+    restored_by: actor.userId,
+    actor_role: actor.role,
+    source: "manual",
+  });
+  revalidatePath("/resenas/verificacion");
+  revalidatePath("/manager/resenas");
+  revalidatePath("/dashboard");
   return { ok: true as const };
 }

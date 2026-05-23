@@ -16,6 +16,7 @@ type ReviewRow = {
   match_state: string;
   match_confidence: number;
   match_evidence: Record<string, unknown> | null;
+  removed_at: string | null;
   sales: { id: string; full_name: string; slug: string } | null;
   client: { id: string; full_name: string } | null;
   location: { id: string; name: string } | null;
@@ -34,7 +35,12 @@ export default async function ResenasVerificacionPage({
   searchParams: SearchParams;
 }) {
   const params = await searchParams;
-  const stateFilter = params.state === "unmatched" ? "unmatched" : "pending";
+  const stateFilter: "pending" | "unmatched" | "removed" =
+    params.state === "unmatched"
+      ? "unmatched"
+      : params.state === "removed"
+        ? "removed"
+        : "pending";
 
   if (!isSupabaseConfigured()) {
     return (
@@ -57,24 +63,35 @@ export default async function ResenasVerificacionPage({
 
   const supabase = await createClient();
 
-  const [reviewsRes, pendingCountRes, unmatchedCountRes, salesWithClientsRes] =
+  const reviewsQueryBase = supabase
+    .from("reviews")
+    .select(
+      "id, author_name, rating, text, google_created_at, match_state, match_confidence, match_evidence, removed_at, sales:profiles!reviews_sales_id_fkey(id, full_name, slug), client:clients(id, full_name), location:locations(id, name)",
+    )
+    .order("google_created_at", { ascending: false });
+
+  const reviewsQuery =
+    stateFilter === "removed"
+      ? reviewsQueryBase.not("removed_at", "is", null)
+      : reviewsQueryBase.eq("match_state", stateFilter).is("removed_at", null);
+
+  const [reviewsRes, pendingCountRes, unmatchedCountRes, removedCountRes, salesWithClientsRes] =
     await Promise.all([
-      supabase
-        .from("reviews")
-        .select(
-          "id, author_name, rating, text, google_created_at, match_state, match_confidence, match_evidence, sales:profiles!reviews_sales_id_fkey(id, full_name, slug), client:clients(id, full_name), location:locations(id, name)",
-        )
-        .eq("match_state", stateFilter)
-        .order("google_created_at", { ascending: false })
-        .returns<ReviewRow[]>(),
+      reviewsQuery.returns<ReviewRow[]>(),
       supabase
         .from("reviews")
         .select("id", { count: "exact", head: true })
-        .eq("match_state", "pending"),
+        .eq("match_state", "pending")
+        .is("removed_at", null),
       supabase
         .from("reviews")
         .select("id", { count: "exact", head: true })
-        .eq("match_state", "unmatched"),
+        .eq("match_state", "unmatched")
+        .is("removed_at", null),
+      supabase
+        .from("reviews")
+        .select("id", { count: "exact", head: true })
+        .not("removed_at", "is", null),
       supabase
         .from("profiles")
         .select("id, full_name, slug, clients:clients(id, full_name)")
@@ -86,6 +103,7 @@ export default async function ResenasVerificacionPage({
   const reviews = reviewsRes.data ?? [];
   const pendingCount = pendingCountRes.count ?? 0;
   const unmatchedCount = unmatchedCountRes.count ?? 0;
+  const removedCount = removedCountRes.count ?? 0;
   const salesOptions = salesWithClientsRes.data ?? [];
 
   return (
@@ -96,7 +114,9 @@ export default async function ResenasVerificacionPage({
         range={
           stateFilter === "pending"
             ? `${pendingCount} pendientes`
-            : `${unmatchedCount} sin atribuir`
+            : stateFilter === "unmatched"
+              ? `${unmatchedCount} sin atribuir`
+              : `${removedCount} eliminadas`
         }
         breadcrumb="Inseryal"
       />
@@ -130,7 +150,7 @@ export default async function ResenasVerificacionPage({
           </p>
         </Card>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <FilterChip
             href="/resenas/verificacion?state=pending"
             label={`Pendientes (${pendingCount})`}
@@ -143,12 +163,22 @@ export default async function ResenasVerificacionPage({
             active={stateFilter === "unmatched"}
             tone="neutral"
           />
+          <FilterChip
+            href="/resenas/verificacion?state=removed"
+            label={`Eliminadas (${removedCount})`}
+            active={stateFilter === "removed"}
+            tone="neutral"
+          />
         </div>
 
         {reviews.length === 0 ? (
           <Card padding={32}>
             <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
-              {stateFilter === "pending" ? "Bandeja vacía" : "Sin reseñas no atribuidas"}
+              {stateFilter === "pending"
+                ? "Bandeja vacía"
+                : stateFilter === "unmatched"
+                  ? "Sin reseñas no atribuidas"
+                  : "Sin reseñas eliminadas"}
             </div>
             <div
               style={{
@@ -160,7 +190,9 @@ export default async function ResenasVerificacionPage({
             >
               {stateFilter === "pending"
                 ? "Todo en orden por aquí"
-                : "Cero reseñas huérfanas"}
+                : stateFilter === "unmatched"
+                  ? "Cero reseñas huérfanas"
+                  : "Ninguna eliminación detectada"}
             </div>
             <p
               style={{
@@ -173,7 +205,9 @@ export default async function ResenasVerificacionPage({
             >
               {stateFilter === "pending"
                 ? "Cuando el cron sincronice una reseña con confianza intermedia, aparecerá aquí para que decidas. Mientras tanto puedes revisar las reseñas "
-                : "El matcher ha encontrado un candidato razonable para todas las reseñas sincronizadas. Si crees que hay alguna mal asignada, revisa la pestaña "}
+                : stateFilter === "unmatched"
+                  ? "El matcher ha encontrado un candidato razonable para todas las reseñas sincronizadas. Si crees que hay alguna mal asignada, revisa la pestaña "
+                  : "Cuando el cron de Places API note que una reseña ya no aparece en Google, se marcará aquí automáticamente. También puedes marcarla a mano desde las pestañas "}
               <Link
                 href={
                   stateFilter === "pending"
