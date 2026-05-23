@@ -265,9 +265,11 @@ La tabla `reviews` tiene columna `removed_at` (migración 010). Cuando es NOT NU
 - NO cuenta en KPIs.
 - SÍ se conserva en BD (con su `match_state`, `sales_id`, `client_id` intactos) por si Google la restaura.
 
-Dos vías para que se marque:
-- **Automática** (cubre borrados recientes): `lib/google/sync-places.ts` → función `reconcileRemoved`. Cada sync compara las reseñas en BD dentro de la ventana cubierta por las 5 que Google devuelve. Si una desaparece de la respuesta de Places → `removed_at = now()`. Si reaparece más tarde → `removed_at = null`. Solo aplica a reseñas con `google_review_id LIKE 'places:%'` para no tocar manuales ni futuras de Business Profile.
-- **Manual** (cubre antiguas o casos edge): server actions `markReviewRemoved` / `restoreReview` en `app/(admin)/resenas/verificacion/actions.ts`. Componente client `<RemovalControls />` integrado en `/resenas/verificacion` (todas las pestañas) y en cada fila de `/manager/resenas`. Acceso: admin + reviews_manager.
+Solo vía **manual**: server actions `markReviewRemoved` / `restoreReview` en `app/(admin)/resenas/verificacion/actions.ts`. Componente client `<RemovalControls />` integrado en `/resenas/verificacion` (todas las pestañas) y en cada fila de `/manager/resenas`. Acceso: admin + reviews_manager.
+
+⚠️ **Detección automática DESACTIVADA**: `lib/google/sync-places.ts` tiene una función `reconcileRemoved` (testada y exportada como `__test_reconcileRemoved`) pero **NO se llama desde el flujo principal**. Razón: Google Places API con `reviews_sort=newest` no es consistente entre llamadas — distintos frontales pueden devolver conjuntos ligeramente distintos del mismo Place ID, causando falsos positivos (marcar como eliminada una reseña que sigue existiendo y reaparece en el siguiente sync). En el primer despliegue de la lógica automática se marcaron 2 reseñas reales como eliminadas; se restauraron manualmente y se desactivó la lógica.
+
+**Reactivar cuando llegue Business Profile API**: ese endpoint pagina y es autoritativo. Considerar también una capa de `last_seen_at` con threshold de N runs antes de marcar como removed, para evitar inconsistencias temporales.
 
 Filtros UI:
 - `/resenas/verificacion?state=removed` → tercera pestaña "Eliminadas (N)".
