@@ -2,12 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
-      "path": "/api/cron/sync-google-reviews",
-      "schedule": "0 9 * * *"
+      "path": "/api/cron/sync-places-reviews",
+      "schedule": "0 5 * * *"
     },
     {
-      "path": "/api/cron/sync-places-reviews",
-      "schedule": "0 10 * * *"
+      "path": "/api/cron/sync-google-reviews",
+      "schedule": "5 5 * * *"
     }
   ]
 }
