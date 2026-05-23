@@ -269,11 +269,35 @@ export default async function ManagerResenasPage({
             sub={`${pending} pendientes · ${unmatched} sin atribuir`}
           />
           <MiniStat label="Valoración media" value={avg} sub={reviews.length === 0 ? "—" : "sobre 5"} />
-          <MiniStat
-            label="Ficha más activa"
-            value={mostActiveLocation(reviews) ?? "—"}
-            sub={reviews.length === 0 ? "—" : "del filtro actual"}
-          />
+          {params.location_id ? (
+            // Cuando hay filtro de ficha aplicado, "Ficha más activa" pierde
+            // sentido (trivialmente sería la única filtrada). Mostramos en
+            // su lugar un KPI sí útil: % de reseñas con texto (cliente
+            // dejó comentario además de las estrellas).
+            (() => {
+              const withText = reviews.filter((r) => r.text && r.text.trim() !== "").length;
+              const pct = reviews.length > 0
+                ? Math.round((withText / reviews.length) * 100)
+                : 0;
+              return (
+                <MiniStat
+                  label="Con comentario"
+                  value={reviews.length === 0 ? "—" : `${pct}%`}
+                  sub={
+                    reviews.length === 0
+                      ? "—"
+                      : `${withText} de ${reviews.length} dejaron texto`
+                  }
+                />
+              );
+            })()
+          ) : (
+            <MiniStat
+              label="Ficha más activa"
+              value={mostActiveLocation(reviews) ?? "—"}
+              sub={reviews.length === 0 ? "—" : "del filtro actual"}
+            />
+          )}
         </div>
 
         {/* Lista */}
