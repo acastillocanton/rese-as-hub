@@ -35,6 +35,7 @@ type LocationRow = {
   id: string;
   name: string;
   oauth_status: OauthStatus;
+  google_place_id: string | null;
 };
 
 type ShareLinkRow = {
@@ -118,7 +119,7 @@ export default async function DashboardPage({
       .returns<SalesProfile[]>(),
     supabase
       .from("locations")
-      .select("id, name, oauth_status")
+      .select("id, name, oauth_status, google_place_id")
       .order("name")
       .returns<LocationRow[]>(),
     supabase
@@ -172,8 +173,17 @@ export default async function DashboardPage({
   const activeSales = sales.filter((s) => s.status === "active").length;
   const invitedSales = sales.filter((s) => s.status === "invited").length;
   const pausedSales = sales.filter((s) => s.status === "paused").length;
-  const connectedLocations = locations.filter((l) => l.oauth_status === "connected").length;
-  const disconnectedLocations = locations.filter((l) => l.oauth_status === "disconnected").length;
+  // Una ficha está "sincronizando" si tiene cualquiera de estas dos vías
+  // activas: Business Profile API vía OAuth, o Places API vía place_id.
+  // Mientras esperamos la cuota de BP, todas sincronizan por Places.
+  const syncingLocations = locations.filter(
+    (l) => l.oauth_status === "connected" || l.google_place_id !== null,
+  ).length;
+  const offlineLocations = locations.length - syncingLocations;
+  // Sub-conteo informativo: cuántas están en BP vs solo Places.
+  const businessProfileLocations = locations.filter(
+    (l) => l.oauth_status === "connected",
+  ).length;
   const reviewsCount = reviewsMonth.length;
   const pendingReviews = reviewsMonth.filter((r) => r.match_state === "pending").length;
   const avgRating =
@@ -252,14 +262,31 @@ export default async function DashboardPage({
       salesByLocation.set(s.location_id, (salesByLocation.get(s.location_id) ?? 0) + 1);
     }
   }
-  const branches = locations.map((l) => ({
-    id: l.id,
-    name: l.name,
-    status: l.oauth_status,
-    visits: visitsByLocation.get(l.id) ?? 0,
-    reviews: reviewsByLocation.get(l.id) ?? 0,
-    salesAssigned: salesByLocation.get(l.id) ?? 0,
-  }));
+  const branches = locations.map((l) => {
+    const hasPlaceId = l.google_place_id !== null;
+    const isBpConnected = l.oauth_status === "connected";
+    const isBpError = l.oauth_status === "error";
+    // Estado consolidado de sincronización:
+    //   "bp"     → Business Profile activo (mejor caso, paginable)
+    //   "places" → solo Places API (la situación actual mientras esperamos BP)
+    //   "error"  → BP en error y sin Place ID de respaldo
+    //   "none"   → sin ninguna vía
+    const syncStatus: "bp" | "places" | "error" | "none" = isBpConnected
+      ? "bp"
+      : hasPlaceId
+        ? "places"
+        : isBpError
+          ? "error"
+          : "none";
+    return {
+      id: l.id,
+      name: l.name,
+      syncStatus,
+      visits: visitsByLocation.get(l.id) ?? 0,
+      reviews: reviewsByLocation.get(l.id) ?? 0,
+      salesAssigned: salesByLocation.get(l.id) ?? 0,
+    };
+  });
 
   // ─── Meta de equipo ──────────────────────────────────────────────────────
   // El objetivo es mensual: si el rango no cubre exactamente un mes natural,
@@ -318,14 +345,18 @@ export default async function DashboardPage({
             }
           />
           <Stat
-            label="Fichas Google conectadas"
-            value={`${connectedLocations}/${locations.length}`}
+            label="Fichas sincronizando"
+            value={`${syncingLocations}/${locations.length}`}
             sub={
-              connectedLocations === 0
-                ? "Sin conectar todavía"
-                : `${disconnectedLocations} pendiente${disconnectedLocations === 1 ? "" : "s"}`
+              syncingLocations === 0
+                ? "Ninguna con Place ID configurado"
+                : businessProfileLocations === locations.length
+                  ? "Todas vía Business Profile"
+                  : businessProfileLocations === 0
+                    ? "Vía Places API"
+                    : `${businessProfileLocations} BP · ${syncingLocations - businessProfileLocations} Places`
             }
-            deltaTone={connectedLocations === 0 ? "warn" : "ok"}
+            deltaTone={syncingLocations === 0 ? "warn" : "ok"}
           />
           <Stat
             label="Reseñas verificadas"
@@ -485,16 +516,22 @@ export default async function DashboardPage({
               tone="ink"
             />
             <GoalRow
-              label="Fichas conectadas"
-              value={`${connectedLocations} / ${locations.length}`}
+              label="Fichas sincronizando"
+              value={`${syncingLocations} / ${locations.length}`}
               hint={
-                connectedLocations === locations.length
-                  ? "Todas conectadas"
-                  : `${disconnectedLocations} pendiente${disconnectedLocations === 1 ? "" : "s"} de OAuth`
+                syncingLocations === 0
+                  ? "Sin Place ID ni OAuth"
+                  : syncingLocations === locations.length
+                    ? businessProfileLocations === locations.length
+                      ? "Todas vía Business Profile"
+                      : businessProfileLocations === 0
+                        ? "Todas vía Places API"
+                        : `${businessProfileLocations} BP · ${syncingLocations - businessProfileLocations} Places`
+                  : `${offlineLocations} sin vía activa`
               }
-              current={connectedLocations}
+              current={syncingLocations}
               max={locations.length || 1}
-              tone={connectedLocations === locations.length ? "ok" : "ink"}
+              tone={syncingLocations === locations.length ? "ok" : "ink"}
             />
           </Card>
         </div>
@@ -872,19 +909,21 @@ export default async function DashboardPage({
                       </div>
                       <Pill
                         tone={
-                          b.status === "connected"
+                          b.syncStatus === "bp" || b.syncStatus === "places"
                             ? "ok"
-                            : b.status === "error"
+                            : b.syncStatus === "error"
                               ? "warn"
                               : "neutral"
                         }
                         withDot
                       >
-                        {b.status === "connected"
-                          ? "Conectada"
-                          : b.status === "error"
-                            ? "Error"
-                            : "Sin conectar"}
+                        {b.syncStatus === "bp"
+                          ? "Business Profile"
+                          : b.syncStatus === "places"
+                            ? "Places API"
+                            : b.syncStatus === "error"
+                              ? "Error OAuth"
+                              : "Sin Place ID"}
                       </Pill>
                     </div>
                     <div
