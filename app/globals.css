@@ -250,4 +250,18 @@ button {
     width: 100%;
     justify-content: center;
   }
+
+  /* /ayuda — pasar de grid 240px+1fr a columna única en mobile.
+     El TOC (sticky en desktop) se convierte en un bloque al principio del
+     contenido para que el lector tenga el índice a mano sin perderse el
+     contenido principal. También reducimos el padding lateral para que el
+     contenido respire en pantallas estrechas (375px). */
+  .ayuda-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+    padding: 16px 16px 48px !important;
+  }
+  .ayuda-toc {
+    position: static !important;
+  }
 }

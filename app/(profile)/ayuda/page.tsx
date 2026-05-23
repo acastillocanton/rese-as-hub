@@ -24,6 +24,7 @@ export default function AyudaPage() {
       />
 
       <div
+        className="ayuda-grid"
         style={{
           flex: 1,
           padding: "24px 32px 64px",
@@ -34,8 +35,10 @@ export default function AyudaPage() {
           maxWidth: 1200,
         }}
       >
-        {/* Tabla de contenidos — sticky a la izquierda */}
+        {/* Tabla de contenidos — sticky a la izquierda en desktop,
+            bloque normal arriba en mobile (sin position:sticky). */}
         <aside
+          className="ayuda-toc"
           style={{
             position: "sticky",
             top: 24,
