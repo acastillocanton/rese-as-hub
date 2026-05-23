@@ -50,7 +50,8 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | 3 · Sales desktop (`/panel`, `/panel/enlace`, `/panel/resenas`, `/clientes`, `/clientes/[slug]`) | ✅ |
 | 3.b · Sales mobile (ver subsección) | ✅ |
 | 4 · Google Business Profile sync + matching | ⚠️ código listo + hardened, esperando cuota Google |
-| 4.b · Places API fallback + importador manual | ✅ trayendo reseñas reales en prod desde 2026-05-23 |
+| 4.b · Places API fallback (legacy + sort=newest) + importador manual | ✅ trayendo reseñas reales en prod desde 2026-05-23 |
+| 4.c · Sync manual + cron horario GitHub Action + soft-delete + estado consolidado | ✅ |
 | 5 · Reviews manager (`/manager/resenas`, `/manager/export`) | ✅ |
 | 6 · Polish / hardening (auditoría 18 items) | ✅ |
 | 7 · Deploy producción | ✅ |
@@ -277,6 +278,26 @@ Filtros UI:
 
 ⚠️ **No quitar el filtro `.is("removed_at", null)`** de los listados de reseñas: las eliminadas no deben aparecer en stats. Para mostrarlas explícitamente, usar los filtros documentados arriba.
 
+### 4.21 Estado de sincronización consolidado en UI (Dashboard + /fichas)
+El dashboard y `/fichas` muestran un estado de sincronización que considera **cualquier vía activa**, no solo OAuth:
+
+```ts
+// Lógica común en app/(admin)/dashboard/page.tsx y app/(admin)/fichas/page.tsx
+const syncing = (l) =>
+  l.oauth_status === "connected"  // Business Profile (paginable, preferido)
+  || l.google_place_id !== null;  // Places API (fallback activo)
+```
+
+Pill mostrada:
+- "Business Profile" (verde) → OAuth activo
+- "Places API" (verde) → solo place_id (estado actual de Inseryal)
+- "Error OAuth" (warn) → BP en error sin place_id de respaldo
+- "Sin Place ID" (neutral) → ninguna vía configurada
+
+Cuando llegue cuota BP y conectes una ficha por OAuth, la pill cambia sola a "Business Profile" sin tocar código.
+
+⚠️ NO confundir con la columna `oauth_status` cruda de `locations`. Esa sigue siendo el estado OAuth de Business Profile (puede ser `connected`/`disconnected`/`error`). El "estado de sincronización" es derivado.
+
 ### 4.19 Cron horario externo via GitHub Actions
 Vercel Hobby solo permite cron diario. Places API no pagina → con 1 sync/día perdemos reseñas en fichas activas. Workflow [`.github/workflows/sync-places-hourly.yml`](.github/workflows/sync-places-hourly.yml) dispara `/api/cron/sync-places-reviews` cada hora (minuto 30, 06-23 UTC). Requiere dos secrets en repo GitHub:
 - `APP_URL` = `https://resenas.marinadorconstrucciones.com`
@@ -340,13 +361,13 @@ Si el endpoint devuelve != 200, el workflow falla y GitHub manda email al mainta
 - **URL Configuration**: Site URL = `https://resenas.marinadorconstrucciones.com`; Redirect URLs incluyen `http://localhost:3000/**` + URL prod con `/**`.
 - **Email Templates**: Magic Link con `type=email`, Invite con `type=invite` (ver §4.1).
 - **Storage**: bucket público `avatars` con 3 policies (insert/update/delete propio en `{user_id}/`). Avatar upload vía server action con service-role en [`(profile)/perfil/actions.ts`](app/(profile)/perfil/actions.ts) (bypasea RLS por simplicidad).
-- **Usuarios**:
+- **Usuarios (estado tras limpieza de datos prueba 2026-05-23)**:
   - 2 admins: Alejandro Castillo + Rafael Ibáñez (`@inseryal.es`).
-  - 1 comercial prueba: "Comercial prueba" / `comercial-prueba` / "Inseryal by Marina d'Or · Chamberí" / `a.castillo.esv@gmail.com`.
+  - **0 comerciales** — el "Comercial prueba" fue eliminado en la limpieza. Email `a.castillo.esv@gmail.com` libre para reinvitar.
   - 2 gestores activos: Bel (`bel.bernete@inseryal.es`, real) + "Gestor Ale" (`elalecu@gmail.com`, pruebas).
-  - 1 cliente prueba: "Otto Castillo" / `otto-castillo`.
-- **7 fichas**: 5 Inseryal (Oropesa, Pardiñas, Príncipe de Vergara, Leganés, Chamberí) + 2 Marina d'Or Construcciones (Castellón, Valencia). **Todas tienen `google_place_id` configurado** (verificado 2026-05-23 con primer run del cron Places). Todas `oauth_status: disconnected` para Business Profile (esperando cuota Google).
-- **Reseñas reales en BD**: ~35 con `source='places_api'` desde 2026-05-23 (primer run en producción). Idempotencia confirmada con segundo run = 0 nuevas. Todas entraron como `unmatched` (no había share_links coincidentes con esas fechas históricas) — visibles en `/resenas/verificacion?state=unmatched`.
+  - **0 clientes** — limpiados todos los de prueba (Otto Castillo, etc. + los del admin).
+- **7 fichas**: 5 Inseryal (Oropesa, Pardiñas, Príncipe de Vergara, Leganés, Chamberí) + 2 Marina d'Or Construcciones (Castellón, Valencia). **Todas tienen `google_place_id`** y están sincronizando vía Places API. `oauth_status: disconnected` para Business Profile (esperando cuota Google) — el dashboard y `/fichas` lo reflejan como "Places API" (verde) en la columna Sincronización (ver §4.21).
+- **Reseñas reales en BD**: ~70 con `source='places_api'` desde 2026-05-23, todas en estado `unmatched` (no había share_links coincidentes con sus fechas históricas porque no hay comerciales activos generando enlaces todavía). Visibles en `/resenas/verificacion?state=unmatched`. Cuando se inviten comerciales y empiecen a generar share_links, las reseñas que entren en la ventana 48h se atribuirán automáticamente.
 
 Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v1/<tabla>?select=... -H "apikey: $SUPABASE_SERVICE_ROLE_KEY"`. La BD evoluciona.
 

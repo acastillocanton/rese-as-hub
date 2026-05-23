@@ -186,6 +186,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/api/google/oauth/callback`   | público (Google)  | Token swap + redirige a `/fichas/:id/conectar`                   |
 | `/api/cron/sync-google-reviews`| `Bearer CRON_SECRET` | Sincroniza reseñas Business Profile + matcher + email batch  |
 | `/api/cron/sync-places-reviews`| `Bearer CRON_SECRET` | Sincroniza reseñas Places API + matcher + email batch         |
+| `/api/sync/now`                | admin + manager + sales | Sync manual on-demand. Admin/manager → todas o location_id concreto. Sales → solo su ficha asignada. |
 | `/api/export/reviews`          | admin + manager   | Devuelve `.xlsx` con ExcelJS (límite 5000 reviews defensivo)    |
 | `/api/admin/notify-failed`     | admin             | GET lista + POST reintenta emails de notificación fallidos      |
 
@@ -237,6 +238,7 @@ app/
     google/oauth/{start,callback}/   ─ Flujo OAuth (Business Profile)
     cron/sync-google-reviews/        ─ Cron Business Profile + lock optimista + email batch
     cron/sync-places-reviews/        ─ Cron Places API (fallback sin OAuth)
+    sync/now/                        ─ Sync manual on-demand por usuario autenticado
     export/reviews/                  ─ Endpoint .xlsx con ExcelJS dynamic
     admin/notify-failed/             ─ Admin: listar + reenviar emails fallidos
   login/                ─ /login + /login/manual (workaround tokens)

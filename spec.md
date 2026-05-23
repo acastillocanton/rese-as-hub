@@ -56,7 +56,7 @@ npm run build          # build de producción (verifica tipos y compila)
 npm run start          # server de producción tras npm run build
 npm run typecheck      # tsc --noEmit
 npm run lint           # next lint
-npm test               # Vitest unit (matcher + date-range + schemas + Places client, 70 tests)
+npm test               # Vitest unit (matcher + date-range + schemas + Places + reconcile, 75 tests)
 npm run test:watch     # Vitest en modo watch
 ```
 
@@ -106,7 +106,8 @@ app/                              Next.js App Router
   c/[salesSlug]/[clientSlug]/     Landing pública con cliente identificado
   auth/                           callback (magic-link) + signout
   api/cron/sync-google-reviews/   Cron Business Profile (pendiente cuota)
-  api/cron/sync-places-reviews/   Cron Places API (activo, sin OAuth)
+  api/cron/sync-places-reviews/   Cron Places API legacy (activo, reviews_sort=newest)
+  api/sync/now/                   Sync manual on-demand (autenticado por sesión)
   login/                          Pantalla de login + server action
   accept-invite/[token]/          Onboarding del comercial invitado
 
@@ -278,7 +279,7 @@ El MVP está hecho cuando **todas** estas condiciones son verdad:
 
 **No-funcionales (mínimos, no objetivos duros)**:
 - [x] `npm run build` y `npm run typecheck` pasan sin errores ni warnings nuevos. ✅ Validado 2026-05-23.
-- [x] `npm test` pasa (70 tests verdes — matcher 22 + date-range 14 + schema importador 14 + cliente Places 20). ✅
+- [x] `npm test` pasa (75 tests verdes — matcher 22 + date-range 14 + schema importador 14 + cliente Places 20 + reconcileRemoved 5). ✅
 - [ ] El servidor responde 200 en todas las rutas autenticadas con un usuario válido de cada rol.
 - [x] Cabeceras de seguridad presentes (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `HSTS`). ✅ CSP añadido 2026-05-22.
 - [ ] No hay regresiones en el smoke test del README.
