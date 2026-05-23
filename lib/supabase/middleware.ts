@@ -73,9 +73,10 @@ function isPublicPath(pathname: string): boolean {
 // Allowlist of route prefixes per role. Keep this explicit — do NOT use a
 // blanket `/api` match because future API routes default to NO access.
 function pathAllowedForRole(pathname: string, role: Role): boolean {
-  // /perfil es accesible a todos los roles para que puedan subir su foto y
-  // ver sus datos de cuenta.
+  // /perfil y /ayuda son accesibles a todos los roles. Perfil para foto +
+  // datos personales; ayuda para el manual de uso (sales, admin, manager).
   if (pathname === "/perfil" || pathname.startsWith("/perfil/")) return true;
+  if (pathname === "/ayuda" || pathname.startsWith("/ayuda/")) return true;
   if (role === "admin") return true;
   if (role === "sales") {
     return (
