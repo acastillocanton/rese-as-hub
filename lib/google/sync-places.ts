@@ -225,11 +225,26 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
         continue;
       }
 
-      // Detectar eliminaciones/restauraciones DENTRO de la ventana temporal
-      // cubierta por las 5 que Google devuelve.
-      const reconciled = await reconcileRemoved(admin, loc.id, placesReviews);
-      totalRemoved += reconciled.removed;
-      totalRestored += reconciled.restored;
+      // ⚠️ Detección automática de eliminaciones DESACTIVADA.
+      //
+      // En producción detectamos que Places API (reviews_sort=newest) NO es
+      // consistente entre llamadas — distintos frontales de Google pueden
+      // devolver conjuntos ligeramente distintos del mismo Place ID, lo que
+      // provoca falsos positivos (marcar como eliminada una reseña que sigue
+      // existiendo y aparece en el siguiente sync).
+      //
+      // Mantenemos la columna `removed_at`, los botones manuales en UI y el
+      // filtro de listados — eso ES fiable. Solo desactivamos la detección
+      // automática hasta que llegue Business Profile API (paginable y
+      // autoritativa), donde sí podremos reactivarla con confianza.
+      //
+      // Para reactivar: descomentar la llamada y considerar una capa de
+      // "last_seen_at" + threshold de N runs para evitar falsos positivos
+      // por inconsistencia eventual del API.
+      //
+      // const reconciled = await reconcileRemoved(admin, loc.id, placesReviews);
+      // totalRemoved += reconciled.removed;
+      // totalRestored += reconciled.restored;
 
       // Filtrar las que ya están en DB.
       const ids = placesReviews.map((r) => r.google_review_id);
