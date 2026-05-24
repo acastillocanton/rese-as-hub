@@ -8,12 +8,12 @@ Este archivo lo lee Claude Code automáticamente al abrir el repo. Vive en git �
 
 ## 1. Resumen
 
-**ReseñaHub** — app interna single-tenant para **Inseryal by Marina d'Or**. Sustituye el parte semanal de reseñas que Raquel Piquer compila a mano en Excel.
+**ReseñaHub** — app interna single-tenant para **Inseryal by Marina d'Or**. Sustituye el parte semanal de reseñas que se compilaba a mano en Excel.
 
 Tres roles:
 - **admin** — gestor global. Hoy 2 personas: Alejandro Castillo + Rafael Ibáñez (`@inseryal.es`).
 - **sales** (comercial) — genera enlaces personalizados por cliente, ve sus reseñas, su ranking.
-- **reviews_manager** (Raquel + Bel) — comparte vista con admin en Dashboard y comerciales, **con plenos permisos de administración sobre el rol sales** (invitar / editar / reenviar acceso / eliminar). Adicional: `/manager/resenas` y `/manager/export`. NO accede a `/gestores`, `/fichas`, `/resenas/verificacion`, `/ajustes`.
+- **reviews_manager** (Bel) — comparte vista con admin en Dashboard y comerciales, **con plenos permisos de administración sobre el rol sales** (invitar / editar / reenviar acceso / eliminar). Adicional: `/manager/resenas` y `/manager/export`. NO accede a `/gestores`, `/fichas`, `/resenas/verificacion`, `/ajustes`.
 
 **Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{sales-slug}/{client-slug}` → cliente cae directo en "Escribir reseña" en Google (302) → dos crons diarios (Google Places API + Google Business Profile API) traen las reseñas → algoritmo atribuye al comercial por ventana temporal + nombre del cliente.
 

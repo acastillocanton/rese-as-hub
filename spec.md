@@ -8,15 +8,15 @@
 
 ## 1. Objective
 
-**Qué construimos**: una aplicación web interna llamada **ReseñaHub** para Inseryal by Marina d'Or (apartamentos turísticos en la playa, ~10 fichas de Google Business Profile, ~24 comerciales). La app sustituye el "parte semanal de reseñas" que hoy Raquel Piquer compila a mano en Excel.
+**Qué construimos**: una aplicación web interna llamada **ReseñaHub** para Inseryal by Marina d'Or (apartamentos turísticos en la playa, ~10 fichas de Google Business Profile, ~24 comerciales). La app sustituye el "parte semanal de reseñas" que hasta ahora se compilaba a mano en Excel.
 
 **Para quién**:
 - **Admin** (2 personas: Alejandro Castillo y Rafael Ibáñez) — visión global, alta/baja de fichas Google y comerciales, configuración del sistema.
 - **Comercial** (sales) — recibe invitación, accede a su panel (escritorio + móvil), genera un enlace personalizado por cliente, ve sus reseñas y ranking.
-- **Gestor de reseñas** (reviews_manager — perfil de Raquel Piquer) — entra en modo solo-lectura, filtra reseñas, descarga el Excel mensual.
+- **Gestor de reseñas** (reviews_manager) — entra en modo solo-lectura, filtra reseñas, descarga el Excel mensual.
 
 **Por qué**:
-1. Eliminar el trabajo manual semanal de Raquel.
+1. Eliminar el trabajo manual semanal del gestor de reseñas.
 2. Atribuir cada reseña al comercial que la consiguió de forma fiable y automática.
 3. Dar al comercial métricas en vivo y reducir la fricción de pedir la reseña (un enlace que va directo a Google).
 

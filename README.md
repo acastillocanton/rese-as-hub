@@ -39,7 +39,7 @@ Por fase:
 - **Fase 3 Sales (desktop + mobile)** — ✅ `/panel`, `/panel/enlace`, `/panel/resenas`, `/clientes` con QR + plantilla editable + deep-links, `/clientes/[slug]` con edición inline. Vista mobile (≤767px) con MobileTabBar + avatar fijo top-right.
 - **Fase 4 Google Business Profile sync** — ⚠️ código 100% (OAuth, refresh-token, cliente API, matcher con ventana 48h + similitud + modo anonymous, cron con lock optimista + email batch, notificador Brevo). Esperando aprobación de Google a la cuota de la API.
 - **Fase 4.b Places API fallback** — ✅ cron `/api/cron/sync-places-reviews` trae las 5 reseñas más recientes por ficha (Places API legacy con `reviews_sort=newest`) sin necesidad de OAuth + cron horario GitHub Action + botón "Sincronizar ahora" en UI. Detalle en [CLAUDE.md §3 Fase 4.b](CLAUDE.md).
-- **Fase 5 Manager (Raquel + Bel)** — ✅ comparte vista con admin en `/dashboard` y `/comerciales` con plenos permisos, `/manager/resenas` con filtros, `/manager/export` y endpoint `/api/export/reviews` con ExcelJS (dos hojas).
+- **Fase 5 Manager (Bel)** — ✅ comparte vista con admin en `/dashboard` y `/comerciales` con plenos permisos, `/manager/resenas` con filtros, `/manager/export` y endpoint `/api/export/reviews` con ExcelJS (dos hojas).
 - **Perfil global** — ✅ `/perfil` accesible a los tres roles con avatar upload (bucket Storage).
 - **Fase 6 Polish / hardening** — ✅ auditoría 18 items (críticos + altos + medios + bajos). Tests Vitest, `noUncheckedIndexedAccess`, CSP, índices compuestos, lock cron, email batch, etc. Detalle en [CLAUDE.md §3 Fase 6](CLAUDE.md).
 - **Fase 7 Deploy producción** — ✅ live en `https://resenas.marinadorconstrucciones.com`.

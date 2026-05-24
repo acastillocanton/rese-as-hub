@@ -521,8 +521,8 @@ export default function AyudaPage() {
                 }}
               >
                 <strong>¿Otra duda?</strong> Habla con el administrador
-                (Alejandro o Rafael) o con el gestor de reseñas (Raquel o
-                Bel). Estamos para ayudarte.
+                (Alejandro o Rafael) o con el gestor de reseñas (Bel).
+                Estamos para ayudarte.
               </div>
             </Card>
           </section>
