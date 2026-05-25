@@ -43,3 +43,7 @@ _design_package/design.tar
 
 # Claude Code local config (settings.local.json, plans/, etc.)
 .claude/
+
+# Scripts ad-hoc con datos reales (seed-people.mjs lleva emails y teléfonos
+# inline — nunca commitear). Si añades scripts de uso general, usa otra ruta.
+scripts/
