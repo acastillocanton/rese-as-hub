@@ -214,6 +214,7 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
     label: "Inicio",
     items: [
       { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { id: "ranking", label: "Ranking", href: "/ranking", icon: Trophy },
     ],
   },
   {
@@ -267,6 +268,7 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
     id: "main",
     items: [
       { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { id: "ranking", label: "Ranking", href: "/ranking", icon: Trophy },
       { id: "team", label: "Comerciales", href: "/comerciales", icon: Users },
       { id: "reviews", label: "Reseñas", href: "/manager/resenas", icon: Star },
       { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },
@@ -284,6 +286,10 @@ export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
     label: "Inicio",
     items: [
       { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      // /ranking pinta el ranking del equipo del director (filtrado por
+      // RLS) y a él mismo como productor. Distinto a "Mi ranking" del
+      // grupo "Mi panel" que va a /panel/ranking (ComingSoon, futuro).
+      { id: "team-ranking", label: "Ranking", href: "/ranking", icon: Trophy },
     ],
   },
   {

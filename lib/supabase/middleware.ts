@@ -96,6 +96,7 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
     return (
       pathname === "/dashboard" ||
       pathname.startsWith("/comerciales") ||
+      pathname.startsWith("/ranking") ||
       pathname.startsWith("/manager") ||
       pathname.startsWith("/api/export")
     );
@@ -106,13 +107,14 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
     // tanto a las rutas de admin como a las del panel sales (/panel,
     // /clientes). El scope sigue siendo:
     //   • Equipo (sales con director_id = él) → /comerciales, dashboard,
-    //     verificación, export.
+    //     verificación, export, ranking.
     //   • Su producción → /panel/*, /clientes/* (sales_id = él).
     //   • Su ficha → /fichas (por location_id, no por equipo).
     // NO accede a /gestores, /ajustes, /directores, /manager/resenas.
     return (
       pathname === "/dashboard" ||
       pathname.startsWith("/comerciales") ||
+      pathname.startsWith("/ranking") ||
       pathname.startsWith("/fichas") ||
       pathname.startsWith("/resenas/verificacion") ||
       pathname.startsWith("/panel") ||

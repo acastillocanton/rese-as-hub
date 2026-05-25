@@ -20,6 +20,8 @@ import {
 import { RangePicker } from "@/components/ui/RangePicker";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
+import { computeLeaderboard } from "@/lib/leaderboard";
+import { LeaderboardTable } from "@/components/ranking/LeaderboardTable";
 
 // Dashboard recalcula rango y proyecciones con `new Date()`. Dinámico.
 export const dynamic = "force-dynamic";
@@ -217,44 +219,16 @@ export default async function DashboardPage({
   }
 
   // ─── Leaderboard ─────────────────────────────────────────────────────────
-  const sharesBySales = new Map<string, number>();
-  for (const s of sharesMonth) {
-    sharesBySales.set(s.sales_id, (sharesBySales.get(s.sales_id) ?? 0) + 1);
-  }
-  const reviewsBySales = new Map<string, number>();
-  const reviewsCountedBySales = new Map<string, number>();
-  for (const r of reviewsMonth) {
-    if (!r.sales_id) continue;
-    reviewsBySales.set(r.sales_id, (reviewsBySales.get(r.sales_id) ?? 0) + 1);
-    if (r.match_state === "counted") {
-      reviewsCountedBySales.set(
-        r.sales_id,
-        (reviewsCountedBySales.get(r.sales_id) ?? 0) + 1,
-      );
-    }
-  }
-  const leaderboard = sales
-    .map((s) => {
-      const location = locations.find((l) => l.id === s.location_id);
-      const visits = sharesBySales.get(s.id) ?? 0;
-      const reviews = reviewsBySales.get(s.id) ?? 0;
-      const counted = reviewsCountedBySales.get(s.id) ?? 0;
-      const conv = visits > 0 ? Math.round((reviews / visits) * 100) : 0;
-      return {
-        id: s.id,
-        slug: s.slug,
-        name: s.full_name,
-        status: s.status,
-        branch: location?.name ?? "—",
-        visits,
-        reviews,
-        counted,
-        conv,
-        goal: s.monthly_goal,
-        isDirector: s.role === "office_director",
-      };
-    })
-    .sort((a, b) => b.reviews - a.reviews || b.visits - a.visits);
+  // El cálculo vive en lib/leaderboard.ts (compartido con /ranking). El
+  // dashboard pinta solo los Top 10 — la lista completa de los 51 productores
+  // en una card hace que el resumen pierda función. "Ver ranking completo"
+  // enlaza a /ranking, que tiene la misma tabla sin slice.
+  const leaderboard = computeLeaderboard({
+    sales,
+    locations,
+    shares: sharesMonth,
+    reviews: reviewsMonth,
+  });
 
   // ─── Branches breakdown ──────────────────────────────────────────────────
   const visitsByLocation = new Map<string, number>();
@@ -565,6 +539,7 @@ export default async function DashboardPage({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
+                gap: 12,
               }}
             >
               <div>
@@ -582,11 +557,27 @@ export default async function DashboardPage({
                   Leaderboard del mes
                 </div>
               </div>
-              {leaderboard.length === 0 && (
+              {leaderboard.length === 0 ? (
                 <Pill tone="neutral" withDot>
                   Sin comerciales
                 </Pill>
-              )}
+              ) : leaderboard.length > 10 ? (
+                <Link
+                  href="/ranking"
+                  style={{
+                    fontSize: 12.5,
+                    color: "var(--ink-3)",
+                    textDecoration: "none",
+                    padding: "6px 10px",
+                    border: "1px solid var(--line)",
+                    borderRadius: 8,
+                    whiteSpace: "nowrap",
+                  }}
+                  title="Ver el ranking completo de productores"
+                >
+                  Ver ranking completo →
+                </Link>
+              ) : null}
             </div>
 
             {leaderboard.length === 0 ? (
@@ -607,120 +598,7 @@ export default async function DashboardPage({
                 </p>
               </div>
             ) : (
-              <div style={{ padding: "4px 22px 14px" }}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "28px 1.6fr 1fr 0.7fr 0.7fr 0.7fr 100px",
-                    gap: 14,
-                    padding: "8px 0",
-                    fontSize: 11,
-                    color: "var(--ink-4)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    borderBottom: "1px solid var(--line)",
-                  }}
-                >
-                  <span>#</span>
-                  <span>Comercial</span>
-                  <span>Ficha</span>
-                  <span style={{ textAlign: "right" }}>Visitas</span>
-                  <span style={{ textAlign: "right" }}>Reseñas</span>
-                  <span style={{ textAlign: "right" }}>Conv.</span>
-                  <span style={{ textAlign: "right" }}>Tendencia</span>
-                </div>
-                {leaderboard.map((p, i) => (
-                  <Link
-                    key={p.id}
-                    href={`/comerciales/${p.slug}`}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "28px 1.6fr 1fr 0.7fr 0.7fr 0.7fr 100px",
-                      gap: 14,
-                      padding: "12px 0",
-                      alignItems: "center",
-                      borderBottom:
-                        i === leaderboard.length - 1 ? "none" : "1px solid var(--line)",
-                      fontSize: 13.5,
-                      textDecoration: "none",
-                      color: "inherit",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontVariantNumeric: "tabular-nums",
-                        color: i < 3 ? "var(--ink)" : "var(--ink-4)",
-                        fontWeight: i < 3 ? 600 : 500,
-                      }}
-                    >
-                      {(i + 1).toString().padStart(2, "0")}
-                    </span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <Avatar name={p.name} size={28} />
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontWeight: 600,
-                            letterSpacing: "-0.005em",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {p.name}
-                        </div>
-                        <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
-                          {p.isDirector ? "★ Director · " : ""}
-                          {p.status === "active"
-                            ? "Activo"
-                            : p.status === "paused"
-                              ? "Pausado"
-                              : "Invitado"}
-                          {" · meta "}
-                          {p.goal}
-                        </div>
-                      </div>
-                    </div>
-                    <span style={{ color: "var(--ink-3)", fontSize: 12.5 }}>{p.branch}</span>
-                    <span
-                      style={{
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                        color: p.visits > 0 ? "var(--ink)" : "var(--ink-4)",
-                      }}
-                    >
-                      {p.visits}
-                    </span>
-                    <span
-                      style={{
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                        fontWeight: 600,
-                        color: p.reviews > 0 ? "var(--ink)" : "var(--ink-4)",
-                      }}
-                    >
-                      {p.reviews}
-                    </span>
-                    <span
-                      style={{
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                        color: "var(--ink-3)",
-                      }}
-                    >
-                      {p.visits > 0 ? `${p.conv}%` : "—"}
-                    </span>
-                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                      <Sparkline
-                        data={[0, 0, 0, 0, 0, p.visits]}
-                        width={84}
-                        height={22}
-                        stroke={p.visits > 0 ? "var(--ink-2)" : "#D6D6D9"}
-                      />
-                    </div>
-                  </Link>
-                ))}
-              </div>
+              <LeaderboardTable rows={leaderboard} limit={10} />
             )}
           </Card>
 
