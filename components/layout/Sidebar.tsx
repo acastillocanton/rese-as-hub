@@ -228,19 +228,18 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
     id: "team",
     label: "Equipo",
     items: [
-      { id: "sales", label: "Comerciales", href: "/comerciales", icon: Users },
-      { id: "managers", label: "Gestores", href: "/gestores", icon: UserCog },
-      // Mismo destino que "Gestores" pero con ancla a la sección de
-      // directores. `pickActiveId` resuelve por pathname (ignora el
-      // hash), así que ambos items aparecen activos cuando estás en
-      // /gestores — es intencional: el usuario sabe que está en la
-      // pantalla que cubre ambos roles.
+      // Directores arriba: son responsables de oficina (jerarquía visible).
+      // Comparten pantalla con Gestores en /gestores; `pickActiveId` resuelve
+      // por pathname (ignora el hash), así que ambos items aparecen activos
+      // cuando estás en /gestores — intencional.
       {
         id: "directors",
         label: "Directores",
         href: "/gestores#directores",
         icon: Building2,
       },
+      { id: "sales", label: "Comerciales", href: "/comerciales", icon: Users },
+      { id: "managers", label: "Gestores", href: "/gestores", icon: UserCog },
     ],
   },
   {
