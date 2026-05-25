@@ -32,6 +32,7 @@ type SalesOption = {
   id: string;
   full_name: string;
   slug: string;
+  role: "sales" | "office_director";
   clients: { id: string; full_name: string }[];
 };
 
@@ -298,7 +299,7 @@ export function ReviewVerificationRow({
                 <option value="">— Selecciona —</option>
                 {salesOptions.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.full_name}
+                    {s.role === "office_director" ? `★ ${s.full_name}` : s.full_name}
                   </option>
                 ))}
               </select>

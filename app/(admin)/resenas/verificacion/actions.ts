@@ -186,19 +186,23 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
   if (!actor) return { ok: false as const, error: "No autorizado." };
   const inScope = await assertReviewInScope(actor, parsed.data.reviewId);
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
-  // Director: el sales destino también debe estar en su ficha.
+  // Director: el destino debe ser él mismo (auto-asignación productor) o un
+  // sales de su equipo (director_id = actor.userId). Migración 013 cambió el
+  // scope del director de location_id a director_id; aquí validamos eso.
   if (actor.role === "office_director") {
     const adminSrv = createServiceClient();
     const { data: target } = await adminSrv
       .from("profiles")
-      .select("location_id, role")
+      .select("role, director_id")
       .eq("id", parsed.data.salesId)
-      .maybeSingle<{ location_id: string | null; role: Role }>();
-    if (!target || target.role !== "sales") {
+      .maybeSingle<{ role: Role; director_id: string | null }>();
+    if (!target) {
       return { ok: false as const, error: "Comercial destino no válido." };
     }
-    if (target.location_id !== actor.locationId) {
-      return { ok: false as const, error: "El comercial destino no es de tu oficina." };
+    const isSelf = parsed.data.salesId === actor.userId;
+    const isTeamSales = target.role === "sales" && target.director_id === actor.userId;
+    if (!isSelf && !isTeamSales) {
+      return { ok: false as const, error: "Solo puedes atribuir reseñas a ti o a tu equipo." };
     }
   }
 

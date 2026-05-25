@@ -26,6 +26,7 @@ export type SalesOption = {
   id: string;
   full_name: string;
   slug: string;
+  role: "sales" | "office_director";
   clients: { id: string; full_name: string }[];
 };
 
@@ -94,8 +95,8 @@ export default async function ResenasVerificacionPage({
         .not("removed_at", "is", null),
       supabase
         .from("profiles")
-        .select("id, full_name, slug, clients:clients(id, full_name)")
-        .eq("role", "sales")
+        .select("id, full_name, slug, role, clients:clients(id, full_name)")
+        .in("role", ["sales", "office_director"])
         .order("full_name")
         .returns<SalesOption[]>(),
     ]);
