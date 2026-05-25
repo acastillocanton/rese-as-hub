@@ -252,9 +252,11 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     <>
       <Topbar
         title={sales.full_name}
-        subtitle={`Comercial · ${sales.location?.name ?? "sin ficha"} · ${statusLabel(sales.status)}${
-          sales.department ? ` · ${DEPARTMENT_LABELS[sales.department]}` : ""
-        }${directorOfSales ? ` · Director: ${directorOfSales.full_name}` : ""}`}
+        subtitle={
+          sales.department
+            ? `Comercial · ${DEPARTMENT_LABELS[sales.department]}`
+            : "Comercial"
+        }
         breadcrumb="Comerciales"
         range={null}
         compact
