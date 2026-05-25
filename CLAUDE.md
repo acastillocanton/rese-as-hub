@@ -378,13 +378,16 @@ Si el endpoint devuelve != 200, el workflow falla y GitHub manda email al mainta
 - **URL Configuration**: Site URL = `https://resenas.marinadorconstrucciones.com`; Redirect URLs incluyen `http://localhost:3000/**` + URL prod con `/**`.
 - **Email Templates**: Magic Link con `type=email`, Invite con `type=invite` (ver §4.1).
 - **Storage**: bucket público `avatars` con 3 policies (insert/update/delete propio en `{user_id}/`). Avatar upload vía server action con service-role en [`(profile)/perfil/actions.ts`](app/(profile)/perfil/actions.ts) (bypasea RLS por simplicidad).
-- **Usuarios (estado tras limpieza de datos prueba 2026-05-23)**:
-  - 2 admins: Alejandro Castillo + Rafael Ibáñez (`@inseryal.es`).
-  - **0 comerciales** — el "Comercial prueba" fue eliminado en la limpieza. Email `a.castillo.esv@gmail.com` libre para reinvitar.
-  - 2 gestores activos: Bel (`bel.bernete@inseryal.es`, real) + "Gestor Ale" (`elalecu@gmail.com`, pruebas).
-  - **0 clientes** — limpiados todos los de prueba (Otto Castillo, etc. + los del admin).
+- **Usuarios (estado 2026-05-25 — alta masiva de comerciales y directores reales)**:
+  - 2 admins activos: Alejandro Castillo + Rafael Ibáñez (`@inseryal.es`).
+  - 2 gestores activos: Bel (`bel.bernete@inseryal.es`) + José González Pérez (`jose.gonzalez@inseryal.es`).
+  - **11 directores de oficina** (1 activo: Roberto García Cuellar; 10 invitados — María Jesús Lozano, Carmen Lopez, Fernando Taño, Korina Unguryanu, Almudena Martinez, Jose Rubio Mateos, Adriana Mihalascu, Georgina Lawless, Monika Kubiak, Pavel Kurlaev).
+  - **40 comerciales invitados** distribuidos por departamento: nacional 19, internacional 14, castellón 5, valencia 6. Status `invited` hasta que cada uno confirme su magic-link → flip automático a `active`.
+  - **Reparto total productivo (sales + office_director, no archivados): 51** — nacional 21, internacional 16, castellón 7, valencia 7.
+  - **`profiles.joined_at` poblado con fechas reales** desde el Excel `Reseñas MARZO.xlsx` + screenshots Castellón/Valencia (45 de 51) vía `scripts/update-joined-at.mjs` (gitignored — contiene datos reales). 6 perfiles sin fecha confirmada mantienen el `joined_at` del seed: Adina Coman Vasilescu, Alicia Seroczynska, Amber Spurka, Anton Klymenko (internacional); Cristina García Álvarez, Victor Clemente Moro (nacional).
+  - **1 cliente** real cargado (el resto pendiente del primer login de cada comercial).
 - **7 fichas**: 5 Inseryal (Oropesa, Pardiñas, Príncipe de Vergara, Leganés, Chamberí) + 2 Marina d'Or Construcciones (Castellón, Valencia). **Todas tienen `google_place_id`** y están sincronizando vía Places API. `oauth_status: disconnected` para Business Profile (esperando cuota Google) — el dashboard y `/fichas` lo reflejan como "Places API" (verde) en la columna Sincronización (ver §4.21).
-- **Reseñas reales en BD**: ~70 con `source='places_api'` desde 2026-05-23, todas en estado `unmatched` (no había share_links coincidentes con sus fechas históricas porque no hay comerciales activos generando enlaces todavía). Visibles en `/resenas/verificacion?state=unmatched`. Cuando se inviten comerciales y empiecen a generar share_links, las reseñas que entren en la ventana 48h se atribuirán automáticamente.
+- **Reseñas reales en BD**: 72 con `source='places_api'` desde 2026-05-23, todas en estado `unmatched` (no había share_links coincidentes con sus fechas históricas porque los comerciales aún no han activado su acceso). Visibles en `/resenas/verificacion?state=unmatched`. Cuando se activen y empiecen a generar share_links, las reseñas que entren en la ventana 48h se atribuirán automáticamente.
 
 Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v1/<tabla>?select=... -H "apikey: $SUPABASE_SERVICE_ROLE_KEY"`. La BD evoluciona.
 

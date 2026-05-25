@@ -2,13 +2,13 @@
 
 > **Fuente de verdad del MVP.** Este documento define qué construimos, por qué, y cómo sabemos que está hecho. Si un cambio (de código, scope, o decisión arquitectónica) entra en conflicto con este archivo, **se actualiza la spec primero** y luego se implementa.
 >
-> Documento vivo · versión 0.3 · última edición 2026-05-22 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
+> Documento vivo · versión 0.3 · última edición 2026-05-25 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
 
 ---
 
 ## 1. Objective
 
-**Qué construimos**: una aplicación web interna llamada **ReseñaHub** para Inseryal by Marina d'Or (apartamentos turísticos en la playa, ~10 fichas de Google Business Profile, ~24 comerciales). La app sustituye el "parte semanal de reseñas" que hasta ahora se compilaba a mano en Excel.
+**Qué construimos**: una aplicación web interna llamada **ReseñaHub** para Inseryal by Marina d'Or (apartamentos turísticos en la playa, 7 fichas de Google Business Profile en producción, 51 perfiles productivos cargados — 40 comerciales + 11 directores de oficina, datos reales del Excel `Reseñas MARZO.xlsx` y screenshots Castellón/Valencia). La app sustituye el "parte semanal de reseñas" que hasta ahora se compilaba a mano en Excel.
 
 **Para quién**:
 - **Admin** (2 personas: Alejandro Castillo y Rafael Ibáñez) — visión global, alta/baja de fichas Google, directores y gestores, configuración del sistema.
@@ -297,7 +297,7 @@ Cuestiones sin resolver que necesitan input antes (o durante) la implementación
 2. **Branding final** (logo, paleta exacta, tipografía si se aparta de la del prototipo). El chat original dijo "logo placeholder, lo aporto luego". Hasta que llegue, usamos el cuadrado negro con `r` que tiene el prototipo.
 3. **Cómo conecta el "CRM" al alta de cliente**. ¿Hay un CRM externo del que extraer nombres? Si lo hay, ¿API o export? En el MVP el comercial introduce el nombre a mano.
 4. ~~**Plantilla del mensaje** de WhatsApp/Email/SMS que pre-rellenamos al generar el enlace.~~ **Cerrada 2026-05-21**: se implementa una plantilla por defecto editable por el comercial en el momento de envío. Vive en [`lib/messaging.ts`](lib/messaging.ts) (`DEFAULT_REVIEW_MESSAGE_TEMPLATE`) con variables `{nombre_cliente}`, `{nombre_comercial}`, `{url}`. Si se quiere centralizar la edición, mover a `/ajustes` cuando exista.
-5. **Cuántos comerciales hay realmente** (24 en el mock, ~30 según contexto). Influye en cuotas de la GBP API y diseño del cron.
+5. ~~**Cuántos comerciales hay realmente** (24 en el mock, ~30 según contexto). Influye en cuotas de la GBP API y diseño del cron.~~ **Cerrada 2026-05-25**: 51 perfiles productivos cargados en BD (40 comerciales + 11 directores de oficina) distribuidos en 4 departamentos (nacional 21, internacional 16, castellón 7, valencia 7). `joined_at` real backfilleado desde Excel + screenshots para 45/51 (los 6 restantes sin fecha confirmada conservan el seed). Sin impacto en cuotas de Places API (consume ~126 req/día con 7 fichas) ni en Business Profile cuando llegue.
 6. **Política de retención**. ¿Cuánto tiempo guardamos las reseñas en DB? ¿Eliminamos `share_links` antiguas (>90 días)?
 7. **¿Quiere el admin recibir alertas** sobre reseñas ≤ 3★ en tiempo real (email/push)? El prototipo lo sugiere pero no se acordó.
 8. **Encriptación del `oauth_refresh_token`** en reposo. Actualmente en texto plano dentro de `location_secrets` (aislada por RLS). Para producción: Supabase Vault o `pgcrypto`.
