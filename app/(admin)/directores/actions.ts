@@ -34,17 +34,38 @@ async function assertCanManageDirectors(): Promise<
   return { ok: true };
 }
 
-const inviteDirectorSchema = z.object({
-  fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
-  email: z.string().email("Email inválido."),
-  phone: z
-    .string()
-    .max(40)
-    .optional()
-    .nullable()
-    .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
-  locationId: z.string().uuid("Selecciona la oficina (ficha) del director."),
-});
+// El director es también productor (vende, tiene reseñas, aparece en
+// leaderboard/Excel). Por eso pedimos los mismos campos de comercial:
+// department, language (si internacional), monthly_goal.
+const departmentSchema = z.enum(["nacional", "internacional", "castellon", "valencia"]);
+
+const inviteDirectorSchema = z
+  .object({
+    fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
+    email: z.string().email("Email inválido."),
+    phone: z
+      .string()
+      .max(40)
+      .optional()
+      .nullable()
+      .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
+    locationId: z.string().uuid("Selecciona la oficina (ficha) del director."),
+    department: departmentSchema,
+    language: z
+      .string()
+      .max(60)
+      .optional()
+      .nullable()
+      .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
+    monthlyGoal: z.coerce.number().int().min(0).max(1000),
+  })
+  .refine(
+    (v) => (v.department === "internacional" ? !!v.language : !v.language),
+    {
+      message: "Selecciona el idioma del director internacional.",
+      path: ["language"],
+    },
+  );
 
 export type InviteDirectorInput = z.input<typeof inviteDirectorSchema>;
 
@@ -68,7 +89,12 @@ export async function inviteOfficeDirector(input: InviteDirectorInput): Promise<
     phone: parsed.data.phone,
     slug: baseSlug,
     role: "office_director",
-    extra: { location_id: parsed.data.locationId },
+    extra: {
+      location_id: parsed.data.locationId,
+      department: parsed.data.department,
+      language: parsed.data.language,
+      monthly_goal: parsed.data.monthlyGoal,
+    },
     nextPath: "/dashboard",
     revalidate: ["/directores"],
   });
@@ -100,19 +126,35 @@ export async function resendDirectorAccess(id: string): Promise<
 // Mismo patrón que los comerciales (archive = soft delete, delete = hard).
 // ──────────────────────────────────────────────────────────────────────────
 
-const updateDirectorSchema = z.object({
-  id: z.string().uuid(),
-  fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
-  phone: z
-    .string()
-    .max(40)
-    .optional()
-    .nullable()
-    .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
-  locationId: z.string().uuid("Selecciona una ficha."),
-  // 'archived' NO se gestiona aquí — solo desde archiveDirector/restoreDirector.
-  status: z.enum(["invited", "active", "paused"]),
-});
+const updateDirectorSchema = z
+  .object({
+    id: z.string().uuid(),
+    fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
+    phone: z
+      .string()
+      .max(40)
+      .optional()
+      .nullable()
+      .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
+    locationId: z.string().uuid("Selecciona una ficha."),
+    department: departmentSchema,
+    language: z
+      .string()
+      .max(60)
+      .optional()
+      .nullable()
+      .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
+    monthlyGoal: z.coerce.number().int().min(0).max(1000),
+    // 'archived' NO se gestiona aquí — solo desde archiveDirector/restoreDirector.
+    status: z.enum(["invited", "active", "paused"]),
+  })
+  .refine(
+    (v) => (v.department === "internacional" ? !!v.language : !v.language),
+    {
+      message: "Selecciona el idioma del director internacional.",
+      path: ["language"],
+    },
+  );
 
 export type UpdateDirectorInput = z.input<typeof updateDirectorSchema>;
 
@@ -137,6 +179,9 @@ export async function updateDirector(input: UpdateDirectorInput) {
       full_name: parsed.data.fullName.trim(),
       phone: parsed.data.phone,
       location_id: parsed.data.locationId,
+      department: parsed.data.department,
+      language: parsed.data.language,
+      monthly_goal: parsed.data.monthlyGoal,
       status: parsed.data.status,
     } as never)
     .eq("id", parsed.data.id)

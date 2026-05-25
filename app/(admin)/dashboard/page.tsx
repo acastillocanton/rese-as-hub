@@ -29,6 +29,9 @@ type SalesProfile = {
   status: ProfileStatus;
   monthly_goal: number;
   location_id: string | null;
+  /** "sales" o "office_director" — el director también produce y entra en
+   *  el leaderboard. Lo usamos para etiquetar la fila con "★ Director". */
+  role: "sales" | "office_director";
 };
 
 type LocationRow = {
@@ -114,8 +117,10 @@ export default async function DashboardPage({
   ] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, full_name, slug, status, monthly_goal, location_id")
-      .eq("role", "sales")
+      // Producers: sales + office_director. El director también vende y
+      // entra en su propio leaderboard, junto con su equipo.
+      .select("id, full_name, slug, status, monthly_goal, location_id, role")
+      .in("role", ["sales", "office_director"])
       .returns<SalesProfile[]>(),
     supabase
       .from("locations")
@@ -243,6 +248,7 @@ export default async function DashboardPage({
         counted,
         conv,
         goal: s.monthly_goal,
+        isDirector: s.role === "office_director",
       };
     })
     .sort((a, b) => b.reviews - a.reviews || b.visits - a.visits);
@@ -661,6 +667,7 @@ export default async function DashboardPage({
                           {p.name}
                         </div>
                         <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
+                          {p.isDirector ? "★ Director · " : ""}
                           {p.status === "active"
                             ? "Activo"
                             : p.status === "paused"

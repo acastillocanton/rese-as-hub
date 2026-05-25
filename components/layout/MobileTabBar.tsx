@@ -36,15 +36,16 @@ export const SALES_MOBILE_TABS: MobileTab[] = [
 ];
 
 /**
- * Tabs del rol `office_director` en mobile (migración 011). Las 4 destinos
- * principales del director, espejando OFFICE_DIRECTOR_SIDEBAR_GROUPS minus
- * el export Excel (poco frecuente y accesible desde el "más" implícito).
+ * Tabs del rol `office_director` en mobile (rol dual productor + admin).
+ * Inicio · Mi enlace (producir) · Equipo · Reseñas (verificación del equipo).
+ * Sus reseñas personales se acceden desde Dashboard o /panel/resenas.
+ * Su ficha y el export Excel viven en el sidebar desktop o en /perfil.
  */
 export const DIRECTOR_MOBILE_TABS: MobileTab[] = [
   { id: "dashboard", label: "Inicio", href: "/dashboard", icon: LayoutDashboard },
-  { id: "sales", label: "Comerciales", href: "/comerciales", icon: Users },
+  { id: "link", label: "Mi enlace", href: "/panel/enlace", icon: Link2 },
+  { id: "sales", label: "Equipo", href: "/comerciales", icon: Users },
   { id: "verification", label: "Reseñas", href: "/resenas/verificacion", icon: ListChecks },
-  { id: "branch", label: "Mi ficha", href: "/fichas", icon: MapPin },
 ];
 
 /**

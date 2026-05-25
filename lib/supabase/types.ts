@@ -11,6 +11,12 @@ export function isOfficeDirector(role: Role | null | undefined): boolean {
 export function canManageSales(role: Role | null | undefined): boolean {
   return role === "admin" || role === "reviews_manager" || role === "office_director";
 }
+/** Productor = quien puede tener clientes/share_links/reviews atribuidas
+ *  (sales_id en esas tablas). Hoy es `sales` y `office_director` — los
+ *  directores también venden y tienen su propio enlace /c/{slug}. */
+export function isProducer(role: Role | null | undefined): boolean {
+  return role === "sales" || role === "office_director";
+}
 
 export type ProfileStatus = "invited" | "active" | "paused" | "archived";
 

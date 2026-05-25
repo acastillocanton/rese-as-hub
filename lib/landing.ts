@@ -54,11 +54,15 @@ export async function recordOpenAndRedirect(opts: {
   const supabase = createServiceClient();
   const source = parseSource(opts.source);
 
+  // Productor = sales OR office_director. Los directores también venden y
+  // tienen su enlace /c/{director-slug} (dualidad gestor + comercial). La
+  // tabla share_links y reviews son agnósticas al role, así que `sales_id`
+  // del director funciona idéntico que para un comercial.
   const { data: sales } = await supabase
     .from("profiles")
     .select("id, location_id")
     .eq("slug", opts.salesSlug)
-    .eq("role", "sales")
+    .in("role", ["sales", "office_director"])
     .maybeSingle<{ id: string; location_id: string | null }>();
 
   if (!sales || !sales.location_id) {

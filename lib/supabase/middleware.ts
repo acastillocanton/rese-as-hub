@@ -101,18 +101,22 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
     );
   }
   if (role === "office_director") {
-    // El director es admin scoped a SU ficha. Misma IA que un admin global
-    // pero las pantallas filtran por `profiles.location_id` y los endpoints
-    // validan que cualquier `location_id` de input coincida con el suyo.
-    // NO accede a /gestores ni /ajustes (son globales, no de oficina).
-    // Solo accede a /manager/export (Excel) — el endpoint server-side fuerza
-    // location_id al suyo. NO accede a /manager/resenas (vista global del
-    // reviews_manager).
+    // El director es DUAL: admin de su equipo + comercial productor (tiene
+    // su propio /c/{slug}, clientes, reseñas atribuidas). Por eso accede
+    // tanto a las rutas de admin como a las del panel sales (/panel,
+    // /clientes). El scope sigue siendo:
+    //   • Equipo (sales con director_id = él) → /comerciales, dashboard,
+    //     verificación, export.
+    //   • Su producción → /panel/*, /clientes/* (sales_id = él).
+    //   • Su ficha → /fichas (por location_id, no por equipo).
+    // NO accede a /gestores, /ajustes, /directores, /manager/resenas.
     return (
       pathname === "/dashboard" ||
       pathname.startsWith("/comerciales") ||
       pathname.startsWith("/fichas") ||
       pathname.startsWith("/resenas/verificacion") ||
+      pathname.startsWith("/panel") ||
+      pathname.startsWith("/clientes") ||
       pathname === "/manager/export" ||
       pathname.startsWith("/api/export") ||
       pathname.startsWith("/api/sync") ||

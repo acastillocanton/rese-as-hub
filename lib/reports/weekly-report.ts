@@ -41,6 +41,9 @@ export type SalesForReport = {
   notes: string | null;
   location_id: string | null;
   location_name: string | null;
+  /** "sales" o "office_director" — los directores producen también y se
+   *  marcan con prefijo "★" en su fila del Excel para distinguirlos. */
+  role: "sales" | "office_director";
 };
 
 export type LocationForReport = {

@@ -23,6 +23,9 @@ type DirectorDetail = {
   joined_at: string;
   location_id: string | null;
   location: { id: string; name: string } | null;
+  department: SalesDepartment | null;
+  language: string | null;
+  monthly_goal: number;
   archived_at: string | null;
 };
 
@@ -92,7 +95,7 @@ export default async function DirectorDetailPage({ params }: PageProps) {
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, status, joined_at, location_id, archived_at, location:locations(id, name)",
+        "id, full_name, slug, email, phone, status, joined_at, location_id, department, language, monthly_goal, archived_at, location:locations(id, name)",
       )
       .eq("slug", slug)
       .eq("role", "office_director")
@@ -175,6 +178,9 @@ export default async function DirectorDetailPage({ params }: PageProps) {
             locations={locations}
             initial={{
               locationId: director.location_id,
+              department: director.department,
+              language: director.language,
+              monthlyGoal: director.monthly_goal,
               status: director.status,
             }}
           />

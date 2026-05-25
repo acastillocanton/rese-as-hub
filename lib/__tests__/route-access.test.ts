@@ -64,8 +64,8 @@ describe("pathAllowedForRole — reviews_manager", () => {
   });
 });
 
-describe("pathAllowedForRole — office_director", () => {
-  it("dashboard + comerciales + fichas + resenas/verificacion + manager/export + apis", () => {
+describe("pathAllowedForRole — office_director (dualidad gestor + comercial)", () => {
+  it("admin de equipo + comercial productor: dashboard, comerciales, fichas, verificación, export, panel, clientes", () => {
     expect(pathAllowedForRole("/dashboard", "office_director")).toBe(true);
     expect(pathAllowedForRole("/comerciales", "office_director")).toBe(true);
     expect(pathAllowedForRole("/comerciales/foo", "office_director")).toBe(true);
@@ -78,9 +78,18 @@ describe("pathAllowedForRole — office_director", () => {
     expect(pathAllowedForRole("/api/google/oauth/start", "office_director")).toBe(true);
     expect(pathAllowedForRole("/perfil", "office_director")).toBe(true);
     expect(pathAllowedForRole("/ayuda", "office_director")).toBe(true);
+    // Producer (vende): panel + clientes
+    expect(pathAllowedForRole("/panel", "office_director")).toBe(true);
+    expect(pathAllowedForRole("/panel/enlace", "office_director")).toBe(true);
+    expect(pathAllowedForRole("/panel/resenas", "office_director")).toBe(true);
+    expect(pathAllowedForRole("/panel/ranking", "office_director")).toBe(true);
+    expect(pathAllowedForRole("/clientes", "office_director")).toBe(true);
+    expect(pathAllowedForRole("/clientes/foo", "office_director")).toBe(true);
   });
-  it("NO entra a /gestores, /ajustes ni a /manager/resenas (vista global del gestor)", () => {
+  it("NO entra a /gestores, /directores, /ajustes ni /manager/resenas", () => {
     expect(pathAllowedForRole("/gestores", "office_director")).toBe(false);
+    expect(pathAllowedForRole("/directores", "office_director")).toBe(false);
+    expect(pathAllowedForRole("/directores/foo", "office_director")).toBe(false);
     expect(pathAllowedForRole("/ajustes", "office_director")).toBe(false);
     expect(pathAllowedForRole("/manager/resenas", "office_director")).toBe(false);
     expect(pathAllowedForRole("/manager/resenas/importar", "office_director")).toBe(false);

@@ -1,16 +1,36 @@
 import { Frame } from "@/components/layout/Frame";
-import { Sidebar, SALES_SIDEBAR_GROUPS } from "@/components/layout/Sidebar";
-import { MobileTabBar, SALES_MOBILE_TABS } from "@/components/layout/MobileTabBar";
+import {
+  Sidebar,
+  SALES_SIDEBAR_GROUPS,
+  OFFICE_DIRECTOR_SIDEBAR_GROUPS,
+} from "@/components/layout/Sidebar";
+import {
+  MobileTabBar,
+  SALES_MOBILE_TABS,
+  DIRECTOR_MOBILE_TABS,
+} from "@/components/layout/MobileTabBar";
 import { MobileProfileAvatar } from "@/components/layout/MobileProfileAvatar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
+/**
+ * Layout del grupo (sales). Lo consumen DOS roles:
+ *   - `sales` (rol original): panel comercial puro.
+ *   - `office_director` (rol dual): entra aquí cuando navega a su panel
+ *     productor (`/panel/*`, `/clientes/*`). Le pintamos su sidebar y sus
+ *     mobile tabs propios para que pueda volver a Dashboard, Comerciales,
+ *     Verificación, etc. sin perderse en el chrome de comercial.
+ */
 export default async function SalesLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  let profile: { full_name: string; avatar_url: string | null } | null = null;
+  let profile: {
+    full_name: string;
+    role: string;
+    avatar_url: string | null;
+  } | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
@@ -20,22 +40,28 @@ export default async function SalesLayout({
     if (user) {
       const res = await supabase
         .from("profiles")
-        .select("full_name, avatar_url")
+        .select("full_name, role, avatar_url")
         .eq("id", user.id)
-        .maybeSingle<{ full_name: string; avatar_url: string | null }>();
+        .maybeSingle<{ full_name: string; role: string; avatar_url: string | null }>();
       profile = res.data;
     }
   }
+
+  const isDirector = profile?.role === "office_director";
+  const groups = isDirector ? OFFICE_DIRECTOR_SIDEBAR_GROUPS : SALES_SIDEBAR_GROUPS;
+  const tabs = isDirector ? DIRECTOR_MOBILE_TABS : SALES_MOBILE_TABS;
+  const subtitle = isDirector ? "Director · Inseryal" : "Comercial";
+  const fallbackName = isDirector ? "Director de oficina" : "Comercial";
 
   return (
     <Frame>
       {/* Sidebar desktop: visible ≥768px, oculto en mobile (CSS) */}
       <div className="m-hide-mobile" style={{ display: "contents" }}>
         <Sidebar
-          groups={SALES_SIDEBAR_GROUPS}
+          groups={groups}
           user={{
-            name: profile?.full_name ?? "Comercial",
-            subtitle: "Comercial",
+            name: profile?.full_name ?? fallbackName,
+            subtitle,
             avatarUrl: profile?.avatar_url,
           }}
         />
@@ -49,10 +75,10 @@ export default async function SalesLayout({
       {/* Chrome mobile: oculto en desktop (CSS), fixed en mobile */}
       <div className="m-hide-desktop">
         <MobileProfileAvatar
-          name={profile?.full_name ?? "Comercial"}
+          name={profile?.full_name ?? fallbackName}
           avatarUrl={profile?.avatar_url ?? null}
         />
-        <MobileTabBar tabs={SALES_MOBILE_TABS} />
+        <MobileTabBar tabs={tabs} />
       </div>
     </Frame>
   );

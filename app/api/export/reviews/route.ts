@@ -75,6 +75,9 @@ type SalesRow = {
   paused_reason: PauseReason | null;
   notes: string | null;
   location_id: string | null;
+  /** "sales" o "office_director". Usado para marcar al director con un
+   *  prefijo "★ " en su fila del Excel (jefe de equipo productor). */
+  role: "sales" | "office_director";
   location: { id: string; name: string } | null;
 };
 
@@ -191,12 +194,14 @@ export async function GET(request: NextRequest) {
     .lt("google_created_at", previous.endIso)
     .limit(REVIEWS_HARD_LIMIT)
     .returns<ReviewRangeRow[]>();
+  // Productores = sales + office_director (los directores también venden y
+  // aparecen en su hoja de department como una fila más).
   const salesQ = supabase
     .from("profiles")
     .select(
-      "id, full_name, slug, status, joined_at, department, language, paused_reason, notes, location_id, location:locations(id, name)",
+      "id, full_name, slug, status, joined_at, department, language, paused_reason, notes, location_id, role, location:locations(id, name)",
     )
-    .eq("role", "sales")
+    .in("role", ["sales", "office_director"])
     .returns<SalesRow[]>();
   const locationsQ = supabase
     .from("locations")
@@ -529,11 +534,13 @@ function renderFichaBlock(
   sheet.getRow(headerRow).height = 24;
   row += 1;
 
-  // Filas de comerciales activos.
+  // Filas de comerciales activos. Directores aparecen con prefijo "★ "
+  // para que en la hoja se distinga su rol de jefe de equipo productor.
   const firstSalesRow = row;
   for (const s of activeSales) {
     const r = sheet.getRow(row);
-    r.getCell(1).value = s.full_name;
+    r.getCell(1).value =
+      s.role === "office_director" ? `★ ${s.full_name}` : s.full_name;
     r.getCell(2).value = formatShortJoinedAt(s.joined_at);
     r.getCell(3).value = zoneFor(s);
     const prev = countedFor(reviewsPrevious, s.id);
@@ -660,6 +667,7 @@ function toReportSales(r: SalesRow): SalesForReport {
     notes: r.notes,
     location_id: r.location_id,
     location_name: r.location?.name ?? null,
+    role: r.role,
   };
 }
 

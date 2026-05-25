@@ -15,6 +15,7 @@ import {
   Download,
   Link2,
   LifeBuoy,
+  Trophy,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { pickActiveId } from "./active-item";
@@ -273,10 +274,10 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
   },
 ];
 
-// Director de oficina: admin scoped a su location. Misma IA que admin pero
-// sin Gestores ni Ajustes globales, y "Fichas Google" se muestra como "Mi
-// ficha" porque solo verá la suya. /manager/export lo aprovecha para Excel
-// (con el location_id forzado server-side al suyo).
+// Director de oficina: rol DUAL — productor (sales-like, con su /c/{slug}
+// y sus reseñas) + admin de su equipo (sales con director_id = él).
+// Sidebar refleja la dualidad: "Mi panel" (productor) arriba, "Mi oficina"
+// (gestor) abajo. NO ve /gestores ni /directores ni /ajustes.
 export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
   {
     id: "home",
@@ -286,8 +287,18 @@ export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
     ],
   },
   {
-    id: "reviews",
-    label: "Reseñas",
+    id: "panel",
+    label: "Mi panel",
+    items: [
+      { id: "link", label: "Mi enlace", href: "/panel/enlace", icon: Link2 },
+      { id: "myclients", label: "Mis clientes", href: "/clientes", icon: Users },
+      { id: "myreviews", label: "Mis reseñas", href: "/panel/resenas", icon: Star },
+      { id: "ranking", label: "Mi ranking", href: "/panel/ranking", icon: Trophy },
+    ],
+  },
+  {
+    id: "team-reviews",
+    label: "Reseñas del equipo",
     items: [
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
       { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },

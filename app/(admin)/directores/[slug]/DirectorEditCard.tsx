@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { Pill } from "@/components/ui/Pill";
 import { updateDirector, type UpdateDirectorInput } from "../actions";
-import type { ProfileStatus } from "@/lib/supabase/types";
+import {
+  SALES_LANGUAGES,
+  type ProfileStatus,
+  type SalesDepartment,
+} from "@/lib/supabase/types";
 
 export type DirectorEditCardProps = {
   id: string;
@@ -16,9 +20,24 @@ export type DirectorEditCardProps = {
   locations: { id: string; name: string }[];
   initial: {
     locationId: string | null;
+    department: SalesDepartment | null;
+    language: string | null;
+    monthlyGoal: number;
     status: ProfileStatus;
   };
 };
+
+const DEPARTMENT_OPTIONS: { value: SalesDepartment; label: string }[] = [
+  { value: "nacional", label: "Nacional" },
+  { value: "internacional", label: "Internacional" },
+  { value: "castellon", label: "Castellón" },
+  { value: "valencia", label: "Valencia" },
+];
+
+function departmentLabel(d: SalesDepartment | null): string {
+  if (!d) return "Sin asignar";
+  return DEPARTMENT_OPTIONS.find((o) => o.value === d)?.label ?? d;
+}
 
 // 'archived' no se gestiona desde este card — lo hace ArchiveDirectorButton.
 const STATUS_OPTIONS: { value: Exclude<ProfileStatus, "archived">; label: string }[] = [
@@ -46,6 +65,11 @@ export function DirectorEditCard({
   const [locationId, setLocationId] = useState(
     initial.locationId ?? locations[0]?.id ?? "",
   );
+  const [department, setDepartment] = useState<SalesDepartment | "">(
+    initial.department ?? "",
+  );
+  const [language, setLanguage] = useState<string>(initial.language ?? "");
+  const [monthlyGoal, setMonthlyGoal] = useState<number>(initial.monthlyGoal);
   const initialEditableStatus: Exclude<ProfileStatus, "archived"> =
     initial.status === "archived" ? "invited" : initial.status;
   const [status, setStatus] = useState<Exclude<ProfileStatus, "archived">>(
@@ -64,6 +88,9 @@ export function DirectorEditCard({
     setFullName(initialFullName);
     setPhone(initialPhone ?? "");
     setLocationId(initial.locationId ?? locations[0]?.id ?? "");
+    setDepartment(initial.department ?? "");
+    setLanguage(initial.language ?? "");
+    setMonthlyGoal(initial.monthlyGoal);
     setStatus(initialEditableStatus);
     setError(null);
     setEditing(false);
@@ -75,11 +102,22 @@ export function DirectorEditCard({
       setError("El nombre es demasiado corto.");
       return;
     }
+    if (!department) {
+      setError("Selecciona un departamento.");
+      return;
+    }
+    if (department === "internacional" && !language) {
+      setError("Selecciona el idioma del director internacional.");
+      return;
+    }
     const payload: UpdateDirectorInput = {
       id,
       fullName: fullName.trim(),
       phone: phone.trim() ? phone.trim() : null,
       locationId,
+      department,
+      language: department === "internacional" ? language : null,
+      monthlyGoal,
       status,
     };
     startTransition(async () => {
@@ -177,6 +215,80 @@ export function DirectorEditCard({
               <span style={{ fontSize: 13.5 }}>
                 {currentLocation?.name ?? "—"}
               </span>
+            )}
+          </dd>
+        </div>
+
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Departamento</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <select
+                value={department}
+                onChange={(e) => {
+                  const v = e.target.value as SalesDepartment | "";
+                  setDepartment(v);
+                  if (v !== "internacional") setLanguage("");
+                }}
+                style={inputStyle}
+              >
+                <option value="" disabled>
+                  Selecciona…
+                </option>
+                {DEPARTMENT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span style={{ fontSize: 13.5 }}>
+                {departmentLabel(initial.department)}
+              </span>
+            )}
+          </dd>
+        </div>
+
+        {(editing ? department === "internacional" : initial.department === "internacional") && (
+          <div style={rowGrid}>
+            <dt style={dtStyle}>Idioma</dt>
+            <dd style={{ margin: 0 }}>
+              {editing ? (
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="" disabled>
+                    Selecciona…
+                  </option>
+                  {SALES_LANGUAGES.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span style={{ fontSize: 13.5 }}>{initial.language ?? "—"}</span>
+              )}
+            </dd>
+          </div>
+        )}
+
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Objetivo mensual</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <input
+                type="number"
+                min={0}
+                max={1000}
+                value={monthlyGoal}
+                onChange={(e) => setMonthlyGoal(Number(e.target.value))}
+                style={{ ...inputStyle, width: 100 }}
+              />
+            ) : (
+              <span style={{ fontSize: 13.5 }}>{monthlyGoal} reseñas/mes</span>
             )}
           </dd>
         </div>

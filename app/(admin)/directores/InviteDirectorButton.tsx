@@ -2,9 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
+import { SALES_LANGUAGES, type SalesDepartment } from "@/lib/supabase/types";
 import { inviteOfficeDirector } from "./actions";
 
 type LocationOption = { id: string; name: string };
+
+const DEPARTMENT_OPTIONS: { value: SalesDepartment; label: string }[] = [
+  { value: "nacional", label: "Nacional" },
+  { value: "internacional", label: "Internacional" },
+  { value: "castellon", label: "Castellón" },
+  { value: "valencia", label: "Valencia" },
+];
 
 export function InviteDirectorButton({
   locations,
@@ -19,6 +27,7 @@ export function InviteDirectorButton({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ link: string; email: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [department, setDepartment] = useState<SalesDepartment | "">("");
   const [isPending, startTransition] = useTransition();
 
   function close() {
@@ -26,17 +35,23 @@ export function InviteDirectorButton({
     setError(null);
     setSuccess(null);
     setCopied(false);
+    setDepartment("");
   }
 
   function handleSubmit(formData: FormData) {
     setError(null);
     setSuccess(null);
     startTransition(async () => {
+      const dept = String(formData.get("department") ?? "") as SalesDepartment | "";
       const input = {
         fullName: String(formData.get("fullName") ?? ""),
         email: String(formData.get("email") ?? ""),
         phone: String(formData.get("phone") ?? ""),
         locationId: String(formData.get("locationId") ?? ""),
+        department: dept,
+        language:
+          dept === "internacional" ? String(formData.get("language") ?? "") : null,
+        monthlyGoal: String(formData.get("monthlyGoal") ?? "50"),
       };
       const result = await inviteOfficeDirector(input as never);
       if (!result.ok) {
@@ -216,7 +231,7 @@ export function InviteDirectorButton({
                   </Field>
                   <Field
                     label="Oficina (ficha)"
-                    hint="Solo verá datos de esta ficha"
+                    hint="Donde caen sus reseñas como productor y donde están sus comerciales"
                   >
                     <select name="locationId" required style={inputStyle} defaultValue="">
                       <option value="" disabled>
@@ -228,6 +243,52 @@ export function InviteDirectorButton({
                         </option>
                       ))}
                     </select>
+                  </Field>
+                  <Field
+                    label="Departamento"
+                    hint="Define en qué hoja del parte semanal aparece su producción"
+                  >
+                    <select
+                      name="department"
+                      required
+                      style={inputStyle}
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value as SalesDepartment)}
+                    >
+                      <option value="" disabled>
+                        Selecciona…
+                      </option>
+                      {DEPARTMENT_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {department === "internacional" && (
+                    <Field label="Idioma" hint="Aparece como ZONA en la hoja Internacional">
+                      <select name="language" required style={inputStyle} defaultValue="">
+                        <option value="" disabled>
+                          Selecciona…
+                        </option>
+                        {SALES_LANGUAGES.map((l) => (
+                          <option key={l} value={l}>
+                            {l}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                  <Field label="Objetivo mensual" hint="Reseñas/mes que se esperan de él como productor">
+                    <input
+                      name="monthlyGoal"
+                      type="number"
+                      min={0}
+                      max={1000}
+                      defaultValue={50}
+                      required
+                      style={inputStyle}
+                    />
                   </Field>
                   {error && (
                     <div
