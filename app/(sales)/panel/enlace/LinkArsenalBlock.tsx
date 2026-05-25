@@ -6,23 +6,11 @@ import { GhostBtn } from "@/components/ui/GhostBtn";
 import {
   DEFAULT_EMAIL_SUBJECT,
   emailHref,
+  getGenericLinkTemplate,
   smsHref,
   whatsappHref,
 } from "@/lib/messaging";
-
-/**
- * Plantilla por defecto para compartir el enlace GENÉRICO del comercial
- * (sin cliente concreto). A diferencia de la de cliente, esta no asume que
- * conozcamos el nombre del destinatario — el comercial puede pegarla en su
- * firma de email o en chats abiertos donde no hay un "nombre_cliente".
- */
-const GENERIC_TEMPLATE = `Hola, soy {nombre_comercial} de Marina d'Or.
-
-¿Te tomarías 30 segundos para dejarnos una reseña en Google? Significa muchísimo para nosotros.
-
-{url}
-
-¡Gracias!`;
+import type { Brand } from "@/lib/supabase/types";
 
 function renderGeneric(template: string, comercial: string, url: string): string {
   return template
@@ -35,12 +23,13 @@ type Props = {
   displayUrl: string;
   salesName: string;
   salesSlug: string;
+  brand: Brand;
 };
 
-export function LinkArsenalBlock({ fullUrl, displayUrl, salesName, salesSlug }: Props) {
+export function LinkArsenalBlock({ fullUrl, displayUrl, salesName, salesSlug, brand }: Props) {
   const firstName = salesName.split(" ")[0] || salesName;
   const [message, setMessage] = useState(() =>
-    renderGeneric(GENERIC_TEMPLATE, firstName, fullUrl),
+    renderGeneric(getGenericLinkTemplate(brand), firstName, fullUrl),
   );
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedMsg, setCopiedMsg] = useState(false);
@@ -80,7 +69,7 @@ export function LinkArsenalBlock({ fullUrl, displayUrl, salesName, salesSlug }: 
   }
 
   function resetMessage() {
-    setMessage(renderGeneric(GENERIC_TEMPLATE, firstName, fullUrl));
+    setMessage(renderGeneric(getGenericLinkTemplate(brand), firstName, fullUrl));
   }
 
   return (

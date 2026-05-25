@@ -1,6 +1,8 @@
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { HelpFigure } from "@/components/help/HelpFigure";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb } from "@/lib/branding";
 
 export const metadata = { title: "Ayuda · ReseñaHub" };
 
@@ -13,13 +15,14 @@ export const metadata = { title: "Ayuda · ReseñaHub" };
  * el componente <HelpFigure /> pinta un placeholder con el nombre del
  * fichero esperado para que el equipo lo cubra a posteriori.
  */
-export default function AyudaPage() {
+export default async function AyudaPage() {
+  const brand = await getCurrentUserBrand();
   return (
     <>
       <Topbar
         title="Ayuda"
         subtitle="Cómo usar ReseñaHub paso a paso"
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         range={null}
       />
 
@@ -87,8 +90,8 @@ export default function AyudaPage() {
           <section id="bienvenida">
             <h2 style={h2Style}>1. Bienvenida a ReseñaHub</h2>
             <p style={pStyle}>
-              ReseñaHub es la plataforma interna de{" "}
-              <strong>Inseryal by Marina d&apos;Or</strong> donde cada comercial
+              ReseñaHub es la plataforma interna{" "}
+              <strong>del Grupo Marina d&apos;Or</strong> donde cada comercial
               gestiona sus reseñas de Google de forma personalizada. Sustituye
               el seguimiento manual en Excel que se hacía hasta ahora.
             </p>

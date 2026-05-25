@@ -12,6 +12,8 @@ import { DeleteSalesButton } from "./DeleteSalesButton";
 import { SalesFilters } from "./SalesFilters";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendSalesAccess } from "./actions";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb } from "@/lib/branding";
 
 const DEPARTMENTS = new Set<SalesDepartment>([
   "nacional",
@@ -65,6 +67,7 @@ type PageProps = {
 
 export default async function ComercialesPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const brand = await getCurrentUserBrand();
   const showArchived = sp.archived === "1";
 
   // Filtros saneados (descartamos basura para no romper la query).
@@ -206,7 +209,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
             ? `${salesList.length} archivados`
             : `${stats.total} en plantilla`
         }
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         compact
         right={canEdit && !showArchived ? <InviteSalesButton locations={locations} directors={directors} /> : undefined}
       />

@@ -2,6 +2,7 @@
 
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { ShareBlock } from "./ShareBlock";
+import type { Brand } from "@/lib/supabase/types";
 
 export type ClientLinkDialogProps = {
   open: boolean;
@@ -13,6 +14,7 @@ export type ClientLinkDialogProps = {
   clientSlug: string;
   clientEmail?: string | null;
   clientPhone?: string | null;
+  brand: Brand;
 };
 
 export function ClientLinkDialog(props: ClientLinkDialogProps) {
@@ -26,6 +28,7 @@ export function ClientLinkDialog(props: ClientLinkDialogProps) {
     clientSlug,
     clientEmail,
     clientPhone,
+    brand,
   } = props;
 
   if (!open) return null;
@@ -93,6 +96,7 @@ export function ClientLinkDialog(props: ClientLinkDialogProps) {
             clientSlug={clientSlug}
             clientEmail={clientEmail}
             clientPhone={clientPhone}
+            brand={brand}
           />
         </div>
 

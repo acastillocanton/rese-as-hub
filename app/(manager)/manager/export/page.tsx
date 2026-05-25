@@ -8,11 +8,14 @@ import {
   lastQuarterRange,
   type DateRange,
 } from "@/lib/date-range";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb } from "@/lib/branding";
 
 type SalesOption = { id: string; full_name: string; role: "sales" | "office_director" };
 type LocationOption = { id: string; name: string };
 
 export default async function ManagerExportPage() {
+  const brand = await getCurrentUserBrand();
   let sales: SalesOption[] = [];
   let locations: LocationOption[] = [];
 
@@ -45,7 +48,7 @@ export default async function ManagerExportPage() {
         title="Exportar Excel"
         subtitle="Parte de reseñas"
         range={null}
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         compact
       />
 

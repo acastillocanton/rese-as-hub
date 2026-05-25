@@ -10,6 +10,7 @@ import {
   type PendingNotification,
 } from "@/lib/cron/process-reviews";
 import { notifyNewReview } from "@/lib/email/notify-new-review";
+import type { Brand } from "@/lib/supabase/types";
 
 /**
  * Orquestador del sync de reseñas vía Google Places API.
@@ -133,14 +134,14 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
 
   let locationsQuery = admin
     .from("locations")
-    .select("id, name, google_place_id")
+    .select("id, name, google_place_id, brand")
     .not("google_place_id", "is", null);
   if (filter && filter.length > 0) {
     locationsQuery = locationsQuery.in("id", filter);
   }
 
   const [locationsRes, salesRes] = await Promise.all([
-    locationsQuery.returns<{ id: string; name: string; google_place_id: string }[]>(),
+    locationsQuery.returns<{ id: string; name: string; google_place_id: string; brand: Brand }[]>(),
     admin
       .from("profiles")
       .select("id, full_name, email, status")
@@ -267,7 +268,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
       const notifs = await processFreshReviews(
         {
           admin,
-          location: { id: loc.id, name: loc.name },
+          location: { id: loc.id, name: loc.name, brand: loc.brand },
           fresh,
           salesById,
           source: "places_api",

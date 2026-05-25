@@ -7,6 +7,8 @@ import { Stat } from "@/components/ui/Stat";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { LinkArsenalBlock } from "./LinkArsenalBlock";
+import { DEFAULT_BRAND } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
 // Forzamos render dinámico: la página usa `new Date()` para "hace X min"
 // y filtros temporales del mes en curso.
@@ -16,6 +18,7 @@ type SalesProfile = {
   id: string;
   full_name: string;
   slug: string;
+  locations: { brand: Brand } | null;
 };
 
 export default async function EnlacePage() {
@@ -47,7 +50,7 @@ export default async function EnlacePage() {
 
   const profileRes = await supabase
     .from("profiles")
-    .select("id, full_name, slug")
+    .select("id, full_name, slug, locations:locations(brand)")
     .eq("id", user.id)
     .maybeSingle<SalesProfile>();
 
@@ -193,6 +196,7 @@ export default async function EnlacePage() {
             displayUrl={displayUrl}
             salesName={profile.full_name}
             salesSlug={profile.slug}
+            brand={profile.locations?.brand ?? DEFAULT_BRAND}
           />
         </Card>
 

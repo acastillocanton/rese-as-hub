@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { notifyNewReview } from "@/lib/email/notify-new-review";
+import { DEFAULT_BRAND } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -116,7 +118,7 @@ export async function POST(request: NextRequest) {
   const { data: reviews } = await admin
     .from("reviews")
     .select(
-      "id, author_name, rating, text, match_confidence, sales_id, sales:profiles!reviews_sales_id_fkey(full_name, email, status), location:locations(name), client:clients(full_name)",
+      "id, author_name, rating, text, match_confidence, sales_id, sales:profiles!reviews_sales_id_fkey(full_name, email, status), location:locations(name, brand), client:clients(full_name)",
     )
     .in("id", reviewIds)
     .is("removed_at", null)
@@ -129,7 +131,7 @@ export async function POST(request: NextRequest) {
         match_confidence: number;
         sales_id: string | null;
         sales: { full_name: string; email: string | null; status: string } | null;
-        location: { name: string } | null;
+        location: { name: string; brand: Brand } | null;
         client: { full_name: string } | null;
       }>
     >();
@@ -151,6 +153,7 @@ export async function POST(request: NextRequest) {
         clientFullName: r.client?.full_name ?? null,
         locationName: r.location?.name ?? null,
         matchConfidence: r.match_confidence,
+        brand: r.location?.brand ?? DEFAULT_BRAND,
         appBase,
       });
     }),

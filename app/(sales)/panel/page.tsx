@@ -22,6 +22,8 @@ import {
   type DateRange,
 } from "@/lib/date-range";
 import { CopyLinkButton } from "./CopyLinkButton";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb } from "@/lib/branding";
 
 type PanelData = {
   name: string;
@@ -185,6 +187,7 @@ export default async function PanelPage({
   searchParams: PanelSearchParams;
 }) {
   const params = await searchParams;
+  const brand = await getCurrentUserBrand();
   const now = new Date();
   const range = parseRange(params.from, params.to, now);
   const shortcuts = defaultShortcuts(now);
@@ -219,7 +222,7 @@ export default async function PanelPage({
         title="Mi panel"
         subtitle={`Buenos días, ${data.name.split(" ")[0]}`}
         range={null}
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         compact
         right={
           <>

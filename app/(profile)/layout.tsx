@@ -14,6 +14,8 @@ import {
 } from "@/components/layout/MobileTabBar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { DEFAULT_BRAND, getBrandLabel } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
 /**
  * Layout del grupo (profile). /perfil es accesible a los 4 roles
@@ -36,6 +38,7 @@ export default async function ProfileLayout({
     full_name: string;
     role: string;
     avatar_url: string | null;
+    locations: { brand: Brand } | null;
   } | null = null;
 
   if (isSupabaseConfigured()) {
@@ -46,9 +49,14 @@ export default async function ProfileLayout({
     if (!user) redirect("/login");
     const res = await supabase
       .from("profiles")
-      .select("full_name, role, avatar_url")
+      .select("full_name, role, avatar_url, locations:locations(brand)")
       .eq("id", user.id)
-      .maybeSingle<{ full_name: string; role: string; avatar_url: string | null }>();
+      .maybeSingle<{
+        full_name: string;
+        role: string;
+        avatar_url: string | null;
+        locations: { brand: Brand } | null;
+      }>();
     profile = res.data;
   }
 
@@ -65,14 +73,16 @@ export default async function ProfileLayout({
           ? OFFICE_DIRECTOR_SIDEBAR_GROUPS
           : SALES_SIDEBAR_GROUPS;
 
+  const brand: Brand = profile?.locations?.brand ?? DEFAULT_BRAND;
+  const brandLabel = getBrandLabel(brand);
   const subtitle =
     role === "admin"
-      ? "Admin · Inseryal"
+      ? `Admin · ${brandLabel}`
       : role === "reviews_manager"
-        ? "Gestor · Inseryal"
+        ? `Gestor · ${brandLabel}`
         : role === "office_director"
-          ? "Director · Inseryal"
-          : "Comercial";
+          ? `Director · ${brandLabel}`
+          : `Comercial · ${brandLabel}`;
 
   return (
     <Frame>

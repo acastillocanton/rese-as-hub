@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { ReviewVerificationRow } from "./ReviewVerificationRow";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb } from "@/lib/branding";
 
 type SearchParams = Promise<{ state?: string }>;
 
@@ -36,6 +38,7 @@ export default async function ResenasVerificacionPage({
   searchParams: SearchParams;
 }) {
   const params = await searchParams;
+  const brand = await getCurrentUserBrand();
   const stateFilter: "pending" | "unmatched" | "removed" =
     params.state === "unmatched"
       ? "unmatched"
@@ -49,7 +52,7 @@ export default async function ResenasVerificacionPage({
         <Topbar
           title="Verificación"
           subtitle="Modo demo · sin Supabase"
-          breadcrumb="Inseryal"
+          breadcrumb={getBrandBreadcrumb(brand)}
         />
         <div style={{ padding: "24px 32px" }}>
           <Card>
@@ -119,7 +122,7 @@ export default async function ResenasVerificacionPage({
               ? `${unmatchedCount} sin atribuir`
               : `${removedCount} eliminadas`
         }
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         compact
       />
 

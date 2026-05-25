@@ -11,6 +11,8 @@ import { ArchiveDirectorButton } from "./ArchiveDirectorButton";
 import { DeleteDirectorButton } from "./DeleteDirectorButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendDirectorAccess } from "./actions";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb } from "@/lib/branding";
 
 type PageProps = {
   searchParams: Promise<{ archived?: string }>;
@@ -31,6 +33,7 @@ type LocationOption = { id: string; name: string };
 
 export default async function DirectoresPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const brand = await getCurrentUserBrand();
   const showArchived = sp.archived === "1";
 
   let directors: DirectorRow[] = [];
@@ -103,7 +106,7 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
             ? `${directors.length} archivados`
             : `${stats.total} en plantilla`
         }
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         right={!showArchived ? <InviteDirectorButton locations={locations} primary /> : undefined}
       />
 

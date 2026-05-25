@@ -1,10 +1,30 @@
-export const DEFAULT_REVIEW_MESSAGE_TEMPLATE = `Hola {nombre_cliente}, soy {nombre_comercial} de Marina d'Or.
+import { getBrandLabel } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
+
+/** Plantilla del mensaje que el comercial copia al cliente cuando le manda
+ *  el enlace de su cliente (WhatsApp / email / SMS). La marca viene de la
+ *  location del comercial. */
+export function getDefaultReviewMessageTemplate(brand: Brand): string {
+  return `Hola {nombre_cliente}, soy {nombre_comercial} de ${getBrandLabel(brand)}.
 
 ¡Gracias por confiar en nosotros! Si tuviste una buena experiencia, ¿te tomarías 30 segundos para dejarnos una reseña?
 
 {url}
 
 ¡Mil gracias!`;
+}
+
+/** Plantilla del mensaje genérico (sin cliente concreto) — el comercial la
+ *  comparte en grupos o con contactos sin haber creado un cliente. */
+export function getGenericLinkTemplate(brand: Brand): string {
+  return `Hola, soy {nombre_comercial} de ${getBrandLabel(brand)}.
+
+¿Te tomarías 30 segundos para dejarnos una reseña en Google? Significa muchísimo para nosotros.
+
+{url}
+
+¡Gracias!`;
+}
 
 export const DEFAULT_EMAIL_SUBJECT = "¿Nos dejas una reseña en Google?";
 

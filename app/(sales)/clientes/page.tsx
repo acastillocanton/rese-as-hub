@@ -5,10 +5,12 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { NewClientButton } from "./NewClientButton";
 import { ClientRowItem } from "./ClientRowItem";
 import type { ClientRow } from "./actions";
+import { DEFAULT_BRAND, getBrandBreadcrumb } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
-type SalesProfile = { full_name: string; slug: string };
+type SalesProfile = { full_name: string; slug: string; locations: { brand: Brand } | null };
 
-const DEMO_PROFILE: SalesProfile = { full_name: "Mateo Salgado", slug: "mateo-salgado" };
+const DEMO_PROFILE: SalesProfile = { full_name: "Mateo Salgado", slug: "mateo-salgado", locations: null };
 
 export default async function ClientesPage() {
   let salesProfile: SalesProfile | null = null;
@@ -25,7 +27,7 @@ export default async function ClientesPage() {
       const [profileRes, clientsRes] = await Promise.all([
         supabase
           .from("profiles")
-          .select("full_name, slug")
+          .select("full_name, slug, locations:locations(brand)")
           .eq("id", user.id)
           .maybeSingle<SalesProfile>(),
         supabase
@@ -46,6 +48,7 @@ export default async function ClientesPage() {
   }
 
   const profile = salesProfile ?? DEMO_PROFILE;
+  const brand: Brand = profile.locations?.brand ?? DEFAULT_BRAND;
   const appBase = process.env.NEXT_PUBLIC_APP_URL ?? "https://reseñahub.es";
 
   return (
@@ -58,13 +61,14 @@ export default async function ClientesPage() {
             ? ""
             : `${clients.length} ${clients.length === 1 ? "cliente" : "clientes"}`
         }
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         compact
         right={
           <NewClientButton
             appBase={appBase}
             salesName={profile.full_name}
             salesSlug={profile.slug}
+            brand={brand}
           />
         }
       />
@@ -121,6 +125,7 @@ export default async function ClientesPage() {
               appBase={appBase}
               salesName={profile.full_name}
               salesSlug={profile.slug}
+              brand={brand}
             />
           </Card>
         ) : (
@@ -153,6 +158,7 @@ export default async function ClientesPage() {
                 appBase={appBase}
                 salesName={profile.full_name}
                 salesSlug={profile.slug}
+                brand={brand}
               />
             ))}
           </Card>

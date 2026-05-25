@@ -1,5 +1,7 @@
 import "server-only";
 import { sendEmail } from "./brevo";
+import { getBrandEmailLogo, getBrandLabel } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
 export type NewReviewNotificationInput = {
   /** Email del comercial al que se le atribuye la reseña. */
@@ -20,6 +22,8 @@ export type NewReviewNotificationInput = {
   matchConfidence: number;
   /** Base URL para construir el link al panel del comercial. */
   appBase: string;
+  /** Marca de la location de la reseña — determina logo y firma. */
+  brand: Brand;
 };
 
 function ratingStars(n: number): string {
@@ -62,7 +66,7 @@ function renderText(
     "",
     `Ver detalle en tu panel: ${panelUrl}`,
     "",
-    "ReseñaHub · Inseryal by Marina d'Or",
+    `ReseñaHub · ${getBrandLabel(input.brand)}`,
   ]
     .filter((l) => l !== null)
     .join("\n");
@@ -87,6 +91,11 @@ function renderHtml(
   const safeFirstName = escapeHtml(firstName);
   const safeClient = input.clientFullName ? escapeHtml(input.clientFullName) : null;
   const safeLocation = input.locationName ? escapeHtml(input.locationName) : null;
+  const logo = getBrandEmailLogo(input.brand);
+  const logoHtml = logo.url
+    ? `<a href="${logo.linkHref}" style="text-decoration:none;border:0;outline:none;"><img src="${logo.url}" alt="${escapeHtml(logo.alt)}" width="200" style="width:200px;max-width:60%;height:auto;display:block;border:0;outline:none;text-decoration:none;"></a>`
+    : `<div style="font-size:18px;font-weight:600;letter-spacing:-0.02em;color:#1a1a1a;">${escapeHtml(logo.alt)}</div>`;
+  const brandLabel = escapeHtml(getBrandLabel(input.brand));
   const starsHtml = Array.from({ length: 5 })
     .map(
       (_, i) =>
@@ -108,9 +117,7 @@ function renderHtml(
     <tr><td align="center" style="padding:48px 16px;">
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="width:560px;max-width:100%;">
         <tr><td style="padding:0 8px 28px 8px;">
-          <a href="https://inseryal.es" style="text-decoration:none;border:0;outline:none;">
-            <img src="https://inseryal.es/wp-content/uploads/2025/02/logo-Inseryal-by-Marina-dOr.png" alt="Inseryal by Marina d'Or" width="200" style="width:200px;max-width:60%;height:auto;display:block;border:0;outline:none;text-decoration:none;">
-          </a>
+          ${logoHtml}
           <div style="margin-top:18px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#8a8478;font-weight:600;">Reseña<span style="color:#1a1a1a;">Hub</span> · Notificación</div>
         </td></tr>
         <tr><td style="background:#ffffff;border:1px solid #e9e4d8;border-radius:12px;padding:36px 40px;">
@@ -138,7 +145,7 @@ function renderHtml(
         <tr><td style="padding:24px 8px 0 8px;font-size:11.5px;line-height:1.6;color:#a8a294;">
           Recibes este correo porque eres comercial activo en ReseñaHub.
           <br><br>
-          ReseñaHub · Inseryal by Marina d'Or
+          ReseñaHub · ${brandLabel}
         </td></tr>
       </table>
     </td></tr>

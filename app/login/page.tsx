@@ -56,7 +56,7 @@ export default async function LoginPage({
             fontSize: 12,
           }}
         >
-          Acceso solo para personal autorizado de Inseryal by Marina d&apos;Or.
+          Acceso solo para personal autorizado del Grupo Marina d&apos;Or.
         </p>
         <div
           style={{

@@ -12,6 +12,8 @@ import {
 import { MobileProfileAvatar } from "@/components/layout/MobileProfileAvatar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { DEFAULT_BRAND, getBrandLabel } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
 /**
  * Layout del grupo (sales). Lo consumen DOS roles:
@@ -30,6 +32,7 @@ export default async function SalesLayout({
     full_name: string;
     role: string;
     avatar_url: string | null;
+    locations: { brand: Brand } | null;
   } | null = null;
 
   if (isSupabaseConfigured()) {
@@ -40,9 +43,14 @@ export default async function SalesLayout({
     if (user) {
       const res = await supabase
         .from("profiles")
-        .select("full_name, role, avatar_url")
+        .select("full_name, role, avatar_url, locations:locations(brand)")
         .eq("id", user.id)
-        .maybeSingle<{ full_name: string; role: string; avatar_url: string | null }>();
+        .maybeSingle<{
+          full_name: string;
+          role: string;
+          avatar_url: string | null;
+          locations: { brand: Brand } | null;
+        }>();
       profile = res.data;
     }
   }
@@ -50,7 +58,9 @@ export default async function SalesLayout({
   const isDirector = profile?.role === "office_director";
   const groups = isDirector ? OFFICE_DIRECTOR_SIDEBAR_GROUPS : SALES_SIDEBAR_GROUPS;
   const tabs = isDirector ? DIRECTOR_MOBILE_TABS : SALES_MOBILE_TABS;
-  const subtitle = isDirector ? "Director · Inseryal" : "Comercial";
+  const brand: Brand = profile?.locations?.brand ?? DEFAULT_BRAND;
+  const brandLabel = getBrandLabel(brand);
+  const subtitle = isDirector ? `Director · ${brandLabel}` : `Comercial · ${brandLabel}`;
   const fallbackName = isDirector ? "Director de oficina" : "Comercial";
 
   return (

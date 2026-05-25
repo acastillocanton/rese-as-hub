@@ -9,6 +9,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { ShareBlock } from "../ShareBlock";
 import { DeleteClientButton } from "./DeleteClientButton";
 import { ClientEditCard } from "./ClientEditCard";
+import { DEFAULT_BRAND } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -24,7 +26,7 @@ type ClientDetail = {
   sales_id: string;
 };
 
-type SalesProfile = { full_name: string; slug: string };
+type SalesProfile = { full_name: string; slug: string; locations: { brand: Brand } | null };
 
 type ReviewRow = {
   id: string;
@@ -67,7 +69,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
   const [profileRes, clientRes] = await Promise.all([
     supabase
       .from("profiles")
-      .select("full_name, slug")
+      .select("full_name, slug, locations:locations(brand)")
       .eq("id", user.id)
       .maybeSingle<SalesProfile>(),
     supabase
@@ -218,6 +220,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
               clientSlug={client.slug}
               clientEmail={client.email}
               clientPhone={client.phone}
+              brand={profile.locations?.brand ?? DEFAULT_BRAND}
             />
           </div>
         </Card>

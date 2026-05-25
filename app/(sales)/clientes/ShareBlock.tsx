@@ -5,12 +5,13 @@ import { QRCodeSVG } from "qrcode.react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import {
   DEFAULT_EMAIL_SUBJECT,
-  DEFAULT_REVIEW_MESSAGE_TEMPLATE,
   emailHref,
+  getDefaultReviewMessageTemplate,
   renderMessage,
   smsHref,
   whatsappHref,
 } from "@/lib/messaging";
+import type { Brand } from "@/lib/supabase/types";
 
 export type ShareBlockProps = {
   appBase: string;
@@ -21,6 +22,7 @@ export type ShareBlockProps = {
   clientEmail?: string | null;
   clientPhone?: string | null;
   qrSize?: number;
+  brand: Brand;
 };
 
 export function ShareBlock({
@@ -32,18 +34,19 @@ export function ShareBlock({
   clientEmail,
   clientPhone,
   qrSize = 144,
+  brand,
 }: ShareBlockProps) {
   const fullUrl = `${appBase}/c/${salesSlug}/${clientSlug}`;
   const displayUrl = fullUrl.replace(/^https?:\/\//, "");
 
   const initialMessage = useMemo(
     () =>
-      renderMessage(DEFAULT_REVIEW_MESSAGE_TEMPLATE, {
+      renderMessage(getDefaultReviewMessageTemplate(brand), {
         nombre_cliente: clientName.split(" ")[0] || clientName,
         nombre_comercial: salesName.split(" ")[0] || salesName,
         url: fullUrl,
       }),
-    [clientName, salesName, fullUrl],
+    [clientName, salesName, fullUrl, brand],
   );
 
   const [message, setMessage] = useState(initialMessage);

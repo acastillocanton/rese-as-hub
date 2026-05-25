@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { deleteClientRecord, type ClientRow } from "./actions";
 import { ClientLinkDialog } from "./ClientLinkDialog";
+import type { Brand } from "@/lib/supabase/types";
 
 type ClientRowItemProps = {
   client: ClientRow;
@@ -12,6 +13,7 @@ type ClientRowItemProps = {
   appBase: string;
   salesName: string;
   salesSlug: string;
+  brand: Brand;
 };
 
 export function ClientRowItem({
@@ -20,6 +22,7 @@ export function ClientRowItem({
   appBase,
   salesName,
   salesSlug,
+  brand,
 }: ClientRowItemProps) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -225,6 +228,7 @@ export function ClientRowItem({
         clientSlug={client.slug}
         clientEmail={client.email}
         clientPhone={client.phone}
+        brand={brand}
       />
     </>
   );

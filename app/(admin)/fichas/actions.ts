@@ -45,6 +45,7 @@ const createSchema = z.object({
     .optional()
     .nullable()
     .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
+  brand: z.enum(["inseryal", "marina_dor_construcciones"]),
 });
 
 export type CreateLocationInput = z.infer<typeof createSchema>;
@@ -66,6 +67,7 @@ export async function createLocation(input: CreateLocationInput) {
   const payload = {
     name: parsed.data.name.trim(),
     google_place_id: parsed.data.googlePlaceId,
+    brand: parsed.data.brand,
   };
   const { error } = await supabase.from("locations").insert(payload as never);
   if (error) {
@@ -215,6 +217,40 @@ export async function updateLocationPlaceId(input: z.input<typeof placeIdSchema>
       return { ok: false as const, error: "Ya existe otra ficha con ese Place ID." };
     }
     console.error("[fichas] updateLocationPlaceId failed:", error);
+    return { ok: false as const, error: error.message };
+  }
+  revalidatePath("/fichas");
+  return { ok: true as const };
+}
+
+const brandSchema = z.object({
+  locationId: z.string().uuid(),
+  brand: z.enum(["inseryal", "marina_dor_construcciones"]),
+});
+
+/**
+ * Cambia la marca de una ficha. Solo admin: la marca determina qué etiquetas,
+ * logo y plantillas ven los usuarios asignados a esa ficha — es decisión
+ * organizacional, no operativa, así que el office_director NO puede tocarla
+ * de su propia oficina.
+ */
+export async function updateLocationBrand(input: z.input<typeof brandSchema>) {
+  const auth = await assertCanManageLocations();
+  if (!auth.ok) return { ok: false as const, error: auth.error };
+  if (auth.actor.role !== "admin") {
+    return { ok: false as const, error: "Solo el admin general puede cambiar la marca de una ficha." };
+  }
+  const parsed = brandSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("locations")
+    .update({ brand: parsed.data.brand } as never)
+    .eq("id", parsed.data.locationId);
+  if (error) {
+    console.error("[fichas] updateLocationBrand failed:", error);
     return { ok: false as const, error: error.message };
   }
   revalidatePath("/fichas");

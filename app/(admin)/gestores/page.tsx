@@ -9,6 +9,8 @@ import { InviteManagerButton } from "./InviteManagerButton";
 import { DeleteManagerButton } from "./DeleteManagerButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendManagerAccess } from "./actions";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb } from "@/lib/branding";
 
 type ManagerRow = {
   id: string;
@@ -20,6 +22,7 @@ type ManagerRow = {
 };
 
 export default async function GestoresPage() {
+  const brand = await getCurrentUserBrand();
   let managers: ManagerRow[] = [];
   let dbError: string | null = null;
 
@@ -48,7 +51,7 @@ export default async function GestoresPage() {
         title="Gestores de reseñas"
         subtitle="Administración total de comerciales + listado de reseñas y descarga Excel"
         range={`${stats.total} en plantilla`}
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         right={<InviteManagerButton primary />}
       />
 

@@ -4,18 +4,22 @@ import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { OauthStatus } from "@/lib/supabase/types";
+import type { OauthStatus, Brand } from "@/lib/supabase/types";
 import { AddFichaButton } from "./AddFichaButton";
 import { DeleteFichaButton } from "./DeleteFichaButton";
 import { DisconnectGoogleButton } from "./DisconnectGoogleButton";
 import { DismissibleBanner } from "./DismissibleBanner";
 import { EditPlaceIdButton } from "./EditPlaceIdButton";
+import { EditBrandButton } from "./EditBrandButton";
 import { EditRatingButton } from "./EditRatingButton";
 import { SyncNowButton } from "@/components/ui/SyncNowButton";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb, getBrandLabel } from "@/lib/branding";
 
 type LocationRow = {
   id: string;
   name: string;
+  brand: Brand;
   google_place_id: string | null;
   google_account_email: string | null;
   oauth_status: OauthStatus;
@@ -45,6 +49,7 @@ export default async function FichasPage({
   searchParams: SearchParams;
 }) {
   const { connected, oauth_error: oauthError } = await searchParams;
+  const brand = await getCurrentUserBrand();
 
   let locations: LocationRow[] = [];
   let dbError: string | null = null;
@@ -68,7 +73,7 @@ export default async function FichasPage({
     const { data, error } = await supabase
       .from("locations")
       .select(
-        "id, name, google_place_id, google_account_email, oauth_status, oauth_last_sync_at, oauth_last_sync_error, average_rating, total_review_count, rating_updated_at, rating_source, created_at",
+        "id, name, brand, google_place_id, google_account_email, oauth_status, oauth_last_sync_at, oauth_last_sync_error, average_rating, total_review_count, rating_updated_at, rating_source, created_at",
       )
       .order("created_at", { ascending: false });
     if (error) {
@@ -95,7 +100,7 @@ export default async function FichasPage({
             ? locations[0]?.name ?? "—"
             : `${locations.length} ${locations.length === 1 ? "ficha" : "fichas"}`
         }
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         compact={isDirector}
         right={
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -273,6 +278,16 @@ function FichaRow({
         >
           {loc.name}
         </div>
+        <div
+          style={{
+            marginTop: 4,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <Pill tone="neutral">{getBrandLabel(loc.brand)}</Pill>
+        </div>
         {loc.google_place_id && (
           <div
             style={{
@@ -282,7 +297,7 @@ function FichaRow({
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              marginTop: 2,
+              marginTop: 4,
             }}
           >
             {loc.google_place_id}
@@ -339,6 +354,7 @@ function FichaRow({
           />
         )}
         <EditPlaceIdButton id={loc.id} currentPlaceId={loc.google_place_id} />
+        {canDelete && <EditBrandButton id={loc.id} currentBrand={loc.brand} />}
         {loc.oauth_status === "connected" ? (
           <DisconnectGoogleButton id={loc.id} name={loc.name} />
         ) : (

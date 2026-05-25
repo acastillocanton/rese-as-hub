@@ -9,6 +9,8 @@ import { parseRange, defaultShortcuts } from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { SyncNowButton } from "@/components/ui/SyncNowButton";
 import { RemovalControls } from "@/components/ui/RemovalControls";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb } from "@/lib/branding";
 
 type SearchParams = Promise<{
   sales_id?: string;
@@ -41,6 +43,7 @@ export default async function ManagerResenasPage({
   searchParams: SearchParams;
 }) {
   const params = await searchParams;
+  const brand = await getCurrentUserBrand();
 
   if (!isSupabaseConfigured()) {
     return (
@@ -49,7 +52,7 @@ export default async function ManagerResenasPage({
           title="Reseñas"
           subtitle="Vista solo lectura"
           range="Modo demo"
-          breadcrumb="Inseryal"
+          breadcrumb={getBrandBreadcrumb(brand)}
         />
         <div style={{ padding: "24px 32px" }}>
           <Card>
@@ -141,7 +144,7 @@ export default async function ManagerResenasPage({
         title="Reseñas"
         subtitle="Vista solo lectura"
         range={null}
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         right={
           <>
             <SyncNowButton label="Sincronizar" variant="ghost" />

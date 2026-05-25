@@ -18,6 +18,8 @@ import {
   isFullNaturalMonth,
 } from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
+import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
+import { getBrandBreadcrumb } from "@/lib/branding";
 
 // Dashboard recalcula rango y proyecciones con `new Date()`. Dinámico.
 export const dynamic = "force-dynamic";
@@ -96,6 +98,7 @@ export default async function DashboardPage({
   if (!isSupabaseConfigured()) {
     return <DemoFallback />;
   }
+  const brand = await getCurrentUserBrand();
 
   const params = await searchParams;
   const supabase = await createClient();
@@ -316,7 +319,7 @@ export default async function DashboardPage({
         title="Dashboard"
         subtitle="Dashboard general"
         range={null}
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         compact
         right={
           <RangePicker
@@ -1052,7 +1055,7 @@ async function DemoFallback() {
         title="Dashboard"
         subtitle="Modo demo · sin Supabase"
         range="Datos de ejemplo"
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb("inseryal")}
         right={<GhostBtn primary>Invitar comercial</GhostBtn>}
       />
       <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>

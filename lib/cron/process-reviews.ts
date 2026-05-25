@@ -5,6 +5,7 @@ import {
   TEMPORAL_WINDOW_HOURS,
   type ShareLinkCandidate,
 } from "@/lib/matching/attribute-review";
+import type { Brand } from "@/lib/supabase/types";
 
 /**
  * Helper compartido entre los crons de Business Profile y Places API.
@@ -31,6 +32,7 @@ export type FreshReview = {
 export type LocationCtx = {
   id: string;
   name: string;
+  brand: Brand;
 };
 
 export type LocationSummary = {
@@ -56,6 +58,7 @@ export type PendingNotification = {
   reviewDbId: string;
   salesId: string;
   googleReviewId: string;
+  brand: Brand;
 };
 
 export type SalesInfo = {
@@ -189,6 +192,7 @@ export async function processFreshReviews(
             reviewDbId: inserted.id,
             salesId: result.sales_id,
             googleReviewId: fr.google_review_id,
+            brand: location.brand,
           });
         }
       }
@@ -233,6 +237,7 @@ export async function flushNotifications(
         clientFullName: p.clientFullName,
         locationName: p.locationName,
         matchConfidence: p.matchConfidence,
+        brand: p.brand,
         appBase,
       }),
     ),

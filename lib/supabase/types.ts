@@ -28,6 +28,14 @@ export type ShareSource = "whatsapp" | "email" | "sms" | "qr" | "direct";
 
 export type SalesDepartment = "nacional" | "internacional" | "castellon" | "valencia";
 
+/** Marca operativa de la `location`. El grupo Marina d'Or opera con dos:
+ *  - `inseryal` → "Inseryal by Marina d'Or" (Oropesa, Pardiñas, Vergara,
+ *    Leganés, Chamberí).
+ *  - `marina_dor_construcciones` → "Marina d'Or Construcciones"
+ *    (Castellón, Valencia).
+ *  Las etiquetas humanas y el logo del email viven en `lib/branding.ts`. */
+export type Brand = "inseryal" | "marina_dor_construcciones";
+
 export type PauseReason = "vacaciones" | "baja_medica" | "permiso_laboral";
 
 /** Lista cerrada de idiomas para comerciales internacionales. Si en el
@@ -54,6 +62,7 @@ export type Database = {
         Row: {
           id: string;
           name: string;
+          brand: Brand;
           google_place_id: string | null;
           google_account_id: string | null;
           google_location_resource: string | null;
@@ -70,6 +79,7 @@ export type Database = {
         Insert: {
           id?: string;
           name: string;
+          brand?: Brand;
           google_place_id?: string | null;
           google_account_id?: string | null;
           google_location_resource?: string | null;
@@ -262,6 +272,7 @@ export type Database = {
       share_source_enum: ShareSource;
       sales_department_enum: SalesDepartment;
       pause_reason_enum: PauseReason;
+      brand_enum: Brand;
     };
     CompositeTypes: Record<string, never>;
   };

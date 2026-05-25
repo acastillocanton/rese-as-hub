@@ -7,6 +7,8 @@ import { Pill } from "@/components/ui/Pill";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { PhotoUpload } from "./PhotoUpload";
+import { DEFAULT_BRAND, getBrandBreadcrumb } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
 type ProfileRow = {
   id: string;
@@ -16,6 +18,7 @@ type ProfileRow = {
   slug: string;
   status: "invited" | "active" | "paused";
   avatar_url: string | null;
+  locations: { brand: Brand } | null;
 };
 
 function roleLabel(role: ProfileRow["role"]): string {
@@ -38,7 +41,7 @@ export default async function PerfilPage() {
         <Topbar
           title="Mi perfil"
           subtitle="Modo demo — sin base de datos"
-          breadcrumb="Inseryal"
+          breadcrumb={getBrandBreadcrumb(DEFAULT_BRAND)}
           range={null}
         />
         <div style={{ padding: "24px 32px" }}>
@@ -60,12 +63,13 @@ export default async function PerfilPage() {
 
   const profileRes = await supabase
     .from("profiles")
-    .select("id, full_name, email, role, slug, status, avatar_url")
+    .select("id, full_name, email, role, slug, status, avatar_url, locations:locations(brand)")
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
 
   const profile = profileRes.data;
   if (!profile) redirect("/login");
+  const brand: Brand = profile.locations?.brand ?? DEFAULT_BRAND;
 
   const memberSince = user.created_at
     ? new Date(user.created_at).toLocaleDateString("es-ES", {
@@ -88,7 +92,7 @@ export default async function PerfilPage() {
       <Topbar
         title="Mi perfil"
         subtitle="Tu información en ReseñaHub"
-        breadcrumb="Inseryal"
+        breadcrumb={getBrandBreadcrumb(brand)}
         range={null}
         compact
         right={

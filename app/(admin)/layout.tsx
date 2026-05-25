@@ -12,6 +12,8 @@ import {
 import { MobileProfileAvatar } from "@/components/layout/MobileProfileAvatar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { DEFAULT_BRAND, getBrandLabel } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
 /**
  * Layout del grupo (admin). Lo consumen 3 roles:
@@ -27,7 +29,12 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  let profile: { full_name: string; role: string; avatar_url: string | null } | null = null;
+  let profile: {
+    full_name: string;
+    role: string;
+    avatar_url: string | null;
+    locations: { brand: Brand } | null;
+  } | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
@@ -37,14 +44,21 @@ export default async function AdminLayout({
     if (user) {
       const res = await supabase
         .from("profiles")
-        .select("full_name, role, avatar_url")
+        .select("full_name, role, avatar_url, locations:locations(brand)")
         .eq("id", user.id)
-        .maybeSingle<{ full_name: string; role: string; avatar_url: string | null }>();
+        .maybeSingle<{
+          full_name: string;
+          role: string;
+          avatar_url: string | null;
+          locations: { brand: Brand } | null;
+        }>();
       profile = res.data;
     }
   }
 
   const role = profile?.role ?? null;
+  const brand: Brand = profile?.locations?.brand ?? DEFAULT_BRAND;
+  const brandLabel = getBrandLabel(brand);
   const groups =
     role === "reviews_manager"
       ? MANAGER_SIDEBAR_GROUPS
@@ -55,18 +69,18 @@ export default async function AdminLayout({
     role === "reviews_manager"
       ? {
           name: profile?.full_name ?? "Gestor de reseñas",
-          subtitle: "Gestor · Inseryal",
+          subtitle: `Gestor · ${brandLabel}`,
           avatarUrl: profile?.avatar_url,
         }
       : role === "office_director"
         ? {
             name: profile?.full_name ?? "Director de oficina",
-            subtitle: "Director · Inseryal",
+            subtitle: `Director · ${brandLabel}`,
             avatarUrl: profile?.avatar_url,
           }
         : {
             name: profile?.full_name ?? "Administrador",
-            subtitle: "Admin · Inseryal",
+            subtitle: `Admin · ${brandLabel}`,
             avatarUrl: profile?.avatar_url,
           };
 

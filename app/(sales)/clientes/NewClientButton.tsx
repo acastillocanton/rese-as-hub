@@ -4,14 +4,16 @@ import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { createClientRecord, type ClientRow } from "./actions";
 import { ClientLinkDialog } from "./ClientLinkDialog";
+import type { Brand } from "@/lib/supabase/types";
 
 type NewClientButtonProps = {
   appBase: string;
   salesName: string;
   salesSlug: string;
+  brand: Brand;
 };
 
-export function NewClientButton({ appBase, salesName, salesSlug }: NewClientButtonProps) {
+export function NewClientButton({ appBase, salesName, salesSlug, brand }: NewClientButtonProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<ClientRow | null>(null);
@@ -149,6 +151,7 @@ export function NewClientButton({ appBase, salesName, salesSlug }: NewClientButt
           clientSlug={created.slug}
           clientEmail={created.email}
           clientPhone={created.phone}
+          brand={brand}
         />
       )}
     </>

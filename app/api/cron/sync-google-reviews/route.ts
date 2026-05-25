@@ -16,6 +16,7 @@ import {
   type PendingNotification,
 } from "@/lib/cron/process-reviews";
 import { notifyNewReview } from "@/lib/email/notify-new-review";
+import type { Brand } from "@/lib/supabase/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -52,10 +53,10 @@ export async function GET(request: NextRequest) {
   const [locationsRes, salesRes] = await Promise.all([
     admin
       .from("locations")
-      .select("id, name, google_location_resource")
+      .select("id, name, google_location_resource, brand")
       .eq("oauth_status", "connected")
       .not("google_location_resource", "is", null)
-      .returns<{ id: string; name: string; google_location_resource: string }[]>(),
+      .returns<{ id: string; name: string; google_location_resource: string; brand: Brand }[]>(),
     admin
       .from("profiles")
       .select("id, full_name, email, status")
@@ -202,7 +203,7 @@ export async function GET(request: NextRequest) {
       const notifs = await processFreshReviews(
         {
           admin,
-          location: { id: loc.id, name: loc.name },
+          location: { id: loc.id, name: loc.name, brand: loc.brand },
           fresh: freshNormalized,
           salesById,
           source: "business_profile",

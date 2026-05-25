@@ -3,11 +3,14 @@
 import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { createLocation } from "./actions";
+import { BRAND_OPTIONS } from "@/lib/branding";
+import type { Brand } from "@/lib/supabase/types";
 
 export function AddFichaButton() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [placeId, setPlaceId] = useState("");
+  const [brand, setBrand] = useState<Brand>("inseryal");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -16,6 +19,7 @@ export function AddFichaButton() {
     const input = {
       name: String(formData.get("name") ?? ""),
       googlePlaceId: String(formData.get("googlePlaceId") ?? ""),
+      brand: String(formData.get("brand") ?? "inseryal") as Brand,
     };
     startTransition(async () => {
       const result = await createLocation(input);
@@ -26,6 +30,7 @@ export function AddFichaButton() {
       setOpen(false);
       setName("");
       setPlaceId("");
+      setBrand("inseryal");
     });
   }
 
@@ -131,6 +136,23 @@ export function AddFichaButton() {
                   placeholder="ChIJ..."
                   style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
                 />
+              </Field>
+              <Field
+                label="Marca"
+                hint="Determina las etiquetas, logo del email y plantillas que ven los usuarios asignados a esta ficha."
+              >
+                <select
+                  name="brand"
+                  value={brand}
+                  onChange={(e) => setBrand(e.target.value as Brand)}
+                  style={inputStyle}
+                >
+                  {BRAND_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
               {error && (
                 <div
