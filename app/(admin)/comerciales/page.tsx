@@ -22,10 +22,13 @@ type SalesRow = {
   joined_at: string;
   department: SalesDepartment | null;
   language: string | null;
+  director_id: string | null;
   location: { id: string; name: string } | null;
+  director: { id: string; full_name: string } | null;
 };
 
 type LocationOption = { id: string; name: string };
+type DirectorOption = { id: string; full_name: string; location_id: string | null };
 
 const DEPARTMENT_LABELS: Record<SalesDepartment, string> = {
   nacional: "Nacional",
@@ -45,6 +48,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
   let salesList: SalesRow[] = [];
   let archivedCount = 0;
   let locations: LocationOption[] = [];
+  let directors: DirectorOption[] = [];
   let dbError: string | null = null;
   let viewerRole: string | null = null;
 
@@ -65,12 +69,12 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
     const baseQuery = supabase
       .from("profiles")
       .select(
-        "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, location:locations(id, name)",
+        "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, director_id, location:locations(id, name), director:profiles!profiles_director_id_fkey(id, full_name)",
       )
       .eq("role", "sales")
       .order("joined_at", { ascending: false });
 
-    const [salesRes, archivedRes, locRes] = await Promise.all([
+    const [salesRes, archivedRes, locRes, dirRes] = await Promise.all([
       showArchived
         ? baseQuery.eq("status", "archived")
         : baseQuery.neq("status", "archived"),
@@ -80,6 +84,15 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
         .eq("role", "sales")
         .eq("status", "archived"),
       supabase.from("locations").select("id, name").order("name"),
+      // Directores disponibles para asignar. Excluimos archivados; el
+      // selector del invite/edit los filtra después por location.
+      supabase
+        .from("profiles")
+        .select("id, full_name, location_id")
+        .eq("role", "office_director")
+        .neq("status", "archived")
+        .order("full_name")
+        .returns<DirectorOption[]>(),
     ]);
 
     if (salesRes.error) dbError = salesRes.error.message;
@@ -88,6 +101,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
     archivedCount = archivedRes.count ?? 0;
 
     if (locRes.data) locations = locRes.data as LocationOption[];
+    if (dirRes.data) directors = dirRes.data;
   }
 
   // Admin y reviews_manager comparten plenamente la administración de
@@ -120,7 +134,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
         }
         breadcrumb="Inseryal"
         compact
-        right={canEdit && !showArchived ? <InviteSalesButton locations={locations} /> : undefined}
+        right={canEdit && !showArchived ? <InviteSalesButton locations={locations} directors={directors} /> : undefined}
       />
 
       <div className="m-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
@@ -223,7 +237,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
                       invites a alguien, te daremos un enlace de un solo uso que
                       puedes enviarle por WhatsApp o email.
                     </p>
-                    <InviteSalesButton locations={locations} />
+                    <InviteSalesButton locations={locations} directors={directors} />
                   </>
                 ) : (
                   !showArchived && (
@@ -386,17 +400,40 @@ function SalesRow({
       >
         {s.department ? DEPARTMENT_LABELS[s.department] : "—"}
       </span>
-      <span
+      <div
         style={{
           fontSize: 13,
           color: "var(--ink-2)",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
         }}
       >
-        {zone}
-      </span>
+        <span
+          style={{
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {zone}
+        </span>
+        {s.director && (
+          <span
+            style={{
+              fontSize: 11,
+              color: "var(--ink-4)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+            title={`Director responsable: ${s.director.full_name}`}
+          >
+            👤 {s.director.full_name}
+          </span>
+        )}
+      </div>
       <span
         style={{
           fontSize: 12.5,

@@ -1,11 +1,16 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { SALES_LANGUAGES, type SalesDepartment } from "@/lib/supabase/types";
 import { inviteSales } from "./actions";
 
 type LocationOption = { id: string; name: string };
+type DirectorOption = {
+  id: string;
+  full_name: string;
+  location_id: string | null;
+};
 
 const DEPARTMENT_OPTIONS: { value: SalesDepartment; label: string }[] = [
   { value: "nacional", label: "Nacional" },
@@ -14,12 +19,19 @@ const DEPARTMENT_OPTIONS: { value: SalesDepartment; label: string }[] = [
   { value: "valencia", label: "Valencia" },
 ];
 
-export function InviteSalesButton({ locations }: { locations: LocationOption[] }) {
+export function InviteSalesButton({
+  locations,
+  directors,
+}: {
+  locations: LocationOption[];
+  directors: DirectorOption[];
+}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ link: string; email: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [department, setDepartment] = useState<SalesDepartment | "">("");
+  const [locationId, setLocationId] = useState<string>("");
   const [isPending, startTransition] = useTransition();
 
   // Sugerencia de ficha por defecto en función del departamento. El admin
@@ -41,7 +53,24 @@ export function InviteSalesButton({ locations }: { locations: LocationOption[] }
     setSuccess(null);
     setCopied(false);
     setDepartment("");
+    setLocationId("");
   }
+
+  // Directores filtrados por la ficha seleccionada. Cuando la ficha cambia,
+  // el dropdown se reduce a los del nuevo location_id; si no hay ficha aún,
+  // se ofrece la lista completa para no bloquear al usuario.
+  const eligibleDirectors = useMemo(() => {
+    if (!locationId) return directors;
+    return directors.filter((d) => d.location_id === locationId);
+  }, [directors, locationId]);
+
+  // Cuando el departamento autosugiere una ficha (`defaultLocationId`), el
+  // <select> se remonta con esa value pero el state aún no lo sabe — lo
+  // sincronizamos para que el filtro de directores aplique desde el primer
+  // render del form.
+  useEffect(() => {
+    if (defaultLocationId) setLocationId(defaultLocationId);
+  }, [defaultLocationId]);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -53,6 +82,7 @@ export function InviteSalesButton({ locations }: { locations: LocationOption[] }
         email: String(formData.get("email") ?? ""),
         phone: String(formData.get("phone") ?? ""),
         locationId: String(formData.get("locationId") ?? ""),
+        directorId: String(formData.get("directorId") ?? "") || null,
         monthlyGoal: String(formData.get("monthlyGoal") ?? "50"),
         department: dept,
         language:
@@ -257,6 +287,7 @@ export function InviteSalesButton({ locations }: { locations: LocationOption[] }
                       // para que el defaultValue tome efecto.
                       key={`loc-${department}-${defaultLocationId}`}
                       defaultValue={defaultLocationId}
+                      onChange={(e) => setLocationId(e.target.value)}
                     >
                       <option value="" disabled>
                         Selecciona…
@@ -264,6 +295,28 @@ export function InviteSalesButton({ locations }: { locations: LocationOption[] }
                       {locations.map((l) => (
                         <option key={l.id} value={l.id}>
                           {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {/* Director responsable: opcional. Si se asigna, ese director
+                      gestionará al comercial; si se deja vacío, queda en el
+                      pool del admin/reviews_manager (sin director). Filtramos
+                      la lista por la ficha actual para no asignar un director
+                      de otra location por error. */}
+                  <Field
+                    label="Director responsable (opcional)"
+                    hint={
+                      eligibleDirectors.length === 0
+                        ? "No hay directores en esa ficha. Créalos en /directores."
+                        : "Solo se listan directores de la ficha seleccionada."
+                    }
+                  >
+                    <select name="directorId" style={inputStyle} defaultValue="">
+                      <option value="">— Sin director asignado —</option>
+                      {eligibleDirectors.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.full_name}
                         </option>
                       ))}
                     </select>

@@ -229,13 +229,11 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
     label: "Equipo",
     items: [
       // Directores arriba: son responsables de oficina (jerarquía visible).
-      // Comparten pantalla con Gestores en /gestores; `pickActiveId` resuelve
-      // por pathname (ignora el hash), así que ambos items aparecen activos
-      // cuando estás en /gestores — intencional.
+      // Pagina dedicada desde la migración 013: /directores.
       {
         id: "directors",
         label: "Directores",
-        href: "/gestores#directores",
+        href: "/directores",
         icon: Building2,
       },
       { id: "sales", label: "Comerciales", href: "/comerciales", icon: Users },

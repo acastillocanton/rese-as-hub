@@ -10,7 +10,7 @@ import { slugify } from "@/lib/utils";
 import type { Role } from "@/lib/supabase/types";
 import { canManageSales } from "@/lib/supabase/types";
 
-type Actor = { role: Role; locationId: string | null };
+type Actor = { role: Role; locationId: string | null; userId: string };
 
 /**
  * Comprueba que el caller puede administrar comerciales (admin,
@@ -38,7 +38,39 @@ async function assertCanManageSales(): Promise<
   if (!data || !canManageSales(data.role)) {
     return { ok: false, error: "No autorizado." };
   }
-  return { ok: true, actor: { role: data.role, locationId: data.location_id } };
+  return { ok: true, actor: { role: data.role, locationId: data.location_id, userId: user.id } };
+}
+
+/**
+ * Valida que un `directorId` candidato es coherente:
+ *  • Existe y tiene `role='office_director'`.
+ *  • Su `location_id` coincide con `locationId` del sales (mismo office).
+ *  • Status no `archived` (no asignar a directores eliminados).
+ *
+ * Devuelve `{ ok: true }` también si `directorId` es null (sin director).
+ */
+async function assertDirectorAssignment(
+  directorId: string | null,
+  locationId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!directorId) return { ok: true };
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("id, role, location_id, status")
+    .eq("id", directorId)
+    .maybeSingle<{ id: string; role: Role; location_id: string | null; status: string }>();
+  if (!data) return { ok: false, error: "Director responsable no encontrado." };
+  if (data.role !== "office_director") {
+    return { ok: false, error: "El usuario seleccionado no es un director de oficina." };
+  }
+  if (data.status === "archived") {
+    return { ok: false, error: "Ese director está archivado." };
+  }
+  if (data.location_id !== locationId) {
+    return { ok: false, error: "El director debe pertenecer a la misma ficha que el comercial." };
+  }
+  return { ok: true };
 }
 
 /**
@@ -97,6 +129,16 @@ const inviteSchema = z
       .nullable()
       .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
     locationId: z.string().uuid("Selecciona una ficha."),
+    /** Opcional. Si se asigna, el comercial pertenecerá al equipo de ese
+     *  director (su `director_id`); si se deja null, queda en el pool del
+     *  admin/reviews_manager. Validamos coherencia con la location en la
+     *  server action. */
+    directorId: z
+      .string()
+      .uuid()
+      .optional()
+      .nullable()
+      .transform((v) => v || null),
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
     department: departmentSchema,
     language: z
@@ -133,9 +175,8 @@ export async function inviteSales(input: InviteSalesInput): Promise<
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
-  // Director: solo puede crear sales en SU ficha. Independientemente de lo
-  // que mande el formulario, forzamos el scope (no es solo defensa: la UI no
-  // expone otras locations al director, pero un POST manipulado podría).
+  // Director: solo puede crear sales en SU ficha y para SU equipo. La UI no
+  // expone otras locations ni otros directores, pero un POST manipulado podría.
   if (auth.actor.role === "office_director") {
     if (!auth.actor.locationId) {
       return { ok: false, error: "Director sin oficina asignada." };
@@ -143,7 +184,17 @@ export async function inviteSales(input: InviteSalesInput): Promise<
     if (parsed.data.locationId !== auth.actor.locationId) {
       return { ok: false, error: "Solo puedes crear comerciales en tu oficina." };
     }
+    // El director siempre se auto-asigna el sales (ignoramos cualquier
+    // directorId que venga del form distinto al suyo).
+    parsed.data.directorId = auth.actor.userId;
   }
+
+  // Validar coherencia del director (si se especificó): rol, location, status.
+  const dirCheck = await assertDirectorAssignment(
+    parsed.data.directorId,
+    parsed.data.locationId,
+  );
+  if (!dirCheck.ok) return { ok: false, error: dirCheck.error };
   const baseSlug = slugify(parsed.data.fullName);
   if (!baseSlug) {
     return { ok: false, error: "No se pudo generar el identificador del comercial." };
@@ -164,6 +215,7 @@ export async function inviteSales(input: InviteSalesInput): Promise<
     role: "sales",
     extra: {
       location_id: parsed.data.locationId,
+      director_id: parsed.data.directorId,
       monthly_goal: parsed.data.monthlyGoal,
       department: parsed.data.department,
       language: parsed.data.language,
@@ -180,6 +232,12 @@ const updateSchema = z
     id: z.string().uuid(),
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
     locationId: z.string().uuid("Selecciona una ficha."),
+    directorId: z
+      .string()
+      .uuid()
+      .optional()
+      .nullable()
+      .transform((v) => v || null),
     // 'archived' NO se gestiona desde este formulario — solo desde
     // archiveSales/restoreSales (botones dedicados con confirmación).
     status: z.enum(["invited", "active", "paused"]),
@@ -220,15 +278,27 @@ export async function updateSales(input: UpdateSalesInput) {
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
-  // Director: el sales target debe estar en su ficha Y el nuevo location_id
-  // del payload también (no puede "trasladar" un sales a otra oficina).
+  // Director: el sales target debe estar en su equipo. NO puede:
+  //  • Mover un sales a otra ficha.
+  //  • Reasignar el sales a otro director (la fila debe seguir apuntando a él).
+  // Admin/reviews_manager sí pueden cambiar director_id libremente.
   if (auth.actor.role === "office_director") {
     const inScope = await assertSalesInScope(auth.actor, parsed.data.id);
     if (!inScope.ok) return { ok: false as const, error: inScope.error };
     if (parsed.data.locationId !== auth.actor.locationId) {
       return { ok: false as const, error: "No puedes mover un comercial fuera de tu oficina." };
     }
+    if (parsed.data.directorId !== auth.actor.userId) {
+      return { ok: false as const, error: "No puedes reasignar el comercial a otro director." };
+    }
   }
+
+  // Validar coherencia del director nuevo (si se especifica).
+  const dirCheck = await assertDirectorAssignment(
+    parsed.data.directorId,
+    parsed.data.locationId,
+  );
+  if (!dirCheck.ok) return { ok: false as const, error: dirCheck.error };
 
   const supabase = await createClient();
   // RLS: admin (profiles_admin_all) + reviews_manager (profiles_manager_update_sales
@@ -237,6 +307,7 @@ export async function updateSales(input: UpdateSalesInput) {
   const payload = {
     monthly_goal: parsed.data.monthlyGoal,
     location_id: parsed.data.locationId,
+    director_id: parsed.data.directorId,
     status: parsed.data.status,
     department: parsed.data.department,
     language: parsed.data.language,

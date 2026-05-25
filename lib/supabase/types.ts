@@ -104,6 +104,10 @@ export type Database = {
           full_name: string;
           role: Role;
           location_id: string | null;
+          /** Para `role='sales'`: id del office_director responsable (nullable —
+           *  un sales sin director asignado vive en el pool del admin/reviews_manager).
+           *  Para el resto de roles: NULL. */
+          director_id: string | null;
           slug: string;
           email: string | null;
           phone: string | null;
@@ -122,6 +126,7 @@ export type Database = {
           full_name: string;
           role: Role;
           location_id?: string | null;
+          director_id?: string | null;
           slug: string;
           email?: string | null;
           phone?: string | null;

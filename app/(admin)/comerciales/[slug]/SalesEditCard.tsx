@@ -19,8 +19,10 @@ export type SalesEditCardProps = {
   slug: string;
   joinedAt: string;
   locations: { id: string; name: string }[];
+  directors: { id: string; full_name: string; location_id: string | null }[];
   initial: {
     locationId: string | null;
+    directorId: string | null;
     monthlyGoal: number;
     status: ProfileStatus;
     department: SalesDepartment | null;
@@ -57,6 +59,7 @@ export function SalesEditCard({
   slug,
   joinedAt,
   locations,
+  directors,
   initial,
 }: SalesEditCardProps) {
   const router = useRouter();
@@ -67,6 +70,7 @@ export function SalesEditCard({
   const [locationId, setLocationId] = useState(
     initial.locationId ?? locations[0]?.id ?? "",
   );
+  const [directorId, setDirectorId] = useState<string>(initial.directorId ?? "");
   const [monthlyGoal, setMonthlyGoal] = useState(initial.monthlyGoal);
   // initial.status puede ser 'archived' si llega aquí por error; en ese caso
   // colapsamos a 'invited' para que el select tenga un valor representable.
@@ -99,6 +103,7 @@ export function SalesEditCard({
 
   function onCancel() {
     setLocationId(initial.locationId ?? locations[0]?.id ?? "");
+    setDirectorId(initial.directorId ?? "");
     setMonthlyGoal(initial.monthlyGoal);
     setStatus(initialEditableStatus);
     setDepartment(initial.department ?? "");
@@ -109,6 +114,12 @@ export function SalesEditCard({
     setError(null);
     setEditing(false);
   }
+
+  // Si el director responsable actual pertenece a otra ficha de la que se
+  // elige en el form, lo limpiamos para no enviar un par inconsistente.
+  // Esta corrección visual ocurre en onChange del select de location.
+  const eligibleDirectors = directors.filter((d) => d.location_id === locationId);
+  const currentDirector = directors.find((d) => d.id === directorId) ?? null;
 
   function onSave() {
     setError(null);
@@ -127,6 +138,7 @@ export function SalesEditCard({
     const payload: UpdateSalesInput = {
       id,
       locationId,
+      directorId: directorId || null,
       monthlyGoal,
       status,
       department,
@@ -256,7 +268,16 @@ export function SalesEditCard({
             {editing ? (
               <select
                 value={locationId}
-                onChange={(e) => setLocationId(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setLocationId(v);
+                  // Si el director actual pertenecía a la ficha anterior,
+                  // se vuelve incoherente — lo limpiamos.
+                  if (directorId) {
+                    const d = directors.find((x) => x.id === directorId);
+                    if (!d || d.location_id !== v) setDirectorId("");
+                  }
+                }}
                 style={inputStyle}
               >
                 {locations.map((l) => (
@@ -268,6 +289,33 @@ export function SalesEditCard({
             ) : (
               <span style={{ fontSize: 13.5 }}>
                 {currentLocation?.name ?? "—"}
+              </span>
+            )}
+          </dd>
+        </div>
+
+        {/* Director responsable (opcional). Solo se ofrecen los de la
+            misma ficha; "Sin director" deja al comercial en el pool del
+            admin/reviews_manager. */}
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Director responsable</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <select
+                value={directorId}
+                onChange={(e) => setDirectorId(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">— Sin director asignado —</option>
+                {eligibleDirectors.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.full_name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span style={{ fontSize: 13.5, color: currentDirector ? "var(--ink)" : "var(--ink-4)" }}>
+                {currentDirector?.full_name ?? "Sin director asignado"}
               </span>
             )}
           </dd>

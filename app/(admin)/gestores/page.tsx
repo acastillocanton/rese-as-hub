@@ -7,10 +7,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus } from "@/lib/supabase/types";
 import { InviteManagerButton } from "./InviteManagerButton";
 import { DeleteManagerButton } from "./DeleteManagerButton";
-import { InviteDirectorButton } from "./InviteDirectorButton";
-import { DeleteDirectorButton } from "./DeleteDirectorButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
-import { resendManagerAccess, resendDirectorAccess } from "./actions";
+import { resendManagerAccess } from "./actions";
 
 type ManagerRow = {
   id: string;
@@ -21,41 +19,20 @@ type ManagerRow = {
   joined_at: string;
 };
 
-type DirectorRow = ManagerRow & {
-  location: { id: string; name: string } | null;
-};
-
-type LocationOption = { id: string; name: string };
-
 export default async function GestoresPage() {
   let managers: ManagerRow[] = [];
-  let directors: DirectorRow[] = [];
-  let locations: LocationOption[] = [];
   let dbError: string | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
-    const [managersRes, directorsRes, locsRes] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id, full_name, email, phone, status, joined_at")
-        .eq("role", "reviews_manager")
-        .order("joined_at", { ascending: false })
-        .returns<ManagerRow[]>(),
-      supabase
-        .from("profiles")
-        .select(
-          "id, full_name, email, phone, status, joined_at, location:locations(id, name)",
-        )
-        .eq("role", "office_director")
-        .order("joined_at", { ascending: false }),
-      supabase.from("locations").select("id, name").order("name"),
-    ]);
-    if (managersRes.error) dbError = managersRes.error.message;
-    else managers = managersRes.data ?? [];
-    if (!dbError && directorsRes.error) dbError = directorsRes.error.message;
-    else directors = ((directorsRes.data ?? []) as unknown) as DirectorRow[];
-    if (locsRes.data) locations = locsRes.data as LocationOption[];
+    const res = await supabase
+      .from("profiles")
+      .select("id, full_name, email, phone, status, joined_at")
+      .eq("role", "reviews_manager")
+      .order("joined_at", { ascending: false })
+      .returns<ManagerRow[]>();
+    if (res.error) dbError = res.error.message;
+    else managers = res.data ?? [];
   }
 
   const stats = {
@@ -64,25 +41,15 @@ export default async function GestoresPage() {
     invited: managers.filter((m) => m.status === "invited").length,
     paused: managers.filter((m) => m.status === "paused").length,
   };
-  const directorStats = {
-    total: directors.length,
-    active: directors.filter((d) => d.status === "active").length,
-    invited: directors.filter((d) => d.status === "invited").length,
-  };
 
   return (
     <>
       <Topbar
-        title="Gestores y directores"
-        subtitle="Gestores globales + directores de oficina"
-        range={`${stats.total + directorStats.total} en plantilla`}
+        title="Gestores de reseñas"
+        subtitle="Administración total de comerciales + listado de reseñas y descarga Excel"
+        range={`${stats.total} en plantilla`}
         breadcrumb="Inseryal"
-        right={
-          <div style={{ display: "flex", gap: 8 }}>
-            <InviteManagerButton />
-            <InviteDirectorButton locations={locations} primary />
-          </div>
-        }
+        right={<InviteManagerButton primary />}
       />
 
       <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
@@ -106,7 +73,6 @@ export default async function GestoresPage() {
 
         {!dbError && (
           <>
-            <SectionHeader title="Gestores de reseñas" hint="Visión global, gestión de comerciales y export Excel" />
             <div
               style={{
                 display: "grid",
@@ -182,194 +148,10 @@ export default async function GestoresPage() {
                 ))}
               </Card>
             )}
-
-            {/* scroll-margin-top reserva espacio bajo el sticky topbar
-                cuando el sidebar enlaza con #directores. */}
-            <div id="directores" style={{ marginTop: 32, scrollMarginTop: 24 }}>
-              <SectionHeader
-                title="Directores de oficina"
-                hint="Gestionan UNA ficha como un admin: comerciales, reseñas y conexión Google de su oficina"
-              />
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: 16,
-                  marginBottom: 16,
-                }}
-              >
-                <MiniStat
-                  label="Total"
-                  value={directorStats.total}
-                  sub={`director${directorStats.total === 1 ? "" : "es"} en plantilla`}
-                />
-                <MiniStat
-                  label="Activos"
-                  value={directorStats.active}
-                  sub="con acceso al panel"
-                />
-                <MiniStat
-                  label="Invitados"
-                  value={directorStats.invited}
-                  sub="pendientes de aceptar"
-                />
-              </div>
-
-              {directors.length === 0 ? (
-                <Card padding={32}>
-                  <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
-                    Sin directores de oficina todavía
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 600,
-                      marginTop: 4,
-                      letterSpacing: "-0.02em",
-                    }}
-                  >
-                    Asigna un responsable a cada ficha
-                  </div>
-                  <p
-                    style={{
-                      margin: "10px 0 16px",
-                      color: "var(--ink-3)",
-                      fontSize: 13.5,
-                      lineHeight: 1.55,
-                      maxWidth: 560,
-                    }}
-                  >
-                    El director ve y gestiona los datos de su ficha (oficina)
-                    como un admin local: comerciales, reseñas, conexión Google.
-                    No accede a otras oficinas, ni a /gestores o /ajustes.
-                  </p>
-                  <InviteDirectorButton locations={locations} primary />
-                </Card>
-              ) : (
-                <Card padding={0}>
-                  <div
-                    style={{
-                      padding: "12px 22px",
-                      borderBottom: "1px solid var(--line)",
-                      display: "grid",
-                      gridTemplateColumns: "2fr 1.2fr 1.4fr 0.8fr 200px",
-                      gap: 14,
-                      fontSize: 11,
-                      color: "var(--ink-4)",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.04em",
-                    }}
-                  >
-                    <span>Director</span>
-                    <span>Oficina</span>
-                    <span>Email</span>
-                    <span>Estado</span>
-                    <span></span>
-                  </div>
-                  {directors.map((d, i) => (
-                    <DirectorRowView
-                      key={d.id}
-                      d={d}
-                      last={i === directors.length - 1}
-                    />
-                  ))}
-                </Card>
-              )}
-            </div>
           </>
         )}
       </div>
     </>
-  );
-}
-
-function SectionHeader({ title, hint }: { title: string; hint: string }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 18,
-          fontWeight: 600,
-          letterSpacing: "-0.02em",
-        }}
-      >
-        {title}
-      </div>
-      <div style={{ fontSize: 12.5, color: "var(--ink-4)", marginTop: 2 }}>{hint}</div>
-    </div>
-  );
-}
-
-function DirectorRowView({ d, last }: { d: DirectorRow; last: boolean }) {
-  const tone =
-    d.status === "active" ? "ok" : d.status === "paused" ? "warn" : "neutral";
-  const label =
-    d.status === "active" ? "Activo" : d.status === "paused" ? "Pausado" : "Invitado";
-  return (
-    <div
-      style={{
-        padding: "14px 22px",
-        borderBottom: last ? "none" : "1px solid var(--line)",
-        display: "grid",
-        gridTemplateColumns: "2fr 1.2fr 1.4fr 0.8fr 200px",
-        gap: 14,
-        alignItems: "center",
-        fontSize: 13.5,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-        <Avatar name={d.full_name} size={32} />
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontWeight: 600,
-              letterSpacing: "-0.005em",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              color: "var(--ink)",
-            }}
-          >
-            {d.full_name}
-          </div>
-          <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
-            Director de oficina · gestiona su ficha
-          </div>
-        </div>
-      </div>
-      <span
-        style={{
-          fontSize: 13,
-          color: d.location ? "var(--ink-2)" : "var(--ink-4)",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {d.location?.name ?? "—"}
-      </span>
-      <span
-        style={{
-          fontSize: 12.5,
-          color: "var(--ink-3)",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {d.email ?? "—"}
-      </span>
-      <span>
-        <Pill tone={tone} withDot>
-          {label}
-        </Pill>
-      </span>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-        <ResendAccessButton id={d.id} name={d.full_name} action={resendDirectorAccess} />
-        <DeleteDirectorButton id={d.id} name={d.full_name} />
-      </div>
-    </div>
   );
 }
 

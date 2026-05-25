@@ -44,7 +44,9 @@ type SalesDetail = {
   status: ProfileStatus;
   joined_at: string;
   location_id: string | null;
+  director_id: string | null;
   location: { id: string; name: string } | null;
+  director: { id: string; full_name: string; slug: string } | null;
   department: SalesDepartment | null;
   language: string | null;
   paused_reason: PauseReason | null;
@@ -118,22 +120,30 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
   // 005 y assertCanManageSales en actions.ts.
   const canEdit = viewerRole === "admin" || viewerRole === "reviews_manager";
 
-  const [salesRes, locsRes] = await Promise.all([
+  const [salesRes, locsRes, dirRes] = await Promise.all([
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, location:locations(id, name)",
+        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, location:locations(id, name), director:profiles!profiles_director_id_fkey(id, full_name, slug)",
       )
       .eq("slug", slug)
       .eq("role", "sales")
       .maybeSingle<SalesDetail>(),
     supabase.from("locations").select("id, name").order("name"),
+    supabase
+      .from("profiles")
+      .select("id, full_name, location_id")
+      .eq("role", "office_director")
+      .neq("status", "archived")
+      .order("full_name")
+      .returns<{ id: string; full_name: string; location_id: string | null }[]>(),
   ]);
 
   const sales = salesRes.data;
   if (!sales) notFound();
 
   const locations = (locsRes.data ?? []) as { id: string; name: string }[];
+  const directors = dirRes.data ?? [];
 
   // Carga clientes + share_links + reviews en paralelo y agrega en JS.
   const [clientsRes, sharesRes, reviewsRes] = await Promise.all([
@@ -240,7 +250,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
         title={sales.full_name}
         subtitle={`Comercial · ${sales.location?.name ?? "sin ficha"} · ${statusLabel(sales.status)}${
           sales.department ? ` · ${DEPARTMENT_LABELS[sales.department]}` : ""
-        }`}
+        }${sales.director ? ` · Director: ${sales.director.full_name}` : ""}`}
         breadcrumb="Comerciales"
         range={null}
         compact
@@ -348,8 +358,10 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
               slug={sales.slug}
               joinedAt={sales.joined_at}
               locations={locations}
+              directors={directors}
               initial={{
                 locationId: sales.location_id,
+                directorId: sales.director_id,
                 monthlyGoal: sales.monthly_goal,
                 status: sales.status,
                 department: sales.department,

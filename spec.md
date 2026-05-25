@@ -11,10 +11,10 @@
 **Qué construimos**: una aplicación web interna llamada **ReseñaHub** para Inseryal by Marina d'Or (apartamentos turísticos en la playa, ~10 fichas de Google Business Profile, ~24 comerciales). La app sustituye el "parte semanal de reseñas" que hasta ahora se compilaba a mano en Excel.
 
 **Para quién**:
-- **Admin** (2 personas: Alejandro Castillo y Rafael Ibáñez) — visión global, alta/baja de fichas Google y comerciales, configuración del sistema.
-- **Director de oficina** (office_director, migración 011) — admin scoped a UNA ficha. Gestiona los comerciales de su oficina, conecta su Google Business Profile, verifica sus reseñas, exporta su Excel. NO accede a `/gestores` ni `/ajustes` (globales) ni a datos de otras oficinas. Solo el admin global lo invita/edita/elimina.
-- **Comercial** (sales) — recibe invitación, accede a su panel (escritorio + móvil), genera un enlace personalizado por cliente, ve sus reseñas y ranking.
-- **Gestor de reseñas** (reviews_manager) — comparte vista global con admin (dashboard + comerciales) y tiene plenos permisos sobre el rol sales (invitar, editar, eliminar). Pantallas adicionales: `/manager/resenas` y `/manager/export`. NO accede a `/gestores`, `/fichas`, `/resenas/verificacion`, `/ajustes`.
+- **Admin** (2 personas: Alejandro Castillo y Rafael Ibáñez) — visión global, alta/baja de fichas Google, directores y gestores, configuración del sistema.
+- **Director de oficina** (office_director, migraciones 011-013) — admin scoped a SU EQUIPO de comerciales (`profiles.director_id`). Una location puede tener varios directores, cada uno con su equipo (p.ej. en Internacional, un director por idioma). Gestiona los comerciales de su equipo, verifica sus reseñas, exporta su Excel; sobre su ficha (`location_id`) puede conectar OAuth/Place ID. NO accede a `/gestores`, `/directores` ni `/ajustes`. Solo el admin global lo invita/edita/elimina desde `/directores`.
+- **Comercial** (sales) — recibe invitación, accede a su panel (escritorio + móvil), genera un enlace personalizado por cliente, ve sus reseñas y ranking. Puede tener un `director_id` asignado (su responsable directo dentro de la ficha) o quedar en el pool del admin/reviews_manager si es null.
+- **Gestor de reseñas** (reviews_manager) — comparte vista global con admin (dashboard + comerciales) y tiene plenos permisos sobre el rol sales (invitar, editar, eliminar, reasignar `director_id`). Pantallas adicionales: `/manager/resenas` y `/manager/export`. NO accede a `/gestores`, `/directores`, `/fichas`, `/resenas/verificacion`, `/ajustes`.
 
 **Por qué**:
 1. Eliminar el trabajo manual semanal del gestor de reseñas.
