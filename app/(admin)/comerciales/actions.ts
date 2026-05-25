@@ -344,6 +344,48 @@ export async function archiveSales(id: string) {
  * Raquel pueda reenviarle acceso) e intenta recuperar el slug original; si
  * está ocupado, mantiene el sufijo `-archived-...`.
  */
+/**
+ * Eliminación PERMANENTE de un comercial: borra el profile + el auth.user.
+ * En cascada:
+ *   • `clients` con ese sales_id → ON DELETE CASCADE → desaparecen.
+ *   • `share_links` con ese sales_id → ON DELETE CASCADE → desaparecen.
+ *   • `reviews` con ese sales_id → ON DELETE SET NULL → quedan huérfanas.
+ *
+ * Usar SOLO para limpiar comerciales de prueba o errores de alta. Para
+ * un comercial real que se va de la empresa, usar archiveSales (soft
+ * delete que conserva la atribución de reseñas para el parte Excel).
+ */
+export async function deleteSales(id: string) {
+  if (!id) return { error: "Id inválido." };
+  const auth = await assertCanManageSales();
+  if (!auth.ok) return { error: auth.error };
+  const inScope = await assertSalesInScope(auth.actor, id);
+  if (!inScope.ok) return { error: inScope.error };
+
+  const admin = createServiceClient();
+  // Borramos profile con service-client para bypasear cualquier policy que
+  // pudiera no resolverse en algún edge case. La constraint role='sales'
+  // garantiza que no se borre por error un admin o gestor.
+  const { error: profileErr } = await admin
+    .from("profiles")
+    .delete()
+    .eq("id", id)
+    .eq("role", "sales");
+  if (profileErr) {
+    console.error("[comerciales] deleteSales failed:", profileErr);
+    return { error: profileErr.message };
+  }
+  // Y el auth.user. Si ya no existe (alguien lo borró desde Supabase
+  // a mano), no rompemos la operación — el profile ya está fuera.
+  const { error: authErr } = await admin.auth.admin.deleteUser(id);
+  if (authErr) {
+    console.warn("[comerciales] auth deleteUser (sales) failed:", authErr);
+  }
+
+  revalidatePath("/comerciales");
+  return { ok: true };
+}
+
 export async function restoreSales(id: string) {
   if (!id) return { error: "Id inválido." };
   const auth = await assertCanManageSales();

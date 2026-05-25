@@ -11,6 +11,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { parseRange, defaultShortcuts, isFullNaturalMonth } from "@/lib/date-range";
 import type { PauseReason, ProfileStatus, SalesDepartment } from "@/lib/supabase/types";
 import { ArchiveSalesButton } from "../ArchiveSalesButton";
+import { DeleteSalesButton } from "../DeleteSalesButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendSalesAccess } from "../actions";
 import { SalesEditCard } from "./SalesEditCard";
@@ -273,6 +274,12 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                   mode={sales.status === "archived" ? "restore" : "archive"}
                   redirectTo={sales.status === "archived" ? undefined : "/comerciales"}
                   variant="prominent"
+                />
+                <DeleteSalesButton
+                  id={sales.id}
+                  name={sales.full_name}
+                  archived={sales.status === "archived"}
+                  redirectToList
                 />
               </>
             )}

@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus, SalesDepartment } from "@/lib/supabase/types";
 import { InviteSalesButton } from "./InviteSalesButton";
 import { ArchiveSalesButton } from "./ArchiveSalesButton";
+import { DeleteSalesButton } from "./DeleteSalesButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendSalesAccess } from "./actions";
 
@@ -254,14 +255,14 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
                       borderBottom: "1px solid var(--line)",
                       display: "grid",
                       gridTemplateColumns: canEdit
-                        ? "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr 200px"
+                        ? "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr 260px"
                         : "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr",
                       gap: 14,
                       fontSize: 11,
                       color: "var(--ink-4)",
                       textTransform: "uppercase",
                       letterSpacing: "0.04em",
-                      minWidth: 720,
+                      minWidth: 780,
                     }}
                   >
                     <span>Comercial</span>
@@ -330,12 +331,12 @@ function SalesRow({
         borderBottom: last ? "none" : "1px solid var(--line)",
         display: "grid",
         gridTemplateColumns: canEdit
-          ? "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr 100px"
+          ? "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr 260px"
           : "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr",
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
-        minWidth: 720,
+        minWidth: 780,
       }}
     >
       <Link
@@ -425,11 +426,15 @@ function SalesRow({
       {canEdit && (
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
           {archived ? (
-            <ArchiveSalesButton id={s.id} name={s.full_name} mode="restore" />
+            <>
+              <ArchiveSalesButton id={s.id} name={s.full_name} mode="restore" />
+              <DeleteSalesButton id={s.id} name={s.full_name} archived />
+            </>
           ) : (
             <>
               <ResendAccessButton id={s.id} name={s.full_name} action={resendSalesAccess} />
               <ArchiveSalesButton id={s.id} name={s.full_name} />
+              <DeleteSalesButton id={s.id} name={s.full_name} />
             </>
           )}
         </div>
