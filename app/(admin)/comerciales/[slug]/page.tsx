@@ -45,6 +45,7 @@ type SalesDetail = {
   joined_at: string;
   location_id: string | null;
   director_id: string | null;
+  role: "sales" | "office_director";
   location: { id: string; name: string } | null;
   department: SalesDepartment | null;
   language: string | null;
@@ -123,10 +124,10 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, location:locations(id, name)",
+        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, role, location:locations(id, name)",
       )
       .eq("slug", slug)
-      .eq("role", "sales")
+      .in("role", ["sales", "office_director"])
       .maybeSingle<SalesDetail>(),
     supabase.from("locations").select("id, name").order("name"),
     supabase
@@ -253,9 +254,9 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
       <Topbar
         title={sales.full_name}
         subtitle={
-          sales.department
-            ? `Comercial · ${DEPARTMENT_LABELS[sales.department]}`
-            : "Comercial"
+          // Director productor → "★ Director · Internacional"; comercial → "Comercial · Internacional".
+          (sales.role === "office_director" ? "★ Director" : "Comercial") +
+          (sales.department ? ` · ${DEPARTMENT_LABELS[sales.department]}` : "")
         }
         breadcrumb="Comerciales"
         range={null}
@@ -274,7 +275,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
             <Link href="/comerciales" style={linkBtn}>
               ← Todos
             </Link>
-            {canEdit && (
+            {canEdit && sales.role === "sales" && (
               <>
                 {sales.status !== "archived" && (
                   <ResendAccessButton
@@ -298,6 +299,14 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                   redirectToList
                 />
               </>
+            )}
+            {canEdit && sales.role === "office_director" && (
+              // Los directores se invitan/editan/archivan/eliminan desde
+              // /directores (sus actions tienen scope distinto al de sales).
+              // Aquí solo se les ve como productores read-only.
+              <Link href="/directores" style={linkBtn} title="Gestionar este director en /directores">
+                Gestionar en /directores
+              </Link>
             )}
           </>
         }
@@ -356,7 +365,9 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
             gap: 18,
           }}
         >
-          {canEdit && sales.status !== "archived" ? (
+          {canEdit && sales.status !== "archived" && sales.role === "sales" ? (
+            // Solo editamos en línea a los sales — para directores se pasa
+            // por /directores (sus server actions tienen otras validaciones).
             <SalesEditCard
               id={sales.id}
               email={sales.email}
