@@ -39,6 +39,7 @@ type SalesRow = {
   department: SalesDepartment | null;
   language: string | null;
   director_id: string | null;
+  role: "sales" | "office_director";
   location: { id: string; name: string } | null;
 };
 
@@ -108,12 +109,16 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
     // Sin auto-join sobre profiles (PostgREST se confunde con la FK
     // auto-referencial director_id en algunos casos del schema cache).
     // Cargamos directors aparte y mergeamos en JS.
+    // Mezclamos sales + office_director: el director es productor (vende y
+    // tiene reseñas atribuidas), así que aparece como una fila más con un ★
+    // en el nombre. Su gestión (archivar/eliminar/reenviar) vive en /directores;
+    // aquí ocultamos los botones para esas filas.
     let baseQuery = supabase
       .from("profiles")
       .select(
-        "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, director_id, location:locations(id, name)",
+        "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, director_id, role, location:locations(id, name)",
       )
-      .eq("role", "sales")
+      .in("role", ["sales", "office_director"])
       .order("joined_at", { ascending: false });
 
     if (filterLocationId) baseQuery = baseQuery.eq("location_id", filterLocationId);
@@ -132,7 +137,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
       supabase
         .from("profiles")
         .select("id", { count: "exact", head: true })
-        .eq("role", "sales")
+        .in("role", ["sales", "office_director"])
         .eq("status", "archived"),
       supabase.from("locations").select("id, name").order("name"),
       // Directores disponibles para asignar. Excluimos archivados; el
@@ -454,9 +459,16 @@ function SalesRow({
               overflow: "hidden",
               textOverflow: "ellipsis",
               color: "var(--ink)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
             }}
+            title={s.role === "office_director" ? "Director de oficina (productor)" : undefined}
           >
-            {s.full_name}
+            {s.role === "office_director" && (
+              <span aria-hidden style={{ color: "var(--accent, #b8860b)", fontSize: 13 }}>★</span>
+            )}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{s.full_name}</span>
           </div>
           <div
             style={{
@@ -542,7 +554,26 @@ function SalesRow({
       </span>
       {canEdit && (
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-          {archived ? (
+          {s.role === "office_director" ? (
+            // Los directores se gestionan en /directores (invitar/editar/eliminar).
+            // Aquí solo se muestran como productores; el link al nombre lleva a
+            // su ficha en /comerciales/[slug] (que ya acepta ambos roles).
+            <Link
+              href="/directores"
+              style={{
+                fontSize: 12,
+                color: "var(--ink-4)",
+                textDecoration: "none",
+                padding: "6px 10px",
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                whiteSpace: "nowrap",
+              }}
+              title="Gestionar este director en /directores"
+            >
+              Gestionar en /directores
+            </Link>
+          ) : archived ? (
             <>
               <ArchiveSalesButton id={s.id} name={s.full_name} mode="restore" />
               <DeleteSalesButton id={s.id} name={s.full_name} archived />

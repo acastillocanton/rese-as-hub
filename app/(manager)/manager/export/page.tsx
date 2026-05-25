@@ -9,7 +9,7 @@ import {
   type DateRange,
 } from "@/lib/date-range";
 
-type SalesOption = { id: string; full_name: string };
+type SalesOption = { id: string; full_name: string; role: "sales" | "office_director" };
 type LocationOption = { id: string; name: string };
 
 export default async function ManagerExportPage() {
@@ -21,8 +21,8 @@ export default async function ManagerExportPage() {
     const [salesRes, locsRes] = await Promise.all([
       supabase
         .from("profiles")
-        .select("id, full_name")
-        .eq("role", "sales")
+        .select("id, full_name, role")
+        .in("role", ["sales", "office_director"])
         .order("full_name")
         .returns<SalesOption[]>(),
       supabase
@@ -124,7 +124,7 @@ export default async function ManagerExportPage() {
                 <option value="">Todos</option>
                 {sales.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.full_name}
+                    {s.role === "office_director" ? `★ ${s.full_name}` : s.full_name}
                   </option>
                 ))}
               </select>

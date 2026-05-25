@@ -18,7 +18,7 @@ type SearchParams = Promise<{
   to?: string;
 }>;
 
-type SalesOption = { id: string; full_name: string; slug: string };
+type SalesOption = { id: string; full_name: string; slug: string; role: "sales" | "office_director" };
 type LocationOption = { id: string; name: string };
 
 type ReviewRow = {
@@ -94,8 +94,8 @@ export default async function ManagerResenasPage({
     query.returns<ReviewRow[]>(),
     supabase
       .from("profiles")
-      .select("id, full_name, slug")
-      .eq("role", "sales")
+      .select("id, full_name, slug, role")
+      .in("role", ["sales", "office_director"])
       .order("full_name")
       .returns<SalesOption[]>(),
     supabase
@@ -204,7 +204,7 @@ export default async function ManagerResenasPage({
                 <option value="">Todos</option>
                 {sales.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.full_name}
+                    {s.role === "office_director" ? `★ ${s.full_name}` : s.full_name}
                   </option>
                 ))}
               </select>

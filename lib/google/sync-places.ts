@@ -144,7 +144,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
     admin
       .from("profiles")
       .select("id, full_name, email, status")
-      .eq("role", "sales")
+      .in("role", ["sales", "office_director"])
       .returns<{ id: string; full_name: string; email: string | null; status: string }[]>(),
   ]);
 

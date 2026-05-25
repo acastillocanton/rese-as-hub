@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     admin
       .from("profiles")
       .select("id, full_name, email, status")
-      .eq("role", "sales")
+      .in("role", ["sales", "office_director"])
       .returns<{ id: string; full_name: string; email: string | null; status: string }[]>(),
   ]);
   const connectedLocations = locationsRes.data ?? null;
