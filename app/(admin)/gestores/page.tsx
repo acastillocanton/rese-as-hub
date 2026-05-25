@@ -183,7 +183,9 @@ export default async function GestoresPage() {
               </Card>
             )}
 
-            <div style={{ marginTop: 32 }}>
+            {/* scroll-margin-top reserva espacio bajo el sticky topbar
+                cuando el sidebar enlaza con #directores. */}
+            <div id="directores" style={{ marginTop: 32, scrollMarginTop: 24 }}>
               <SectionHeader
                 title="Directores de oficina"
                 hint="Gestionan UNA ficha como un admin: comerciales, reseñas y conexión Google de su oficina"
