@@ -9,11 +9,24 @@ import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { parseRange, defaultShortcuts, isFullNaturalMonth } from "@/lib/date-range";
-import type { ProfileStatus } from "@/lib/supabase/types";
-import { DeleteSalesButton } from "../DeleteSalesButton";
+import type { PauseReason, ProfileStatus, SalesDepartment } from "@/lib/supabase/types";
+import { ArchiveSalesButton } from "../ArchiveSalesButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendSalesAccess } from "../actions";
 import { SalesEditCard } from "./SalesEditCard";
+
+const DEPARTMENT_LABELS: Record<SalesDepartment, string> = {
+  nacional: "Nacional",
+  internacional: "Internacional",
+  castellon: "Castellón",
+  valencia: "Valencia",
+};
+
+const PAUSE_REASON_LABELS: Record<PauseReason, string> = {
+  vacaciones: "Vacaciones",
+  baja_medica: "Baja médica",
+  permiso_laboral: "Permiso laboral",
+};
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -31,6 +44,11 @@ type SalesDetail = {
   joined_at: string;
   location_id: string | null;
   location: { id: string; name: string } | null;
+  department: SalesDepartment | null;
+  language: string | null;
+  paused_reason: PauseReason | null;
+  notes: string | null;
+  archived_at: string | null;
 };
 
 type ClientWithCounts = {
@@ -103,7 +121,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, location_id, location:locations(id, name)",
+        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, location:locations(id, name)",
       )
       .eq("slug", slug)
       .eq("role", "sales")
@@ -219,12 +237,8 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     <>
       <Topbar
         title={sales.full_name}
-        subtitle={`Comercial · ${sales.location?.name ?? "sin ficha"} · ${
-          sales.status === "active"
-            ? "Activo"
-            : sales.status === "paused"
-              ? "Pausado"
-              : "Invitado"
+        subtitle={`Comercial · ${sales.location?.name ?? "sin ficha"} · ${statusLabel(sales.status)}${
+          sales.department ? ` · ${DEPARTMENT_LABELS[sales.department]}` : ""
         }`}
         breadcrumb="Comerciales"
         range={null}
@@ -244,16 +258,19 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
             </Link>
             {canEdit && (
               <>
-                <ResendAccessButton
+                {sales.status !== "archived" && (
+                  <ResendAccessButton
+                    id={sales.id}
+                    name={sales.full_name}
+                    action={resendSalesAccess}
+                    variant="prominent"
+                  />
+                )}
+                <ArchiveSalesButton
                   id={sales.id}
                   name={sales.full_name}
-                  action={resendSalesAccess}
-                  variant="prominent"
-                />
-                <DeleteSalesButton
-                  id={sales.id}
-                  name={sales.full_name}
-                  redirectTo="/comerciales"
+                  mode={sales.status === "archived" ? "restore" : "archive"}
+                  redirectTo={sales.status === "archived" ? undefined : "/comerciales"}
                   variant="prominent"
                 />
               </>
@@ -314,7 +331,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
             gap: 18,
           }}
         >
-          {canEdit ? (
+          {canEdit && sales.status !== "archived" ? (
             <SalesEditCard
               id={sales.id}
               email={sales.email}
@@ -326,6 +343,10 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                 locationId: sales.location_id,
                 monthlyGoal: sales.monthly_goal,
                 status: sales.status,
+                department: sales.department,
+                language: sales.language,
+                pausedReason: sales.paused_reason,
+                notes: sales.notes,
               }}
             />
           ) : (
@@ -650,6 +671,13 @@ const primaryBtn: React.CSSProperties = {
   textDecoration: "none",
 };
 
+function statusLabel(s: ProfileStatus): string {
+  if (s === "active") return "Activo";
+  if (s === "paused") return "Pausado";
+  if (s === "archived") return "Archivado";
+  return "Invitado";
+}
+
 function SalesReadOnlyCard({
   sales,
   joinedAt,
@@ -657,20 +685,37 @@ function SalesReadOnlyCard({
   sales: SalesDetail;
   joinedAt: string;
 }) {
-  const statusLabel =
-    sales.status === "active"
-      ? "Activo"
-      : sales.status === "paused"
-        ? "Pausado"
-        : "Invitado";
-  const joinedFmt = new Date(joinedAt).toLocaleDateString("es-ES", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString("es-ES", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  const joinedFmt = fmt(joinedAt);
+  const archivedFmt = sales.archived_at ? fmt(sales.archived_at) : null;
   return (
     <Card>
       <div style={sectionLabel}>Ficha del comercial</div>
+      {sales.status === "archived" && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: "10px 12px",
+            background: "var(--surface-2)",
+            border: "1px dashed var(--line-strong)",
+            borderRadius: 8,
+            fontSize: 12.5,
+            color: "var(--ink-3)",
+            lineHeight: 1.5,
+          }}
+        >
+          Este comercial está <strong style={{ color: "var(--ink)" }}>archivado</strong>
+          {archivedFmt ? <> desde el {archivedFmt}</> : null}. Sus reseñas se
+          siguen incluyendo en la fila &quot;Bajas comerciales&quot; del parte
+          mensual. Pulsa <strong style={{ color: "var(--ink)" }}>Restaurar comercial</strong>
+          {" "}para devolverlo al listado.
+        </div>
+      )}
       <dl
         style={{
           margin: "14px 0 0",
@@ -683,10 +728,21 @@ function SalesReadOnlyCard({
       >
         <Term label="Email" value={sales.email ?? "—"} mono />
         <Term label="Teléfono" value={sales.phone ?? "—"} />
+        <Term
+          label="Departamento"
+          value={sales.department ? DEPARTMENT_LABELS[sales.department] : "—"}
+        />
+        {sales.department === "internacional" && (
+          <Term label="Idioma" value={sales.language ?? "—"} />
+        )}
         <Term label="Ficha asignada" value={sales.location?.name ?? "—"} />
         <Term label="Objetivo mensual" value={String(sales.monthly_goal)} />
-        <Term label="Estado" value={statusLabel} />
+        <Term label="Estado" value={statusLabel(sales.status)} />
+        {sales.status === "paused" && sales.paused_reason && (
+          <Term label="Motivo pausa" value={PAUSE_REASON_LABELS[sales.paused_reason]} />
+        )}
         <Term label="Alta" value={joinedFmt} />
+        {sales.notes && <Term label="Notas" value={sales.notes} />}
       </dl>
     </Card>
   );

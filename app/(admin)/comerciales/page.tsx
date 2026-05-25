@@ -5,9 +5,9 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Pill } from "@/components/ui/Pill";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { ProfileStatus } from "@/lib/supabase/types";
+import type { ProfileStatus, SalesDepartment } from "@/lib/supabase/types";
 import { InviteSalesButton } from "./InviteSalesButton";
-import { DeleteSalesButton } from "./DeleteSalesButton";
+import { ArchiveSalesButton } from "./ArchiveSalesButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendSalesAccess } from "./actions";
 
@@ -19,13 +19,30 @@ type SalesRow = {
   monthly_goal: number;
   status: ProfileStatus;
   joined_at: string;
+  department: SalesDepartment | null;
+  language: string | null;
   location: { id: string; name: string } | null;
 };
 
 type LocationOption = { id: string; name: string };
 
-export default async function ComercialesPage() {
+const DEPARTMENT_LABELS: Record<SalesDepartment, string> = {
+  nacional: "Nacional",
+  internacional: "Internacional",
+  castellon: "Castellón",
+  valencia: "Valencia",
+};
+
+type PageProps = {
+  searchParams: Promise<{ archived?: string }>;
+};
+
+export default async function ComercialesPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const showArchived = sp.archived === "1";
+
   let salesList: SalesRow[] = [];
+  let archivedCount = 0;
   let locations: LocationOption[] = [];
   let dbError: string | null = null;
   let viewerRole: string | null = null;
@@ -44,19 +61,30 @@ export default async function ComercialesPage() {
       viewerRole = profile?.role ?? null;
     }
 
-    const [salesRes, locRes] = await Promise.all([
+    const baseQuery = supabase
+      .from("profiles")
+      .select(
+        "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, location:locations(id, name)",
+      )
+      .eq("role", "sales")
+      .order("joined_at", { ascending: false });
+
+    const [salesRes, archivedRes, locRes] = await Promise.all([
+      showArchived
+        ? baseQuery.eq("status", "archived")
+        : baseQuery.neq("status", "archived"),
       supabase
         .from("profiles")
-        .select(
-          "id, full_name, email, slug, monthly_goal, status, joined_at, location:locations(id, name)",
-        )
+        .select("id", { count: "exact", head: true })
         .eq("role", "sales")
-        .order("joined_at", { ascending: false }),
+        .eq("status", "archived"),
       supabase.from("locations").select("id, name").order("name"),
     ]);
 
     if (salesRes.error) dbError = salesRes.error.message;
     else salesList = ((salesRes.data ?? []) as unknown) as SalesRow[];
+
+    archivedCount = archivedRes.count ?? 0;
 
     if (locRes.data) locations = locRes.data as LocationOption[];
   }
@@ -77,10 +105,20 @@ export default async function ComercialesPage() {
     <>
       <Topbar
         title="Comerciales"
-        subtitle={canEdit ? "Gestión de comerciales" : "Vista solo lectura"}
-        range={`${stats.total} en plantilla`}
+        subtitle={
+          showArchived
+            ? "Comerciales archivados"
+            : canEdit
+              ? "Gestión de comerciales"
+              : "Vista solo lectura"
+        }
+        range={
+          showArchived
+            ? `${salesList.length} archivados`
+            : `${stats.total} en plantilla`
+        }
         breadcrumb="Inseryal"
-        right={canEdit ? <InviteSalesButton locations={locations} /> : undefined}
+        right={canEdit && !showArchived ? <InviteSalesButton locations={locations} /> : undefined}
       />
 
       <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
@@ -104,24 +142,54 @@ export default async function ComercialesPage() {
 
         {!dbError && (
           <>
+            {!showArchived && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: 16,
+                  marginBottom: 16,
+                }}
+              >
+                <MiniStat label="Total" value={stats.total} sub="comerciales en plantilla" />
+                <MiniStat label="Activos" value={stats.active} sub="con enlace en circulación" />
+                <MiniStat label="Invitados" value={stats.invited} sub="pendientes de aceptar" />
+                <MiniStat label="Pausados" value={stats.paused} sub="sin actividad reciente" />
+              </div>
+            )}
+
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 16,
-                marginBottom: 16,
+                display: "flex",
+                gap: 8,
+                marginBottom: 12,
+                alignItems: "center",
               }}
             >
-              <MiniStat label="Total" value={stats.total} sub="comerciales en plantilla" />
-              <MiniStat label="Activos" value={stats.active} sub="con enlace en circulación" />
-              <MiniStat label="Invitados" value={stats.invited} sub="pendientes de aceptar" />
-              <MiniStat label="Pausados" value={stats.paused} sub="sin actividad reciente" />
+              <Link
+                href="/comerciales"
+                style={{
+                  ...tabBtn,
+                  ...(showArchived ? {} : tabBtnActive),
+                }}
+              >
+                Activos
+              </Link>
+              <Link
+                href="/comerciales?archived=1"
+                style={{
+                  ...tabBtn,
+                  ...(showArchived ? tabBtnActive : {}),
+                }}
+              >
+                Archivados {archivedCount > 0 && `(${archivedCount})`}
+              </Link>
             </div>
 
             {salesList.length === 0 ? (
               <Card padding={32}>
                 <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
-                  Sin comerciales todavía
+                  {showArchived ? "Sin comerciales archivados" : "Sin comerciales todavía"}
                 </div>
                 <div
                   style={{
@@ -131,9 +199,13 @@ export default async function ComercialesPage() {
                     letterSpacing: "-0.02em",
                   }}
                 >
-                  {canEdit ? "Invita a tu primer comercial" : "Aún no hay comerciales"}
+                  {showArchived
+                    ? "Todos los comerciales están activos"
+                    : canEdit
+                      ? "Invita a tu primer comercial"
+                      : "Aún no hay comerciales"}
                 </div>
-                {canEdit ? (
+                {canEdit && !showArchived ? (
                   <>
                     <p
                       style={{
@@ -151,18 +223,20 @@ export default async function ComercialesPage() {
                     <InviteSalesButton locations={locations} />
                   </>
                 ) : (
-                  <p
-                    style={{
-                      margin: "10px 0 0",
-                      color: "var(--ink-3)",
-                      fontSize: 13.5,
-                      lineHeight: 1.55,
-                      maxWidth: 560,
-                    }}
-                  >
-                    Cuando el admin dé de alta comerciales aparecerán en esta
-                    lista con su actividad.
-                  </p>
+                  !showArchived && (
+                    <p
+                      style={{
+                        margin: "10px 0 0",
+                        color: "var(--ink-3)",
+                        fontSize: 13.5,
+                        lineHeight: 1.55,
+                        maxWidth: 560,
+                      }}
+                    >
+                      Cuando el admin dé de alta comerciales aparecerán en esta
+                      lista con su actividad.
+                    </p>
+                  )
                 )}
               </Card>
             ) : (
@@ -173,8 +247,8 @@ export default async function ComercialesPage() {
                     borderBottom: "1px solid var(--line)",
                     display: "grid",
                     gridTemplateColumns: canEdit
-                      ? "2fr 1.4fr 1fr 0.8fr 0.8fr 200px"
-                      : "2fr 1.4fr 1fr 0.8fr 0.8fr",
+                      ? "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr 200px"
+                      : "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr",
                     gap: 14,
                     fontSize: 11,
                     color: "var(--ink-4)",
@@ -183,7 +257,8 @@ export default async function ComercialesPage() {
                   }}
                 >
                   <span>Comercial</span>
-                  <span>Ficha</span>
+                  <span>Depto.</span>
+                  <span>Ficha / Zona</span>
                   <span>Email</span>
                   <span style={{ textAlign: "right" }}>Objetivo</span>
                   <span>Estado</span>
@@ -195,6 +270,7 @@ export default async function ComercialesPage() {
                     s={s}
                     last={i === salesList.length - 1}
                     canEdit={canEdit}
+                    archived={showArchived}
                   />
                 ))}
               </Card>
@@ -210,15 +286,34 @@ function SalesRow({
   s,
   last,
   canEdit,
+  archived,
 }: {
   s: SalesRow;
   last: boolean;
   canEdit: boolean;
+  archived: boolean;
 }) {
   const tone =
-    s.status === "active" ? "ok" : s.status === "paused" ? "warn" : "neutral";
+    s.status === "active"
+      ? "ok"
+      : s.status === "paused"
+        ? "warn"
+        : s.status === "archived"
+          ? "neutral"
+          : "neutral";
   const label =
-    s.status === "active" ? "Activo" : s.status === "paused" ? "Pausado" : "Invitado";
+    s.status === "active"
+      ? "Activo"
+      : s.status === "paused"
+        ? "Pausado"
+        : s.status === "archived"
+          ? "Archivado"
+          : "Invitado";
+  // Zona = idioma si internacional; nombre de ficha en otro caso.
+  const zone =
+    s.department === "internacional"
+      ? s.language ?? "—"
+      : s.location?.name ?? "—";
   return (
     <div
       style={{
@@ -226,8 +321,8 @@ function SalesRow({
         borderBottom: last ? "none" : "1px solid var(--line)",
         display: "grid",
         gridTemplateColumns: canEdit
-          ? "2fr 1.4fr 1fr 0.8fr 0.8fr 100px"
-          : "2fr 1.4fr 1fr 0.8fr 0.8fr",
+          ? "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr 100px"
+          : "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr",
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
@@ -274,6 +369,14 @@ function SalesRow({
       </Link>
       <span
         style={{
+          fontSize: 12.5,
+          color: s.department ? "var(--ink-2)" : "var(--ink-4)",
+        }}
+      >
+        {s.department ? DEPARTMENT_LABELS[s.department] : "—"}
+      </span>
+      <span
+        style={{
           fontSize: 13,
           color: "var(--ink-2)",
           whiteSpace: "nowrap",
@@ -281,7 +384,7 @@ function SalesRow({
           textOverflow: "ellipsis",
         }}
       >
-        {s.location?.name ?? "—"}
+        {zone}
       </span>
       <span
         style={{
@@ -311,8 +414,14 @@ function SalesRow({
       </span>
       {canEdit && (
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-          <ResendAccessButton id={s.id} name={s.full_name} action={resendSalesAccess} />
-          <DeleteSalesButton id={s.id} name={s.full_name} />
+          {archived ? (
+            <ArchiveSalesButton id={s.id} name={s.full_name} mode="restore" />
+          ) : (
+            <>
+              <ResendAccessButton id={s.id} name={s.full_name} action={resendSalesAccess} />
+              <ArchiveSalesButton id={s.id} name={s.full_name} />
+            </>
+          )}
         </div>
       )}
     </div>
@@ -350,3 +459,20 @@ function MiniStat({ label, value, sub }: { label: string; value: number; sub: st
     </Card>
   );
 }
+
+const tabBtn: React.CSSProperties = {
+  padding: "6px 12px",
+  fontSize: 12.5,
+  color: "var(--ink-3)",
+  textDecoration: "none",
+  border: "1px solid var(--line)",
+  borderRadius: 8,
+  background: "transparent",
+};
+
+const tabBtnActive: React.CSSProperties = {
+  background: "var(--surface)",
+  borderColor: "var(--line-strong)",
+  color: "var(--ink)",
+  fontWeight: 600,
+};

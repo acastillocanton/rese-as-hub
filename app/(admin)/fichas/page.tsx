@@ -10,6 +10,7 @@ import { DeleteFichaButton } from "./DeleteFichaButton";
 import { DisconnectGoogleButton } from "./DisconnectGoogleButton";
 import { DismissibleBanner } from "./DismissibleBanner";
 import { EditPlaceIdButton } from "./EditPlaceIdButton";
+import { EditRatingButton } from "./EditRatingButton";
 import { SyncNowButton } from "@/components/ui/SyncNowButton";
 
 type LocationRow = {
@@ -20,6 +21,10 @@ type LocationRow = {
   oauth_status: OauthStatus;
   oauth_last_sync_at: string | null;
   oauth_last_sync_error: string | null;
+  average_rating: number | null;
+  total_review_count: number | null;
+  rating_updated_at: string | null;
+  rating_source: "manual" | "google_api" | null;
   created_at: string;
 };
 
@@ -49,7 +54,7 @@ export default async function FichasPage({
     const { data, error } = await supabase
       .from("locations")
       .select(
-        "id, name, google_place_id, google_account_email, oauth_status, oauth_last_sync_at, oauth_last_sync_error, created_at",
+        "id, name, google_place_id, google_account_email, oauth_status, oauth_last_sync_at, oauth_last_sync_error, average_rating, total_review_count, rating_updated_at, rating_source, created_at",
       )
       .order("created_at", { ascending: false });
     if (error) {
@@ -148,7 +153,7 @@ export default async function FichasPage({
                 padding: "12px 22px",
                 borderBottom: "1px solid var(--line)",
                 display: "grid",
-                gridTemplateColumns: "1.7fr 1.2fr 1fr 0.8fr 480px",
+                gridTemplateColumns: "1.6fr 1.1fr 0.9fr 0.8fr 0.9fr 400px",
                 gap: 14,
                 fontSize: 11,
                 color: "var(--ink-4)",
@@ -160,6 +165,7 @@ export default async function FichasPage({
               <span>Cuenta Google</span>
               <span>Sincronización</span>
               <span>Alta</span>
+              <span style={{ textAlign: "right" }}>Rating · Total</span>
               <span></span>
             </div>
             {locations.map((loc, i) => (
@@ -197,7 +203,7 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
         padding: "14px 22px",
         borderBottom: last ? "none" : "1px solid var(--line)",
         display: "grid",
-        gridTemplateColumns: "1.7fr 1.2fr 1fr 0.8fr 480px",
+        gridTemplateColumns: "1.6fr 1.1fr 0.9fr 0.8fr 0.9fr 400px",
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
@@ -254,6 +260,16 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
           year: "numeric",
         })}
       </span>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <EditRatingButton
+          id={loc.id}
+          name={loc.name}
+          averageRating={loc.average_rating}
+          totalReviewCount={loc.total_review_count}
+          ratingUpdatedAt={loc.rating_updated_at}
+          ratingSource={loc.rating_source}
+        />
+      </div>
       <div
         style={{
           display: "flex",

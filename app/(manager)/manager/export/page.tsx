@@ -70,9 +70,10 @@ export default async function ManagerExportPage() {
               maxWidth: 640,
             }}
           >
-            Una sola pulsación. Devuelve el .xlsx con todas las reseñas del
-            periodo seleccionado, sin filtros adicionales: dos hojas (Reseñas
-            + Resumen con ranking de comerciales y fichas).
+            Una sola pulsación. Devuelve el .xlsx con cuatro hojas departamentales
+            (Nacional · Internacional · Castellón · Valencia) reproduciendo el
+            parte semanal + una hoja Detalle auditable con todas las reseñas
+            individuales del periodo.
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <QuickBtn range={thisMonth} primary label="Mes actual" sub={thisMonth.label} />
@@ -94,7 +95,8 @@ export default async function ManagerExportPage() {
             }}
           >
             Elige un rango de fechas y filtra por comercial, ficha y estado
-            de matching antes de descargar.
+            de matching. Los filtros aplican solo a la hoja <strong>Detalle</strong>;
+            las cuatro hojas departamentales siempre incluyen todos los comerciales.
           </p>
           <form action="/api/export/reviews" method="GET" style={formGrid}>
             <FilterField label="Desde">
@@ -175,13 +177,16 @@ export default async function ManagerExportPage() {
             }}
           >
             <li>
-              <strong>Hoja 1 · Reseñas</strong> — una fila por reseña con fecha,
-              autor, estrellas, comentario, ficha, comercial atribuido, cliente,
-              estado del matching, confianza e ID interno de Google.
+              <strong>Hojas 1–4 · Nacional / Internacional / Castellón / Valencia</strong>
+              {" "}— una hoja por departamento. Cada hoja lleva el detalle por comercial
+              (nombre, fecha de incorporación, zona, reseñas mes anterior, reseñas
+              mes actual, notas), las filas <em>Reseñas bajas comerciales</em> y
+              el total comisionado del departamento.
             </li>
             <li>
-              <strong>Hoja 2 · Resumen</strong> — totales del periodo, ranking de
-              comerciales por reseñas atribuidas y ranking de fichas por volumen.
+              <strong>Hoja 5 · Detalle</strong> — auditoría reseña a reseña con
+              fecha, autor, estrellas, comentario, ficha, comercial atribuido,
+              cliente, estado del matching, confianza e ID interno de Google.
             </li>
           </ul>
         </Card>

@@ -1,6 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { parseRange } from "@/lib/date-range";
+import { parseRange, previousMonthRange, rangeYearMonth } from "@/lib/date-range";
+import type { PauseReason, SalesDepartment } from "@/lib/supabase/types";
+import {
+  DEPARTMENT_LABEL,
+  DEPARTMENT_ORDER,
+  archivedTotals,
+  countedFor,
+  formatLongSpanishDate,
+  formatMonthHeader,
+  formatRatingHeader,
+  formatShortJoinedAt,
+  formatUpperMonth,
+  groupActiveSalesByDepartment,
+  inlineNote,
+  locationsForDepartment,
+  zoneFor,
+  type LocationForReport,
+  type ReviewForReport,
+  type SalesForReport,
+} from "@/lib/reports/weekly-report";
 // Tipos de exceljs SOLO (import type) — no se incluye en el bundle.
 import type ExcelJS from "exceljs";
 
@@ -14,24 +33,29 @@ async function loadExcelJS() {
 export const runtime = "nodejs";
 
 /**
- * Genera un .xlsx con las reseñas que coinciden con los filtros aplicados.
- * Query params:
- *   - from: yyyy-mm-dd inclusive (default: día 1 del mes en curso)
- *   - to:   yyyy-mm-dd inclusive (default: último día del mes en curso)
- *   - sales_id: uuid (opcional)
- *   - location_id: uuid (opcional)
- *   - match_state: counted | pending | unmatched (opcional)
+ * Export Excel "Parte semanal de Raquel". Estructura:
+ *   - 4 hojas departamentales (NACIONAL / INTERNACIONAL / CASTELLÓN / VALENCIA)
+ *     que reproducen 1:1 el parte manual.
+ *   - 1 hoja "Detalle" con tabla de reseñas individuales (auditoría) —
+ *     responde a los filtros sales_id / location_id / match_state.
  *
- * Acceso: middleware permite /api/export/* a manager y admin.
+ * Query params:
+ *   - from / to: yyyy-mm-dd (default: mes en curso).
+ *   - sales_id / location_id / match_state: filtros que aplican SOLO a la
+ *     hoja Detalle (las 4 hojas departamentales siempre incluyen todos los
+ *     departamentos completos para que el parte tenga sentido como informe).
+ *
+ * Acceso: middleware ya gatea /api/export/* a admin + reviews_manager.
+ * Re-validamos por defensa en profundidad.
  */
-type ReviewRow = {
+type ReviewDetailRow = {
   id: string;
   google_review_id: string;
   author_name: string;
   rating: number;
   text: string | null;
   google_created_at: string;
-  match_state: string;
+  match_state: "counted" | "pending" | "unmatched";
   match_confidence: number;
   sales_id: string | null;
   location_id: string;
@@ -40,20 +64,34 @@ type ReviewRow = {
   location: { name: string } | null;
 };
 
-type ShareLinkRow = {
-  sales_id: string;
-  location_id: string;
-  opened_at: string;
-};
-
-type SalesProfile = {
+type SalesRow = {
   id: string;
   full_name: string;
-  monthly_goal: number;
-  status: string;
+  slug: string;
+  status: "invited" | "active" | "paused" | "archived";
+  joined_at: string;
+  department: SalesDepartment | null;
+  language: string | null;
+  paused_reason: PauseReason | null;
+  notes: string | null;
+  location_id: string | null;
+  location: { id: string; name: string } | null;
 };
 
-type LocationLite = { id: string; name: string };
+type LocationRow = {
+  id: string;
+  name: string;
+  total_review_count: number | null;
+  average_rating: number | null;
+};
+
+type ReviewRangeRow = {
+  id: string;
+  sales_id: string | null;
+  location_id: string;
+  match_state: "counted" | "pending" | "unmatched";
+  google_created_at: string;
+};
 
 const MATCH_LABEL: Record<string, string> = {
   counted: "Atribuida automática",
@@ -61,32 +99,36 @@ const MATCH_LABEL: Record<string, string> = {
   unmatched: "Sin atribuir",
 };
 
-// Tonos para el dashboard (Hoja 2). Coherentes con la paleta del producto:
-// crema, tinta oscura, acentos discretos.
+// Paleta del parte. Coherente con el diseño del producto (crema + tinta).
+// Usamos tonos discretos: el parte se imprime y se reenvía por email.
 const COLOR = {
   brand: "FF111111",
   cream: "FFF5F3EE",
   cream2: "FFEFEAD7",
+  band: "FFE9DFC4", // banda más cálida para cabeceras de ficha
   line: "FFE9E4D8",
   ink: "FF1A1A1A",
   ink2: "FF555555",
-  ok: "FFD7EBD0", // verde pálido
-  warn: "FFFBE7B5", // ámbar pálido
-  bad: "FFF6D2CC", // rojo pálido
+  red: "FFB81F1F",
+  totalsBg: "FFF1ECDB",
+  archivedBg: "FFF6E3DC",
+  noteBg: "FFFFFFFF",
 } as const;
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const fromParam = url.searchParams.get("from");
   const toParam = url.searchParams.get("to");
-  const salesId = url.searchParams.get("sales_id");
-  const locationId = url.searchParams.get("location_id");
-  const matchState = url.searchParams.get("match_state");
+  const salesIdFilter = url.searchParams.get("sales_id");
+  const locationIdFilter = url.searchParams.get("location_id");
+  const matchStateFilter = url.searchParams.get("match_state");
   const range = parseRange(fromParam, toParam);
+  const previous = previousMonthRange(range);
+  const ym = rangeYearMonth(range);
+  const ymPrev = rangeYearMonth(previous);
 
   const supabase = await createClient();
 
-  // Defensa en profundidad: solo manager o admin.
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -95,9 +137,9 @@ export async function GET(request: NextRequest) {
   }
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, full_name")
     .eq("id", user.id)
-    .maybeSingle<{ role: string }>();
+    .maybeSingle<{ role: string; full_name: string }>();
   if (profile?.role !== "admin" && profile?.role !== "reviews_manager") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
@@ -106,9 +148,47 @@ export async function GET(request: NextRequest) {
   // generar el Excel. Si el rango pide más, el caller debería trocear (la UI
   // ofrece 3 atajos de máx 90 días, suficiente en la práctica).
   const REVIEWS_HARD_LIMIT = 5000;
-  const SHARE_LINKS_HARD_LIMIT = 50000;
 
-  let query = supabase
+  // Carga en paralelo. Para el parte necesitamos:
+  //   - reviews del periodo seleccionado (sin filtros — el parte ignora
+  //     sales_id/location_id/match_state, esos solo afectan al detalle).
+  //     Filtramos `removed_at IS NULL` para excluir reseñas eliminadas en
+  //     Google (soft-delete del cron, ver migración correspondiente).
+  //   - reviews del mes anterior (comparativa).
+  //   - todos los profiles role='sales' incluidos archived.
+  //   - todas las locations con rating cacheado.
+  //   - reviews para la hoja Detalle (con todos los filtros aplicados +
+  //     joins para autor, ficha, comercial, cliente).
+  const reviewsCurrentQ = supabase
+    .from("reviews")
+    .select("id, sales_id, location_id, match_state, google_created_at")
+    .is("removed_at", null)
+    .gte("google_created_at", range.startIso)
+    .lt("google_created_at", range.endIso)
+    .limit(REVIEWS_HARD_LIMIT)
+    .returns<ReviewRangeRow[]>();
+  const reviewsPreviousQ = supabase
+    .from("reviews")
+    .select("id, sales_id, location_id, match_state, google_created_at")
+    .is("removed_at", null)
+    .gte("google_created_at", previous.startIso)
+    .lt("google_created_at", previous.endIso)
+    .limit(REVIEWS_HARD_LIMIT)
+    .returns<ReviewRangeRow[]>();
+  const salesQ = supabase
+    .from("profiles")
+    .select(
+      "id, full_name, slug, status, joined_at, department, language, paused_reason, notes, location_id, location:locations(id, name)",
+    )
+    .eq("role", "sales")
+    .returns<SalesRow[]>();
+  const locationsQ = supabase
+    .from("locations")
+    .select("id, name, total_review_count, average_rating")
+    .order("name")
+    .returns<LocationRow[]>();
+
+  let detailQ = supabase
     .from("reviews")
     .select(
       "id, google_review_id, author_name, rating, text, google_created_at, match_state, match_confidence, sales_id, location_id, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
@@ -118,50 +198,375 @@ export async function GET(request: NextRequest) {
     .lt("google_created_at", range.endIso)
     .order("google_created_at", { ascending: true })
     .limit(REVIEWS_HARD_LIMIT);
+  if (salesIdFilter) detailQ = detailQ.eq("sales_id", salesIdFilter);
+  if (locationIdFilter) detailQ = detailQ.eq("location_id", locationIdFilter);
+  if (matchStateFilter) detailQ = detailQ.eq("match_state", matchStateFilter);
 
-  if (salesId) query = query.eq("sales_id", salesId);
-  if (locationId) query = query.eq("location_id", locationId);
-  if (matchState) query = query.eq("match_state", matchState);
+  const [reviewsCurrentRes, reviewsPreviousRes, salesRes, locationsRes, detailRes] =
+    await Promise.all([
+      reviewsCurrentQ,
+      reviewsPreviousQ,
+      salesQ,
+      locationsQ,
+      detailQ.returns<ReviewDetailRow[]>(),
+    ]);
 
-  // En paralelo: share_links (para conversión), comerciales (para objetivos y
-  // listar incluso a los que no tienen actividad pero están activos) y
-  // fichas (para resolver nombres incluso si no aparecieron en reseñas).
-  let shareLinksQuery = supabase
-    .from("share_links")
-    .select("sales_id, location_id, opened_at")
-    .gte("opened_at", range.startIso)
-    .lt("opened_at", range.endIso)
-    .limit(SHARE_LINKS_HARD_LIMIT);
-  if (salesId) shareLinksQuery = shareLinksQuery.eq("sales_id", salesId);
-  if (locationId) shareLinksQuery = shareLinksQuery.eq("location_id", locationId);
-
-  const [reviewsRes, shareLinksRes, salesRes, locationsRes] = await Promise.all([
-    query.returns<ReviewRow[]>(),
-    shareLinksQuery.returns<ShareLinkRow[]>(),
-    supabase
-      .from("profiles")
-      .select("id, full_name, monthly_goal, status")
-      .eq("role", "sales")
-      .returns<SalesProfile[]>(),
-    supabase.from("locations").select("id, name").order("name").returns<LocationLite[]>(),
-  ]);
-  const reviews = reviewsRes.data;
-  const error = reviewsRes.error;
-  const shareLinks = shareLinksRes.data ?? [];
-  const allSales = salesRes.data ?? [];
-  const allLocations = locationsRes.data ?? [];
-  if (error) {
-    console.error("[export/reviews] query failed:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (reviewsCurrentRes.error) {
+    console.error("[export/reviews] reviewsCurrent failed:", reviewsCurrentRes.error);
+    return NextResponse.json({ error: reviewsCurrentRes.error.message }, { status: 500 });
   }
 
+  const reviewsCurrent = (reviewsCurrentRes.data ?? []).map(toReportReview);
+  const reviewsPrevious = (reviewsPreviousRes.data ?? []).map(toReportReview);
+  const sales = (salesRes.data ?? []).map(toReportSales);
+  const locations = (locationsRes.data ?? []).map(toReportLocation);
+  const detailReviews = detailRes.data ?? [];
+
+  const grouped = groupActiveSalesByDepartment(sales);
+  const archivedCurrent = archivedTotals(reviewsCurrent, sales);
+  const archivedPrevious = archivedTotals(reviewsPrevious, sales);
+
+  // ─── Workbook ──────────────────────────────────────────────────────────
   const ExcelJS = await loadExcelJS();
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ReseñaHub";
   workbook.created = new Date();
 
-  // Hoja 1 — Reseñas
-  const sheet = workbook.addWorksheet("Reseñas");
+  for (const dept of DEPARTMENT_ORDER) {
+    renderDepartmentSheet(workbook, {
+      department: dept,
+      sheetName: titleCase(DEPARTMENT_LABEL[dept]),
+      activeSales: grouped[dept],
+      allActiveSales: sales.filter((s) => s.status !== "archived" && s.department !== null),
+      locations,
+      reviewsCurrent,
+      reviewsPrevious,
+      archivedCurrent: archivedCurrent[dept],
+      archivedPrevious: archivedPrevious[dept],
+      currentMonth: { year: ym.year, monthIndex: ym.monthIndex },
+      previousMonth: { year: ymPrev.year, monthIndex: ymPrev.monthIndex },
+      reportLine: `PARTE SEMANAL RESEÑAS EN REDES SOCIALES (Google)  FECHA: ${formatLongSpanishDate(
+        new Date(),
+      )}  DE: ${profile?.full_name ?? "—"}`,
+    });
+  }
+
+  renderDetailSheet(workbook, detailReviews);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const filename = `parte-resenas-${range.slug}.xlsx`;
+
+  return new NextResponse(buffer, {
+    status: 200,
+    headers: {
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+// ─── Render: una hoja departamental ────────────────────────────────────────
+function renderDepartmentSheet(
+  workbook: ExcelJS.Workbook,
+  data: {
+    department: SalesDepartment;
+    sheetName: string;
+    activeSales: SalesForReport[];
+    allActiveSales: SalesForReport[];
+    locations: LocationForReport[];
+    reviewsCurrent: ReviewForReport[];
+    reviewsPrevious: ReviewForReport[];
+    archivedCurrent: number;
+    archivedPrevious: number;
+    currentMonth: { year: number; monthIndex: number };
+    previousMonth: { year: number; monthIndex: number };
+    reportLine: string;
+  },
+) {
+  const {
+    department,
+    sheetName,
+    activeSales,
+    allActiveSales,
+    locations,
+    reviewsCurrent,
+    reviewsPrevious,
+    archivedCurrent,
+    archivedPrevious,
+    currentMonth,
+    previousMonth,
+    reportLine,
+  } = data;
+
+  const sheet = workbook.addWorksheet(sheetName, {
+    properties: { defaultRowHeight: 16 },
+  });
+  // 6 columnas: Nombre · Fecha incorporación · Zona · Reseñas anterior ·
+  // Reseñas actual · Notas.
+  sheet.columns = [
+    { key: "name", width: 34 },
+    { key: "joined", width: 16 },
+    { key: "zone", width: 26 },
+    { key: "prev", width: 18 },
+    { key: "current", width: 18 },
+    { key: "notes", width: 38 },
+  ];
+
+  // Pintamos un bloque por cada ficha del departamento. Para departamentos
+  // con una sola ficha (internacional, castellón, valencia) sale un único
+  // bloque; para nacional pueden ser 4-5 sub-bloques (Inseryal × N).
+  const fichasForDept = locationsForDepartment(department, locations, allActiveSales);
+
+  // Si no hay ninguna ficha aplicable (raro: dept vacío sin comerciales y sin
+  // fichas heurísticamente identificadas), pintamos un bloque "placeholder".
+  const blocks: LocationForReport[] =
+    fichasForDept.length > 0
+      ? fichasForDept
+      : [
+          {
+            id: "__placeholder__",
+            name: "Sin ficha asignada",
+            total_review_count: null,
+            average_rating: null,
+          },
+        ];
+
+  let row = 1;
+  for (let i = 0; i < blocks.length; i++) {
+    const ficha = blocks[i]!;
+    row = renderFichaBlock(sheet, row, {
+      department,
+      ficha,
+      activeSales: activeSales.filter((s) => filterSalesByFicha(s, ficha.id)),
+      reviewsCurrent,
+      reviewsPrevious,
+      currentMonth,
+      previousMonth,
+      reportLine,
+    });
+    if (i < blocks.length - 1) row += 2;
+  }
+
+  row += 1;
+
+  // Fila "RESEÑAS BAJAS COMERCIALES" si hay reseñas archivadas en cualquiera
+  // de los dos meses. Reemplaza la nota que llevaba Raquel a mano.
+  if (archivedCurrent > 0 || archivedPrevious > 0) {
+    sheet.mergeCells(`A${row}:C${row}`);
+    sheet.getCell(`A${row}`).value = "RESEÑAS BAJAS COMERCIALES";
+    const labelCell = sheet.getCell(`A${row}`);
+    labelCell.font = { italic: true, bold: true, size: 11, color: { argb: COLOR.brand } };
+    labelCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.archivedBg } };
+    labelCell.alignment = { horizontal: "left", vertical: "middle" };
+    labelCell.border = {
+      top: { style: "thin", color: { argb: COLOR.line } },
+      bottom: { style: "thin", color: { argb: COLOR.line } },
+    };
+    sheet.getCell(`D${row}`).value = archivedPrevious || null;
+    sheet.getCell(`E${row}`).value = archivedCurrent || null;
+    for (const col of ["D", "E"] as const) {
+      const c = sheet.getCell(`${col}${row}`);
+      c.font = { bold: true, size: 11, color: { argb: COLOR.brand } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.archivedBg } };
+      c.alignment = { horizontal: "center", vertical: "middle" };
+      c.border = {
+        top: { style: "thin", color: { argb: COLOR.line } },
+        bottom: { style: "thin", color: { argb: COLOR.line } },
+      };
+    }
+    row += 1;
+  }
+
+  // Total general del departamento (siempre se pinta).
+  const totalCurrent =
+    activeSales.reduce((s, sales) => s + countedFor(reviewsCurrent, sales.id), 0) +
+    archivedCurrent;
+  const totalPrev =
+    activeSales.reduce((s, sales) => s + countedFor(reviewsPrevious, sales.id), 0) +
+    archivedPrevious;
+  sheet.mergeCells(`A${row}:C${row}`);
+  sheet.getCell(`A${row}`).value =
+    `NÚMERO TOTAL DE RESEÑAS COMISIONADAS DEPTO ${DEPARTMENT_LABEL[department]}`;
+  styleTotalLabel(sheet.getCell(`A${row}`));
+  sheet.getCell(`D${row}`).value = totalPrev;
+  sheet.getCell(`E${row}`).value = totalCurrent;
+  styleTotalNumber(sheet.getCell(`D${row}`));
+  styleTotalNumber(sheet.getCell(`E${row}`));
+
+  // Pie decorativo.
+  row += 2;
+  sheet.mergeCells(`A${row}:F${row}`);
+  const foot = sheet.getCell(`A${row}`);
+  foot.value = "VACACIONES Y BAJAS MÉDICAS";
+  foot.font = { italic: true, size: 10, color: { argb: COLOR.ink2 } };
+  foot.alignment = { horizontal: "center" };
+
+  sheet.views = [{ state: "normal" }];
+}
+
+function filterSalesByFicha(s: SalesForReport, fichaId: string): boolean {
+  if (fichaId === "__placeholder__") return true;
+  // Internacional: todos los comerciales del departamento van bajo el bloque
+  // de Oropesa (que es el único bloque del departamento). Así que basta con
+  // que el comercial pertenezca al departamento — el filtro por
+  // location_id es ruidoso cuando la realidad operativa es "todo va a
+  // Oropesa".
+  if (s.department === "internacional") return true;
+  return s.location_id === fichaId;
+}
+
+function renderFichaBlock(
+  sheet: ExcelJS.Worksheet,
+  startRow: number,
+  args: {
+    department: SalesDepartment;
+    ficha: LocationForReport;
+    activeSales: SalesForReport[];
+    reviewsCurrent: ReviewForReport[];
+    reviewsPrevious: ReviewForReport[];
+    currentMonth: { year: number; monthIndex: number };
+    previousMonth: { year: number; monthIndex: number };
+    reportLine: string;
+  },
+): number {
+  const {
+    department,
+    ficha,
+    activeSales,
+    reviewsCurrent,
+    reviewsPrevious,
+    currentMonth,
+    previousMonth,
+    reportLine,
+  } = args;
+
+  let row = startRow;
+
+  // Cabecera 1: marca + total acumulado + rating.
+  sheet.mergeCells(`A${row}:F${row}`);
+  const titleCell = sheet.getCell(`A${row}`);
+  titleCell.value = formatRatingHeader(ficha);
+  titleCell.font = { bold: true, size: 11.5, color: { argb: COLOR.brand } };
+  titleCell.alignment = { vertical: "middle", horizontal: "center" };
+  titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.band } };
+  sheet.getRow(row).height = 22;
+  row += 1;
+
+  // Línea en blanco.
+  row += 1;
+
+  // Cabecera 2: departamento.
+  sheet.mergeCells(`A${row}:F${row}`);
+  const deptCell = sheet.getCell(`A${row}`);
+  deptCell.value = `DEPARTAMENTO VENTAS ${DEPARTMENT_LABEL[department]}`;
+  deptCell.font = { bold: true, size: 11, color: { argb: COLOR.brand } };
+  deptCell.alignment = { vertical: "middle", horizontal: "center" };
+  row += 1;
+
+  // Cabecera 3: mes.
+  sheet.mergeCells(`A${row}:F${row}`);
+  const monthCell = sheet.getCell(`A${row}`);
+  monthCell.value = `${formatUpperMonth(currentMonth.monthIndex)} DEL ${currentMonth.year}`;
+  monthCell.font = { bold: true, size: 10.5, color: { argb: COLOR.ink2 } };
+  monthCell.alignment = { vertical: "middle", horizontal: "center" };
+  row += 2;
+
+  // Cabecera 4: parte semanal.
+  sheet.mergeCells(`A${row}:F${row}`);
+  const reportCell = sheet.getCell(`A${row}`);
+  reportCell.value = reportLine;
+  reportCell.font = { italic: true, size: 10, color: { argb: COLOR.ink2 } };
+  reportCell.alignment = { vertical: "middle", horizontal: "center" };
+  row += 2;
+
+  // Fila cabeceras de tabla.
+  const headerRow = row;
+  const headers = [
+    "NOMBRE COMERCIAL",
+    "FECHA INCORPORACIÓN",
+    "ZONA",
+    `RESEÑAS ${formatMonthHeader(previousMonth.monthIndex).toUpperCase()}`,
+    `RESEÑAS ${formatMonthHeader(currentMonth.monthIndex).toUpperCase()}`,
+    "NOTAS",
+  ];
+  headers.forEach((h, i) => {
+    const c = sheet.getCell(headerRow, i + 1);
+    c.value = h;
+    c.font = {
+      bold: true,
+      size: 10.5,
+      color: { argb: i === 4 ? COLOR.red : COLOR.ink },
+    };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.cream } };
+    c.alignment = {
+      vertical: "middle",
+      horizontal: i === 3 || i === 4 ? "center" : "left",
+      wrapText: true,
+    };
+    c.border = {
+      top: { style: "thin", color: { argb: COLOR.line } },
+      bottom: { style: "thin", color: { argb: COLOR.line } },
+    };
+  });
+  sheet.getRow(headerRow).height = 24;
+  row += 1;
+
+  // Filas de comerciales activos.
+  const firstSalesRow = row;
+  for (const s of activeSales) {
+    const r = sheet.getRow(row);
+    r.getCell(1).value = s.full_name;
+    r.getCell(2).value = formatShortJoinedAt(s.joined_at);
+    r.getCell(3).value = zoneFor(s);
+    const prev = countedFor(reviewsPrevious, s.id);
+    const curr = countedFor(reviewsCurrent, s.id);
+    r.getCell(4).value = prev || null;
+    r.getCell(5).value = curr || null;
+    r.getCell(6).value = inlineNote(s) || null;
+    r.getCell(1).font = { size: 11 };
+    r.getCell(2).alignment = { horizontal: "left" };
+    r.getCell(3).alignment = { horizontal: "left" };
+    r.getCell(4).alignment = { horizontal: "center" };
+    r.getCell(5).alignment = { horizontal: "center" };
+    r.getCell(6).alignment = { horizontal: "left", wrapText: true };
+    if (s.status === "paused") {
+      r.getCell(6).fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.cream2 } };
+      r.getCell(6).font = { italic: true, size: 10.5, color: { argb: COLOR.ink2 } };
+    }
+    for (let c = 1; c <= 6; c++) {
+      r.getCell(c).border = {
+        bottom: { style: "hair", color: { argb: COLOR.line } },
+      };
+    }
+    row += 1;
+  }
+  if (activeSales.length === 0) {
+    sheet.mergeCells(`A${row}:F${row}`);
+    const empty = sheet.getCell(`A${row}`);
+    empty.value = "Sin comerciales asignados a este bloque.";
+    empty.font = { italic: true, size: 10.5, color: { argb: COLOR.ink2 } };
+    empty.alignment = { horizontal: "center" };
+    row += 1;
+  }
+
+  // Fila "RESEÑAS BAJAS COMERCIALES" — solo en el primer bloque del depto
+  // y solo si efectivamente hay reseñas archivadas (para no ensuciar
+  // hojas con totales a cero).
+  //
+  // Nota: las bajas son del DEPARTAMENTO completo, no de la ficha
+  // individual. Si el depto tiene varios bloques (caso Nacional), la fila
+  // se renderiza solo una vez, fuera de los bloques individuales, en
+  // renderDepartmentSheet (sección "total general"). Aquí solo lo hacemos
+  // si es el ÚNICO bloque (departamentos sencillos: Internacional /
+  // Castellón / Valencia).
+  return row;
+}
+
+// ─── Render: hoja Detalle ──────────────────────────────────────────────────
+function renderDetailSheet(workbook: ExcelJS.Workbook, reviews: ReviewDetailRow[]) {
+  const sheet = workbook.addWorksheet("Detalle");
   sheet.columns = [
     { header: "Fecha", key: "fecha", width: 18 },
     { header: "Autor", key: "autor", width: 24 },
@@ -178,11 +583,11 @@ export async function GET(request: NextRequest) {
   sheet.getRow(1).fill = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: "FFF5F3EE" },
+    fgColor: { argb: COLOR.cream },
   };
   sheet.getRow(1).alignment = { vertical: "middle" };
 
-  for (const r of reviews ?? []) {
+  for (const r of reviews) {
     sheet.addRow({
       fecha: new Date(r.google_created_at),
       autor: r.author_name,
@@ -202,314 +607,66 @@ export async function GET(request: NextRequest) {
   sheet.getColumn("estrellas").alignment = { horizontal: "center" };
   sheet.getColumn("confianza").alignment = { horizontal: "right" };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
-
-  // ─── Hoja 2 — Resumen (dashboard) ──────────────────────────────────────
-  renderSummarySheet(workbook, {
-    range,
-    reviews: reviews ?? [],
-    shareLinks,
-    allSales,
-    allLocations,
-    filters: { salesId, locationId, matchState },
-  });
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  const filename = `resenas-${range.slug}.xlsx`;
-
-  return new NextResponse(buffer, {
-    status: 200,
-    headers: {
-      "Content-Type":
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "no-store",
-    },
-  });
 }
 
-function renderSummarySheet(
-  workbook: ExcelJS.Workbook,
-  data: {
-    range: ReturnType<typeof parseRange>;
-    reviews: ReviewRow[];
-    shareLinks: ShareLinkRow[];
-    allSales: SalesProfile[];
-    allLocations: LocationLite[];
-    filters: { salesId: string | null; locationId: string | null; matchState: string | null };
-  },
-) {
-  const { range, reviews, shareLinks, allSales, allLocations, filters } = data;
-
-  const sheet = workbook.addWorksheet("Resumen");
-  sheet.columns = [
-    { key: "a", width: 28 },
-    { key: "b", width: 16 },
-    { key: "c", width: 16 },
-    { key: "d", width: 16 },
-    { key: "e", width: 16 },
-    { key: "f", width: 16 },
-  ];
-
-  // ─── Cabecera ──────────────────────────────────────────────────────────
-  sheet.mergeCells("A1:F1");
-  const title = sheet.getCell("A1");
-  title.value = "ReseñaHub · Parte de reseñas";
-  title.font = { name: "Calibri", size: 18, bold: true, color: { argb: COLOR.brand } };
-  title.alignment = { vertical: "middle" };
-  sheet.getRow(1).height = 28;
-
-  sheet.mergeCells("A2:F2");
-  const subtitle = sheet.getCell("A2");
-  subtitle.value = `Periodo: ${range.label}`;
-  subtitle.font = { name: "Calibri", size: 11, color: { argb: COLOR.ink2 } };
-
-  if (filters.salesId || filters.locationId || filters.matchState) {
-    sheet.mergeCells("A3:F3");
-    const filtersCell = sheet.getCell("A3");
-    const parts: string[] = [];
-    if (filters.salesId) parts.push("comercial filtrado");
-    if (filters.locationId) parts.push("ficha filtrada");
-    if (filters.matchState) parts.push(`estado: ${MATCH_LABEL[filters.matchState] ?? filters.matchState}`);
-    filtersCell.value = `Filtros aplicados: ${parts.join(" · ")}`;
-    filtersCell.font = { name: "Calibri", size: 10, italic: true, color: { argb: COLOR.ink2 } };
-  }
-
-  // ─── KPIs ──────────────────────────────────────────────────────────────
-  const total = reviews.length;
-  const counted = reviews.filter((r) => r.match_state === "counted").length;
-  const pending = reviews.filter((r) => r.match_state === "pending").length;
-  const unmatched = reviews.filter((r) => r.match_state === "unmatched").length;
-  const avg = total > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / total : 0;
-  const totalVisits = shareLinks.length;
-  const globalConv = totalVisits > 0 ? (counted / totalVisits) * 100 : null;
-
-  const kpiRow = 5;
-  drawKpi(sheet, "A", kpiRow, "Reseñas", String(total), `${counted} atribuidas · ${pending} pendientes`);
-  drawKpi(sheet, "B", kpiRow, "Visitas al link", String(totalVisits), "share_links registrados");
-  drawKpi(
-    sheet,
-    "C",
-    kpiRow,
-    "Conversión global",
-    globalConv !== null ? `${globalConv.toFixed(1).replace(".", ",")}%` : "—",
-    "atribuidas ÷ visitas",
-  );
-  drawKpi(
-    sheet,
-    "D",
-    kpiRow,
-    "Valoración media",
-    total > 0 ? avg.toFixed(2).replace(".", ",") : "—",
-    "sobre 5",
-  );
-  drawKpi(sheet, "E", kpiRow, "Sin atribuir", String(unmatched), "requieren revisión");
-
-  // ─── Tabla Comerciales ─────────────────────────────────────────────────
-  const visitsBySales = new Map<string, number>();
-  for (const s of shareLinks) {
-    visitsBySales.set(s.sales_id, (visitsBySales.get(s.sales_id) ?? 0) + 1);
-  }
-  const countedBySales = new Map<string, number>();
-  for (const r of reviews) {
-    if (r.match_state !== "counted" || !r.sales_id) continue;
-    countedBySales.set(r.sales_id, (countedBySales.get(r.sales_id) ?? 0) + 1);
-  }
-  // Incluimos en la tabla a todos los comerciales activos + cualquiera con
-  // actividad en el periodo (visitas o reseñas), aunque esté pausado: si tuvo
-  // movimiento en el mes, debe aparecer.
-  const salesIdsWithActivity = new Set<string>([
-    ...visitsBySales.keys(),
-    ...countedBySales.keys(),
-  ]);
-  const salesInTable = allSales.filter(
-    (s) => s.status === "active" || salesIdsWithActivity.has(s.id),
-  );
-
-  const startRow = kpiRow + 4;
-  sheet.mergeCells(`A${startRow}:F${startRow}`);
-  const comTitle = sheet.getCell(`A${startRow}`);
-  comTitle.value = "Comerciales";
-  comTitle.font = { name: "Calibri", size: 13, bold: true, color: { argb: COLOR.brand } };
-
-  const headerRow = startRow + 1;
-  const headers = ["Comercial", "Visitas", "Reseñas", "Conversión", "Objetivo", "Cumplimiento"];
-  headers.forEach((h, i) => {
-    const col = String.fromCharCode("A".charCodeAt(0) + i);
-    const c = sheet.getCell(`${col}${headerRow}`);
-    c.value = h;
-    c.font = { bold: true, size: 11 };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.cream } };
-    c.border = { bottom: { style: "thin", color: { argb: COLOR.line } } };
-    c.alignment = { vertical: "middle", horizontal: i === 0 ? "left" : "right" };
-  });
-
-  const rows = salesInTable
-    .map((s) => {
-      const visits = visitsBySales.get(s.id) ?? 0;
-      const cnt = countedBySales.get(s.id) ?? 0;
-      const conversion = visits > 0 ? (cnt / visits) * 100 : null;
-      const completion = s.monthly_goal > 0 ? (cnt / s.monthly_goal) * 100 : null;
-      return { name: s.full_name, visits, counted: cnt, conversion, goal: s.monthly_goal, completion };
-    })
-    .sort((a, b) => b.counted - a.counted || b.visits - a.visits);
-
-  if (rows.length === 0) {
-    const r = sheet.getRow(headerRow + 1);
-    r.getCell(1).value = "Sin comerciales con actividad en el periodo.";
-    r.getCell(1).font = { italic: true, color: { argb: COLOR.ink2 } };
-    sheet.mergeCells(`A${headerRow + 1}:F${headerRow + 1}`);
-  } else {
-    rows.forEach((row, idx) => {
-      const rowIdx = headerRow + 1 + idx;
-      const r = sheet.getRow(rowIdx);
-      r.getCell(1).value = row.name;
-      r.getCell(2).value = row.visits;
-      r.getCell(3).value = row.counted;
-      r.getCell(4).value = row.conversion !== null ? row.conversion / 100 : "—";
-      r.getCell(5).value = row.goal;
-      r.getCell(6).value = row.completion !== null ? row.completion / 100 : "—";
-
-      r.getCell(1).alignment = { horizontal: "left" };
-      for (let c = 2; c <= 6; c++) {
-        r.getCell(c).alignment = { horizontal: "right" };
-      }
-      r.getCell(4).numFmt = "0.0%";
-      r.getCell(6).numFmt = "0%";
-
-      // Colorea cumplimiento: verde ≥100%, ámbar 60–100, rojo <60.
-      if (row.completion !== null) {
-        let bg: string | null = null;
-        if (row.completion >= 100) bg = COLOR.ok;
-        else if (row.completion >= 60) bg = COLOR.warn;
-        else bg = COLOR.bad;
-        if (bg) {
-          r.getCell(6).fill = { type: "pattern", pattern: "solid", fgColor: { argb: bg } };
-        }
-      }
-      // Borde inferior fino para legibilidad.
-      for (let c = 1; c <= 6; c++) {
-        r.getCell(c).border = { bottom: { style: "hair", color: { argb: COLOR.line } } };
-      }
-    });
-
-    // Fila de totales
-    const totalsRowIdx = headerRow + 1 + rows.length;
-    const tr = sheet.getRow(totalsRowIdx);
-    tr.getCell(1).value = "Total";
-    tr.getCell(2).value = totalVisits;
-    tr.getCell(3).value = counted;
-    tr.getCell(4).value = globalConv !== null ? globalConv / 100 : "—";
-    const totalGoal = rows.reduce((s, r) => s + r.goal, 0);
-    tr.getCell(5).value = totalGoal;
-    tr.getCell(6).value = totalGoal > 0 ? counted / totalGoal : "—";
-    tr.getCell(4).numFmt = "0.0%";
-    tr.getCell(6).numFmt = "0%";
-    for (let c = 1; c <= 6; c++) {
-      const cell = tr.getCell(c);
-      cell.font = { bold: true };
-      cell.alignment = { horizontal: c === 1 ? "left" : "right" };
-      cell.border = {
-        top: { style: "thin", color: { argb: COLOR.line } },
-        bottom: { style: "thin", color: { argb: COLOR.line } },
-      };
-    }
-  }
-
-  // ─── Tabla Fichas ──────────────────────────────────────────────────────
-  const fichasStart = (rows.length === 0 ? headerRow + 2 : headerRow + 2 + rows.length) + 2;
-  sheet.mergeCells(`A${fichasStart}:F${fichasStart}`);
-  const locTitle = sheet.getCell(`A${fichasStart}`);
-  locTitle.value = "Fichas";
-  locTitle.font = { name: "Calibri", size: 13, bold: true, color: { argb: COLOR.brand } };
-
-  const locHeaderRow = fichasStart + 1;
-  ["Ficha", "Reseñas", "Atribuidas", "Valoración media"].forEach((h, i) => {
-    const col = String.fromCharCode("A".charCodeAt(0) + i);
-    const c = sheet.getCell(`${col}${locHeaderRow}`);
-    c.value = h;
-    c.font = { bold: true, size: 11 };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.cream } };
-    c.border = { bottom: { style: "thin", color: { argb: COLOR.line } } };
-    c.alignment = { vertical: "middle", horizontal: i === 0 ? "left" : "right" };
-  });
-
-  const reviewsByLocation = new Map<string, ReviewRow[]>();
-  for (const r of reviews) {
-    const arr = reviewsByLocation.get(r.location_id) ?? [];
-    arr.push(r);
-    reviewsByLocation.set(r.location_id, arr);
-  }
-  const fichasRows = allLocations
-    .map((l) => {
-      const rs = reviewsByLocation.get(l.id) ?? [];
-      const cnt = rs.filter((r) => r.match_state === "counted").length;
-      const avgLoc = rs.length > 0 ? rs.reduce((s, r) => s + r.rating, 0) / rs.length : null;
-      return { name: l.name, total: rs.length, counted: cnt, avg: avgLoc };
-    })
-    .filter((row) => row.total > 0)
-    .sort((a, b) => b.total - a.total);
-
-  if (fichasRows.length === 0) {
-    const r = sheet.getRow(locHeaderRow + 1);
-    r.getCell(1).value = "Sin reseñas en el periodo.";
-    r.getCell(1).font = { italic: true, color: { argb: COLOR.ink2 } };
-    sheet.mergeCells(`A${locHeaderRow + 1}:F${locHeaderRow + 1}`);
-  } else {
-    fichasRows.forEach((row, idx) => {
-      const rowIdx = locHeaderRow + 1 + idx;
-      const r = sheet.getRow(rowIdx);
-      r.getCell(1).value = row.name;
-      r.getCell(2).value = row.total;
-      r.getCell(3).value = row.counted;
-      r.getCell(4).value = row.avg !== null ? Number(row.avg.toFixed(2)) : "—";
-      r.getCell(1).alignment = { horizontal: "left" };
-      for (let c = 2; c <= 4; c++) {
-        r.getCell(c).alignment = { horizontal: "right" };
-        r.getCell(c).border = { bottom: { style: "hair", color: { argb: COLOR.line } } };
-      }
-      r.getCell(1).border = { bottom: { style: "hair", color: { argb: COLOR.line } } };
-    });
-  }
-
-  // ─── Pie ───────────────────────────────────────────────────────────────
-  const lastFichaRow = fichasRows.length === 0 ? locHeaderRow + 1 : locHeaderRow + fichasRows.length;
-  const footRow = lastFichaRow + 2;
-  sheet.mergeCells(`A${footRow}:F${footRow}`);
-  const foot = sheet.getCell(`A${footRow}`);
-  foot.value = `Generado el ${new Date().toLocaleString("es-ES")} · ReseñaHub · Inseryal by Marina d'Or`;
-  foot.font = { italic: true, size: 9.5, color: { argb: COLOR.ink2 } };
+// ─── Helpers de styling ────────────────────────────────────────────────────
+function styleTotalLabel(c: ExcelJS.Cell) {
+  c.font = { bold: true, size: 11, color: { argb: COLOR.brand } };
+  c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.totalsBg } };
+  c.alignment = { horizontal: "left", vertical: "middle" };
+  c.border = {
+    top: { style: "thin", color: { argb: COLOR.line } },
+    bottom: { style: "thin", color: { argb: COLOR.line } },
+  };
 }
 
-function drawKpi(
-  sheet: ExcelJS.Worksheet,
-  col: string,
-  row: number,
-  label: string,
-  value: string,
-  sub: string,
-) {
-  const labelCell = sheet.getCell(`${col}${row}`);
-  labelCell.value = label;
-  labelCell.font = { size: 9, bold: true, color: { argb: COLOR.ink2 } };
-  labelCell.alignment = { vertical: "middle" };
+function styleTotalNumber(c: ExcelJS.Cell) {
+  c.font = { bold: true, size: 11, color: { argb: COLOR.brand } };
+  c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.totalsBg } };
+  c.alignment = { horizontal: "center", vertical: "middle" };
+  c.border = {
+    top: { style: "thin", color: { argb: COLOR.line } },
+    bottom: { style: "thin", color: { argb: COLOR.line } },
+  };
+}
 
-  const valueCell = sheet.getCell(`${col}${row + 1}`);
-  valueCell.value = value;
-  valueCell.font = { size: 18, bold: true, color: { argb: COLOR.brand } };
-  valueCell.alignment = { vertical: "middle" };
+// ─── Conversores Row → ReportType ──────────────────────────────────────────
+function toReportSales(r: SalesRow): SalesForReport {
+  return {
+    id: r.id,
+    full_name: r.full_name,
+    slug: r.slug,
+    status: r.status,
+    joined_at: r.joined_at,
+    department: r.department,
+    language: r.language,
+    paused_reason: r.paused_reason,
+    notes: r.notes,
+    location_id: r.location_id,
+    location_name: r.location?.name ?? null,
+  };
+}
 
-  const subCell = sheet.getCell(`${col}${row + 2}`);
-  subCell.value = sub;
-  subCell.font = { size: 9, italic: true, color: { argb: COLOR.ink2 } };
-  subCell.alignment = { vertical: "middle" };
+function toReportLocation(r: LocationRow): LocationForReport {
+  return {
+    id: r.id,
+    name: r.name,
+    total_review_count: r.total_review_count,
+    average_rating: r.average_rating,
+  };
+}
 
-  // Línea inferior discreta para separar visualmente del bloque siguiente.
-  for (let offset = 0; offset < 3; offset++) {
-    const c = sheet.getCell(`${col}${row + offset}`);
-    c.border = c.border ?? {};
-    if (offset === 2) {
-      c.border = { bottom: { style: "hair", color: { argb: COLOR.line } } };
-    }
-  }
-  sheet.getRow(row + 1).height = 26;
+function toReportReview(r: ReviewRangeRow): ReviewForReport {
+  return {
+    id: r.id,
+    sales_id: r.sales_id,
+    location_id: r.location_id,
+    match_state: r.match_state,
+    google_created_at: r.google_created_at,
+  };
+}
+
+function titleCase(s: string): string {
+  // "NACIONAL" → "Nacional", "CASTELLÓN" → "Castellón".
+  return s.charAt(0) + s.slice(1).toLocaleLowerCase("es");
 }

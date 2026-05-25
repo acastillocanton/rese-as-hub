@@ -235,6 +235,47 @@ export async function listLocations(
   return data.locations ?? [];
 }
 
+export type GoogleLocationRating = {
+  totalReviewCount: number;
+  averageRating: number; // 0.0 a 5.0 con 1 decimal
+};
+
+/**
+ * Devuelve el total de reseñas + valoración media global de una ficha en
+ * Google. Usado por la cabecera del parte Excel ("1.567 RESEÑAS ACUMULADAS.
+ * VALORACIÓN: 4,9 PUNTOS DE 5"). Hoy esta función NO se llama en runtime
+ * porque la cuota de la API está a 0 — los valores se editan manualmente
+ * desde /fichas. Cuando Google apruebe (caso 5-5855000041022), el cron de
+ * sync la invocará por ficha conectada para sobrescribir el caché.
+ *
+ * `locationResource` debe ser el resource name completo,
+ * e.g. "accounts/123/locations/456" o "locations/456".
+ */
+export async function getLocationRating(
+  accessToken: string,
+  locationResource: string,
+): Promise<GoogleLocationRating | null> {
+  const readMask = "metadata.totalReviewCount,metadata.averageRating";
+  const url = `https://mybusinessbusinessinformation.googleapis.com/v1/${locationResource}?readMask=${readMask}`;
+  const res = await fetchWithRetry(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`getLocationRating failed (${res.status}): ${await res.text()}`);
+  }
+  const data = (await res.json()) as {
+    metadata?: { totalReviewCount?: number; averageRating?: number };
+  };
+  const meta = data.metadata;
+  if (!meta || typeof meta.totalReviewCount !== "number" || typeof meta.averageRating !== "number") {
+    return null;
+  }
+  return {
+    totalReviewCount: meta.totalReviewCount,
+    averageRating: meta.averageRating,
+  };
+}
+
 // ─── Reviews API (legacy v4) ────────────────────────────────────────────────
 
 export type GoogleStarRating = "ONE" | "TWO" | "THREE" | "FOUR" | "FIVE";
