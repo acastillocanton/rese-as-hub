@@ -38,3 +38,5 @@ _design_package/design.tar
 # editor
 .vscode/
 .idea/
+
+.vercel
