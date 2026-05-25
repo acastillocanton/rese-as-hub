@@ -9,11 +9,13 @@ import { generateAccessLink } from "@/lib/auth/resend-link";
 import { slugify } from "@/lib/utils";
 
 /**
- * Asegura que el caller es admin global. Solo admin invita/edita/elimina
- * directores — ni los propios directores ni los reviews_manager pueden
- * crear otros directores (defensa en profundidad sobre el middleware).
+ * Asegura que el caller puede administrar directores. Admite admin global y
+ * reviews_manager (Bel), que comparte plenamente la gestión de personas
+ * con admin. Los office_director NO pueden crear/editar otros directores.
+ * Las queries usan service-client para bypass RLS (los gestores no tienen
+ * policy de UPDATE/DELETE sobre role='office_director').
  */
-async function assertAdmin(): Promise<
+async function assertCanManageDirectors(): Promise<
   { ok: true } | { ok: false; error: string }
 > {
   const supabase = await createClient();
@@ -26,7 +28,9 @@ async function assertAdmin(): Promise<
     .select("role")
     .eq("id", user.id)
     .maybeSingle<{ role: string }>();
-  if (data?.role !== "admin") return { ok: false, error: "No autorizado." };
+  if (data?.role !== "admin" && data?.role !== "reviews_manager") {
+    return { ok: false, error: "No autorizado." };
+  }
   return { ok: true };
 }
 
@@ -48,7 +52,7 @@ export async function inviteOfficeDirector(input: InviteDirectorInput): Promise<
   | { ok: true; inviteLink: string; email: string }
   | { ok: false; error: string }
 > {
-  const guard = await assertAdmin();
+  const guard = await assertCanManageDirectors();
   if (!guard.ok) return { ok: false, error: guard.error };
   const parsed = inviteDirectorSchema.safeParse(input);
   if (!parsed.success) {
@@ -75,7 +79,7 @@ export async function resendDirectorAccess(id: string): Promise<
   | { ok: false; error: string }
 > {
   if (!id) return { ok: false, error: "Id inválido." };
-  const guard = await assertAdmin();
+  const guard = await assertCanManageDirectors();
   if (!guard.ok) return { ok: false, error: guard.error };
 
   const admin = createServiceClient();
@@ -91,6 +95,162 @@ export async function resendDirectorAccess(id: string): Promise<
   return generateAccessLink(target.email, "/dashboard");
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Edición + archivo / restauración / eliminación
+// Mismo patrón que los comerciales (archive = soft delete, delete = hard).
+// ──────────────────────────────────────────────────────────────────────────
+
+const updateDirectorSchema = z.object({
+  id: z.string().uuid(),
+  fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
+  phone: z
+    .string()
+    .max(40)
+    .optional()
+    .nullable()
+    .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
+  locationId: z.string().uuid("Selecciona una ficha."),
+  // 'archived' NO se gestiona aquí — solo desde archiveDirector/restoreDirector.
+  status: z.enum(["invited", "active", "paused"]),
+});
+
+export type UpdateDirectorInput = z.input<typeof updateDirectorSchema>;
+
+/**
+ * Edita los datos básicos de un director: nombre, teléfono, ficha asignada
+ * y estado (invited/active/paused). NO permite cambiar el rol ni el email
+ * (el email cambiarlo implica también tocar auth.users, no procede desde
+ * un edit form normal). Service-client bypasea RLS.
+ */
+export async function updateDirector(input: UpdateDirectorInput) {
+  const guard = await assertCanManageDirectors();
+  if (!guard.ok) return { ok: false as const, error: guard.error };
+  const parsed = updateDirectorSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({
+      full_name: parsed.data.fullName.trim(),
+      phone: parsed.data.phone,
+      location_id: parsed.data.locationId,
+      status: parsed.data.status,
+    } as never)
+    .eq("id", parsed.data.id)
+    .eq("role", "office_director");
+  if (error) {
+    console.error("[directores] updateDirector failed:", error);
+    return { ok: false as const, error: error.message };
+  }
+  revalidatePath("/directores");
+  revalidatePath(`/directores/${parsed.data.id}`);
+  return { ok: true as const };
+}
+
+/**
+ * Archiva un director (soft delete). NO borra la fila ni el auth.user;
+ * marca status='archived', libera el slug original (sufijo `-archived-...`),
+ * anonimiza email. Los sales con `director_id = X` mantienen la atribución
+ * histórica de reseñas para el parte Excel.
+ *
+ * Si el director tiene comerciales activos asignados, los advertimos: la
+ * decisión de reasignarlos o dejarlos sin director es del admin (no lo
+ * hacemos automático para no perder el contexto). Esta función solo
+ * archiva — el detalle del director muestra el equipo afectado.
+ */
+export async function archiveDirector(id: string) {
+  if (!id) return { error: "Id inválido." };
+  const guard = await assertCanManageDirectors();
+  if (!guard.ok) return { error: guard.error };
+
+  const admin = createServiceClient();
+  const { data: target } = await admin
+    .from("profiles")
+    .select("slug, status")
+    .eq("id", id)
+    .eq("role", "office_director")
+    .maybeSingle<{ slug: string; status: string }>();
+  if (!target) return { error: "Director no encontrado." };
+  if (target.status === "archived") return { ok: true }; // idempotente
+
+  const archivedSlug = `${target.slug}-archived-${id.slice(0, 8)}`;
+  const { error } = await admin
+    .from("profiles")
+    .update({
+      status: "archived",
+      archived_at: new Date().toISOString(),
+      email: null,
+      slug: archivedSlug,
+    } as never)
+    .eq("id", id)
+    .eq("role", "office_director");
+
+  if (error) {
+    console.error("[directores] archiveDirector failed:", error);
+    return { error: error.message };
+  }
+
+  revalidatePath("/directores");
+  revalidatePath(`/directores/${target.slug}`);
+  revalidatePath(`/directores/${archivedSlug}`);
+  return { ok: true };
+}
+
+/**
+ * Restaura un director archivado. Vuelve a status='invited' (para que el
+ * admin pueda reenviar acceso) e intenta recuperar el slug original; si
+ * está ocupado, mantiene el sufijo `-archived-...`.
+ */
+export async function restoreDirector(id: string) {
+  if (!id) return { error: "Id inválido." };
+  const guard = await assertCanManageDirectors();
+  if (!guard.ok) return { error: guard.error };
+
+  const admin = createServiceClient();
+  const { data: target } = await admin
+    .from("profiles")
+    .select("slug, status")
+    .eq("id", id)
+    .eq("role", "office_director")
+    .maybeSingle<{ slug: string; status: string }>();
+  if (!target) return { error: "Director no encontrado." };
+  if (target.status !== "archived") return { ok: true };
+
+  const originalSlug = target.slug.replace(/-archived-[a-f0-9]{8}$/, "");
+  let finalSlug = target.slug;
+  if (originalSlug !== target.slug) {
+    const { data: collision } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("slug", originalSlug)
+      .maybeSingle<{ id: string }>();
+    if (!collision) finalSlug = originalSlug;
+  }
+
+  const { error } = await admin
+    .from("profiles")
+    .update({
+      status: "invited",
+      archived_at: null,
+      slug: finalSlug,
+    } as never)
+    .eq("id", id)
+    .eq("role", "office_director");
+
+  if (error) {
+    console.error("[directores] restoreDirector failed:", error);
+    return { error: error.message };
+  }
+
+  revalidatePath("/directores");
+  revalidatePath(`/directores/${target.slug}`);
+  revalidatePath(`/directores/${finalSlug}`);
+  return { ok: true };
+}
+
 /**
  * Elimina un office_director: borra el profile + el auth.user. En cascada:
  * los sales que tenían `director_id = este` quedan con director_id = NULL
@@ -98,7 +258,7 @@ export async function resendDirectorAccess(id: string): Promise<
  */
 export async function deleteOfficeDirector(id: string) {
   if (!id) return { error: "Id inválido." };
-  const guard = await assertAdmin();
+  const guard = await assertCanManageDirectors();
   if (!guard.ok) return { error: guard.error };
 
   const admin = createServiceClient();

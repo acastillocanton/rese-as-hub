@@ -7,13 +7,19 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus } from "@/lib/supabase/types";
 import { InviteDirectorButton } from "./InviteDirectorButton";
+import { ArchiveDirectorButton } from "./ArchiveDirectorButton";
 import { DeleteDirectorButton } from "./DeleteDirectorButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendDirectorAccess } from "./actions";
 
+type PageProps = {
+  searchParams: Promise<{ archived?: string }>;
+};
+
 type DirectorRow = {
   id: string;
   full_name: string;
+  slug: string;
   email: string | null;
   phone: string | null;
   status: ProfileStatus;
@@ -23,28 +29,37 @@ type DirectorRow = {
 
 type LocationOption = { id: string; name: string };
 
-export default async function DirectoresPage() {
+export default async function DirectoresPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const showArchived = sp.archived === "1";
+
   let directors: DirectorRow[] = [];
+  let archivedCount = 0;
   let locations: LocationOption[] = [];
   let teamCountByDirector = new Map<string, number>();
   let dbError: string | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
-    const [directorsRes, locsRes, teamsRes] = await Promise.all([
+    const baseQuery = supabase
+      .from("profiles")
+      .select(
+        "id, full_name, slug, email, phone, status, joined_at, location:locations(id, name)",
+      )
+      .eq("role", "office_director")
+      .order("joined_at", { ascending: false });
+
+    const [directorsRes, archivedCountRes, locsRes, teamsRes] = await Promise.all([
+      showArchived
+        ? baseQuery.eq("status", "archived")
+        : baseQuery.neq("status", "archived"),
       supabase
         .from("profiles")
-        .select(
-          "id, full_name, email, phone, status, joined_at, location:locations(id, name)",
-        )
+        .select("id", { count: "exact", head: true })
         .eq("role", "office_director")
-        .order("joined_at", { ascending: false }),
+        .eq("status", "archived"),
       supabase.from("locations").select("id, name").order("name"),
-      // Equipo: cuántos sales activos tiene cada director. Un solo query
-      // y agregamos en JS — el listado de directores raramente pasa de ~20
-      // y el de sales de ~100, así que no necesitamos un view ni count
-      // por relación (Supabase no expone count inverso vía PostgREST sin
-      // alias raro).
+      // Equipo: cuántos sales activos tiene cada director.
       supabase
         .from("profiles")
         .select("director_id")
@@ -54,6 +69,7 @@ export default async function DirectoresPage() {
     ]);
     if (directorsRes.error) dbError = directorsRes.error.message;
     else directors = (directorsRes.data ?? []) as unknown as DirectorRow[];
+    archivedCount = archivedCountRes.count ?? 0;
     if (locsRes.data) locations = locsRes.data as LocationOption[];
     if (teamsRes.data) {
       for (const row of teamsRes.data) {
@@ -77,10 +93,18 @@ export default async function DirectoresPage() {
     <>
       <Topbar
         title="Directores de oficina"
-        subtitle="Cada director gestiona su propio equipo de comerciales"
-        range={`${stats.total} en plantilla`}
+        subtitle={
+          showArchived
+            ? "Directores archivados"
+            : "Cada director gestiona su propio equipo de comerciales"
+        }
+        range={
+          showArchived
+            ? `${directors.length} archivados`
+            : `${stats.total} en plantilla`
+        }
         breadcrumb="Inseryal"
-        right={<InviteDirectorButton locations={locations} primary />}
+        right={!showArchived ? <InviteDirectorButton locations={locations} primary /> : undefined}
       />
 
       <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
@@ -104,34 +128,64 @@ export default async function DirectoresPage() {
 
         {!dbError && (
           <>
+            {!showArchived && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: 16,
+                  marginBottom: 16,
+                }}
+              >
+                <MiniStat
+                  label="Total"
+                  value={stats.total}
+                  sub={`director${stats.total === 1 ? "" : "es"} en plantilla`}
+                />
+                <MiniStat
+                  label="Activos"
+                  value={stats.active}
+                  sub="con acceso al panel"
+                />
+                <MiniStat
+                  label="Invitados"
+                  value={stats.invited}
+                  sub="pendientes de aceptar"
+                />
+                <MiniStat
+                  label="Pausados"
+                  value={stats.paused}
+                  sub="sin actividad reciente"
+                />
+              </div>
+            )}
+
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 16,
-                marginBottom: 16,
+                display: "flex",
+                gap: 8,
+                marginBottom: 12,
+                alignItems: "center",
               }}
             >
-              <MiniStat
-                label="Total"
-                value={stats.total}
-                sub={`director${stats.total === 1 ? "" : "es"} en plantilla`}
-              />
-              <MiniStat
-                label="Activos"
-                value={stats.active}
-                sub="con acceso al panel"
-              />
-              <MiniStat
-                label="Invitados"
-                value={stats.invited}
-                sub="pendientes de aceptar"
-              />
-              <MiniStat
-                label="Pausados"
-                value={stats.paused}
-                sub="sin actividad reciente"
-              />
+              <Link
+                href="/directores"
+                style={{
+                  ...tabBtn,
+                  ...(showArchived ? {} : tabBtnActive),
+                }}
+              >
+                Activos
+              </Link>
+              <Link
+                href="/directores?archived=1"
+                style={{
+                  ...tabBtn,
+                  ...(showArchived ? tabBtnActive : {}),
+                }}
+              >
+                Archivados {archivedCount > 0 && `(${archivedCount})`}
+              </Link>
             </div>
 
             {directors.length === 0 ? (
@@ -177,7 +231,7 @@ export default async function DirectoresPage() {
                     padding: "12px 22px",
                     borderBottom: "1px solid var(--line)",
                     display: "grid",
-                    gridTemplateColumns: "2fr 1.2fr 1fr 1.2fr 0.8fr 200px",
+                    gridTemplateColumns: "2fr 1.2fr 1fr 1.2fr 0.8fr 240px",
                     gap: 14,
                     fontSize: 11,
                     color: "var(--ink-4)",
@@ -197,6 +251,7 @@ export default async function DirectoresPage() {
                     key={d.id}
                     d={d}
                     teamCount={teamCountByDirector.get(d.id) ?? 0}
+                    archived={showArchived}
                     last={i === directors.length - 1}
                   />
                 ))}
@@ -212,29 +267,53 @@ export default async function DirectoresPage() {
 function DirectorRowView({
   d,
   teamCount,
+  archived,
   last,
 }: {
   d: DirectorRow;
   teamCount: number;
+  archived: boolean;
   last: boolean;
 }) {
   const tone =
-    d.status === "active" ? "ok" : d.status === "paused" ? "warn" : "neutral";
+    d.status === "active"
+      ? "ok"
+      : d.status === "paused"
+        ? "warn"
+        : d.status === "archived"
+          ? "neutral"
+          : "neutral";
   const label =
-    d.status === "active" ? "Activo" : d.status === "paused" ? "Pausado" : "Invitado";
+    d.status === "active"
+      ? "Activo"
+      : d.status === "paused"
+        ? "Pausado"
+        : d.status === "archived"
+          ? "Archivado"
+          : "Invitado";
   return (
     <div
       style={{
         padding: "14px 22px",
         borderBottom: last ? "none" : "1px solid var(--line)",
         display: "grid",
-        gridTemplateColumns: "2fr 1.2fr 1fr 1.2fr 0.8fr 200px",
+        gridTemplateColumns: "2fr 1.2fr 1fr 1.2fr 0.8fr 240px",
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+      <Link
+        href={`/directores/${d.slug}`}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          minWidth: 0,
+          textDecoration: "none",
+          color: "inherit",
+        }}
+      >
         <Avatar name={d.full_name} size={32} />
         <div style={{ minWidth: 0 }}>
           <div
@@ -253,7 +332,7 @@ function DirectorRowView({
             Director de oficina
           </div>
         </div>
-      </div>
+      </Link>
       <span
         style={{
           fontSize: 13,
@@ -293,8 +372,23 @@ function DirectorRowView({
         </Pill>
       </span>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-        <ResendAccessButton id={d.id} name={d.full_name} action={resendDirectorAccess} />
-        <DeleteDirectorButton id={d.id} name={d.full_name} />
+        {archived ? (
+          <>
+            <ArchiveDirectorButton
+              id={d.id}
+              name={d.full_name}
+              teamCount={teamCount}
+              mode="restore"
+            />
+            <DeleteDirectorButton id={d.id} name={d.full_name} />
+          </>
+        ) : (
+          <>
+            <ResendAccessButton id={d.id} name={d.full_name} action={resendDirectorAccess} />
+            <ArchiveDirectorButton id={d.id} name={d.full_name} teamCount={teamCount} />
+            <DeleteDirectorButton id={d.id} name={d.full_name} />
+          </>
+        )}
       </div>
     </div>
   );
@@ -339,3 +433,20 @@ function MiniStat({
     </Card>
   );
 }
+
+const tabBtn: React.CSSProperties = {
+  padding: "6px 12px",
+  fontSize: 12.5,
+  color: "var(--ink-3)",
+  textDecoration: "none",
+  border: "1px solid var(--line)",
+  borderRadius: 8,
+  background: "transparent",
+};
+
+const tabBtnActive: React.CSSProperties = {
+  background: "var(--surface)",
+  borderColor: "var(--line-strong)",
+  color: "var(--ink)",
+  fontWeight: 600,
+};
