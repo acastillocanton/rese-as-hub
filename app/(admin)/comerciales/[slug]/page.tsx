@@ -46,7 +46,6 @@ type SalesDetail = {
   location_id: string | null;
   director_id: string | null;
   location: { id: string; name: string } | null;
-  director: { id: string; full_name: string; slug: string } | null;
   department: SalesDepartment | null;
   language: string | null;
   paused_reason: PauseReason | null;
@@ -124,7 +123,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, location:locations(id, name), director:profiles!profiles_director_id_fkey(id, full_name, slug)",
+        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, location:locations(id, name)",
       )
       .eq("slug", slug)
       .eq("role", "sales")
@@ -132,11 +131,11 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase.from("locations").select("id, name").order("name"),
     supabase
       .from("profiles")
-      .select("id, full_name, location_id")
+      .select("id, full_name, slug, location_id")
       .eq("role", "office_director")
       .neq("status", "archived")
       .order("full_name")
-      .returns<{ id: string; full_name: string; location_id: string | null }[]>(),
+      .returns<{ id: string; full_name: string; slug: string; location_id: string | null }[]>(),
   ]);
 
   const sales = salesRes.data;
@@ -144,6 +143,11 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
 
   const locations = (locsRes.data ?? []) as { id: string; name: string }[];
   const directors = dirRes.data ?? [];
+  // Resolvemos el director responsable en JS para no depender de la FK
+  // auto-referencial en el select de PostgREST.
+  const directorOfSales = sales.director_id
+    ? directors.find((d) => d.id === sales.director_id) ?? null
+    : null;
 
   // Carga clientes + share_links + reviews en paralelo y agrega en JS.
   const [clientsRes, sharesRes, reviewsRes] = await Promise.all([
@@ -250,7 +254,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
         title={sales.full_name}
         subtitle={`Comercial · ${sales.location?.name ?? "sin ficha"} · ${statusLabel(sales.status)}${
           sales.department ? ` · ${DEPARTMENT_LABELS[sales.department]}` : ""
-        }${sales.director ? ` · Director: ${sales.director.full_name}` : ""}`}
+        }${directorOfSales ? ` · Director: ${directorOfSales.full_name}` : ""}`}
         breadcrumb="Comerciales"
         range={null}
         compact

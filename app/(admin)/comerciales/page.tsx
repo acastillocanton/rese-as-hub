@@ -24,7 +24,6 @@ type SalesRow = {
   language: string | null;
   director_id: string | null;
   location: { id: string; name: string } | null;
-  director: { id: string; full_name: string } | null;
 };
 
 type LocationOption = { id: string; name: string };
@@ -66,10 +65,13 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
       viewerRole = profile?.role ?? null;
     }
 
+    // Sin auto-join sobre profiles (PostgREST se confunde con la FK
+    // auto-referencial director_id en algunos casos del schema cache).
+    // Cargamos directors aparte y mergeamos en JS.
     const baseQuery = supabase
       .from("profiles")
       .select(
-        "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, director_id, location:locations(id, name), director:profiles!profiles_director_id_fkey(id, full_name)",
+        "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, director_id, location:locations(id, name)",
       )
       .eq("role", "sales")
       .order("joined_at", { ascending: false });
@@ -108,6 +110,11 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
   // comerciales (invitar, editar, reenviar acceso, eliminar). Ver migración
   // 005 para las políticas RLS y assertCanManageSales en actions.ts.
   const canEdit = viewerRole === "admin" || viewerRole === "reviews_manager";
+
+  // Lookup id → nombre del director para pintar la atribución en la fila
+  // del comercial. Hacemos el merge en JS porque PostgREST a veces no
+  // resuelve la FK auto-referencial profiles.director_id desde el select.
+  const directorById = new Map(directors.map((d) => [d.id, d.full_name]));
 
   const stats = {
     total: salesList.length,
@@ -291,6 +298,9 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
                     <SalesRow
                       key={s.id}
                       s={s}
+                      directorName={
+                        s.director_id ? directorById.get(s.director_id) ?? null : null
+                      }
                       last={i === salesList.length - 1}
                       canEdit={canEdit}
                       archived={showArchived}
@@ -308,11 +318,13 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
 
 function SalesRow({
   s,
+  directorName,
   last,
   canEdit,
   archived,
 }: {
   s: SalesRow;
+  directorName: string | null;
   last: boolean;
   canEdit: boolean;
   archived: boolean;
@@ -419,7 +431,7 @@ function SalesRow({
         >
           {zone}
         </span>
-        {s.director && (
+        {directorName && (
           <span
             style={{
               fontSize: 11,
@@ -428,9 +440,9 @@ function SalesRow({
               overflow: "hidden",
               textOverflow: "ellipsis",
             }}
-            title={`Director responsable: ${s.director.full_name}`}
+            title={`Director responsable: ${directorName}`}
           >
-            👤 {s.director.full_name}
+            👤 {directorName}
           </span>
         )}
       </div>
