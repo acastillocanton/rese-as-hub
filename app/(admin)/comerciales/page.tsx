@@ -9,8 +9,24 @@ import type { ProfileStatus, SalesDepartment } from "@/lib/supabase/types";
 import { InviteSalesButton } from "./InviteSalesButton";
 import { ArchiveSalesButton } from "./ArchiveSalesButton";
 import { DeleteSalesButton } from "./DeleteSalesButton";
+import { SalesFilters } from "./SalesFilters";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendSalesAccess } from "./actions";
+
+const DEPARTMENTS = new Set<SalesDepartment>([
+  "nacional",
+  "internacional",
+  "castellon",
+  "valencia",
+]);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(v: string | undefined): v is string {
+  return typeof v === "string" && UUID_RE.test(v);
+}
+function isDepartment(v: string | undefined): v is SalesDepartment {
+  return typeof v === "string" && DEPARTMENTS.has(v as SalesDepartment);
+}
 
 type SalesRow = {
   id: string;
@@ -37,12 +53,36 @@ const DEPARTMENT_LABELS: Record<SalesDepartment, string> = {
 };
 
 type PageProps = {
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<{
+    archived?: string;
+    q?: string;
+    location_id?: string;
+    director_id?: string;
+    department?: string;
+  }>;
 };
 
 export default async function ComercialesPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const showArchived = sp.archived === "1";
+
+  // Filtros saneados (descartamos basura para no romper la query).
+  const filterLocationId = isUuid(sp.location_id) ? sp.location_id : undefined;
+  const filterDirectorId = isUuid(sp.director_id) ? sp.director_id : undefined;
+  const filterDepartment = isDepartment(sp.department) ? sp.department : undefined;
+  // Escape %_, dentro del término — PostgREST usa ',' como separador en .or()
+  // y %/_ son comodines de LIKE. Sin sanear esto abriría una inyección trivial.
+  const filterQ = sp.q?.trim().replace(/[%_,]/g, "") || undefined;
+
+  // Para el componente cliente preservamos los valores originales tal cual,
+  // sin el saneo interno (igualdad ?q=… queda visible en el input).
+  const currentFilters = {
+    q: sp.q?.trim() || undefined,
+    location_id: filterLocationId,
+    director_id: filterDirectorId,
+    department: filterDepartment,
+    archived: sp.archived,
+  };
 
   let salesList: SalesRow[] = [];
   let archivedCount = 0;
@@ -68,13 +108,22 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
     // Sin auto-join sobre profiles (PostgREST se confunde con la FK
     // auto-referencial director_id en algunos casos del schema cache).
     // Cargamos directors aparte y mergeamos en JS.
-    const baseQuery = supabase
+    let baseQuery = supabase
       .from("profiles")
       .select(
         "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, director_id, location:locations(id, name)",
       )
       .eq("role", "sales")
       .order("joined_at", { ascending: false });
+
+    if (filterLocationId) baseQuery = baseQuery.eq("location_id", filterLocationId);
+    if (filterDirectorId) baseQuery = baseQuery.eq("director_id", filterDirectorId);
+    if (filterDepartment) baseQuery = baseQuery.eq("department", filterDepartment);
+    if (filterQ) {
+      baseQuery = baseQuery.or(
+        `full_name.ilike.%${filterQ}%,email.ilike.%${filterQ}%,slug.ilike.%${filterQ}%`,
+      );
+    }
 
     const [salesRes, archivedRes, locRes, dirRes] = await Promise.all([
       showArchived
@@ -115,6 +164,19 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
   // del comercial. Hacemos el merge en JS porque PostgREST a veces no
   // resuelve la FK auto-referencial profiles.director_id desde el select.
   const directorById = new Map(directors.map((d) => [d.id, d.full_name]));
+
+  // hrefs de las pestañas Activos/Archivados que preservan los filtros
+  // aplicados (oficina, director, departamento, búsqueda).
+  function tabHref(toArchived: boolean): string {
+    const params = new URLSearchParams();
+    if (filterQ) params.set("q", filterQ);
+    if (filterLocationId) params.set("location_id", filterLocationId);
+    if (filterDirectorId) params.set("director_id", filterDirectorId);
+    if (filterDepartment) params.set("department", filterDepartment);
+    if (toArchived) params.set("archived", "1");
+    const qs = params.toString();
+    return qs ? `/comerciales?${qs}` : "/comerciales";
+  }
 
   const stats = {
     total: salesList.length,
@@ -182,6 +244,12 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
               </div>
             )}
 
+            <SalesFilters
+              locations={locations}
+              directors={directors}
+              current={currentFilters}
+            />
+
             <div
               style={{
                 display: "flex",
@@ -191,7 +259,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
               }}
             >
               <Link
-                href="/comerciales"
+                href={tabHref(false)}
                 style={{
                   ...tabBtn,
                   ...(showArchived ? {} : tabBtnActive),
@@ -200,7 +268,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
                 Activos
               </Link>
               <Link
-                href="/comerciales?archived=1"
+                href={tabHref(true)}
                 style={{
                   ...tabBtn,
                   ...(showArchived ? tabBtnActive : {}),
