@@ -180,3 +180,45 @@ export async function deleteLocation(id: string) {
   revalidatePath("/fichas");
   return { ok: true };
 }
+
+const ratingSchema = z.object({
+  locationId: z.string().uuid(),
+  averageRating: z.coerce
+    .number()
+    .min(1, "Mínimo 1,0.")
+    .max(5, "Máximo 5,0.")
+    .refine((n) => Math.round(n * 10) / 10 === n, "Solo un decimal."),
+  totalReviewCount: z.coerce.number().int().min(0, "No puede ser negativo."),
+});
+
+export type UpdateLocationRatingInput = z.input<typeof ratingSchema>;
+
+/**
+ * Actualiza el rating cacheado de una ficha. Mientras la cuota de la Google
+ * Business Profile API está a 0 (caso 5-5855000041022), este es el único
+ * camino para alimentar la cabecera del parte Excel. Cuando Google apruebe,
+ * el cron sobrescribirá estos valores marcando rating_source='google_api'.
+ */
+export async function updateLocationRating(input: UpdateLocationRatingInput) {
+  const parsed = ratingSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("locations")
+    .update({
+      average_rating: parsed.data.averageRating,
+      total_review_count: parsed.data.totalReviewCount,
+      rating_source: "manual",
+      rating_updated_at: new Date().toISOString(),
+    } as never)
+    .eq("id", parsed.data.locationId);
+  if (error) {
+    console.error("[fichas] updateLocationRating failed:", error);
+    return { ok: false as const, error: error.message };
+  }
+  revalidatePath("/fichas");
+  revalidatePath(`/fichas/${parsed.data.locationId}`);
+  return { ok: true as const };
+}

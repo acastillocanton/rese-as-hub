@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { Pill } from "@/components/ui/Pill";
 import { updateSales, type UpdateSalesInput } from "../actions";
-import type { ProfileStatus } from "@/lib/supabase/types";
+import {
+  SALES_LANGUAGES,
+  type PauseReason,
+  type ProfileStatus,
+  type SalesDepartment,
+} from "@/lib/supabase/types";
 
 export type SalesEditCardProps = {
   id: string;
@@ -18,8 +23,32 @@ export type SalesEditCardProps = {
     locationId: string | null;
     monthlyGoal: number;
     status: ProfileStatus;
+    department: SalesDepartment | null;
+    language: string | null;
+    pausedReason: PauseReason | null;
+    notes: string | null;
   };
 };
+
+const DEPARTMENT_OPTIONS: { value: SalesDepartment; label: string }[] = [
+  { value: "nacional", label: "Nacional" },
+  { value: "internacional", label: "Internacional" },
+  { value: "castellon", label: "Castellón" },
+  { value: "valencia", label: "Valencia" },
+];
+
+const PAUSE_REASON_OPTIONS: { value: PauseReason; label: string }[] = [
+  { value: "vacaciones", label: "Vacaciones" },
+  { value: "baja_medica", label: "Baja médica" },
+  { value: "permiso_laboral", label: "Permiso laboral" },
+];
+
+// 'archived' no se gestiona desde este card (lo hace ArchiveSalesButton).
+const STATUS_OPTIONS: { value: Exclude<ProfileStatus, "archived">; label: string }[] = [
+  { value: "invited", label: "Invitado (no ha entrado)" },
+  { value: "active", label: "Activo" },
+  { value: "paused", label: "Pausado" },
+];
 
 export function SalesEditCard({
   id,
@@ -39,7 +68,26 @@ export function SalesEditCard({
     initial.locationId ?? locations[0]?.id ?? "",
   );
   const [monthlyGoal, setMonthlyGoal] = useState(initial.monthlyGoal);
-  const [status, setStatus] = useState<ProfileStatus>(initial.status);
+  // initial.status puede ser 'archived' si llega aquí por error; en ese caso
+  // colapsamos a 'invited' para que el select tenga un valor representable.
+  // (La página de detalle muestra otro componente cuando el comercial está
+  // archivado, así que este caso no debería darse en la práctica.)
+  const initialEditableStatus: Exclude<ProfileStatus, "archived"> =
+    initial.status === "archived" ? "invited" : initial.status;
+  const [status, setStatus] = useState<Exclude<ProfileStatus, "archived">>(
+    initialEditableStatus,
+  );
+  const [department, setDepartment] = useState<SalesDepartment | "">(
+    initial.department ?? "",
+  );
+  const [language, setLanguage] = useState<string>(initial.language ?? "");
+  const [pausedReason, setPausedReason] = useState<PauseReason | "">(
+    initial.pausedReason ?? "",
+  );
+  const [joinedAtInput, setJoinedAtInput] = useState<string>(
+    toDateInputValue(joinedAt),
+  );
+  const [notes, setNotes] = useState<string>(initial.notes ?? "");
 
   const currentLocation = locations.find((l) => l.id === locationId);
   const fmtDate = (iso: string) =>
@@ -52,18 +100,40 @@ export function SalesEditCard({
   function onCancel() {
     setLocationId(initial.locationId ?? locations[0]?.id ?? "");
     setMonthlyGoal(initial.monthlyGoal);
-    setStatus(initial.status);
+    setStatus(initialEditableStatus);
+    setDepartment(initial.department ?? "");
+    setLanguage(initial.language ?? "");
+    setPausedReason(initial.pausedReason ?? "");
+    setJoinedAtInput(toDateInputValue(joinedAt));
+    setNotes(initial.notes ?? "");
     setError(null);
     setEditing(false);
   }
 
   function onSave() {
     setError(null);
+    if (!department) {
+      setError("Selecciona un departamento.");
+      return;
+    }
+    if (department === "internacional" && !language) {
+      setError("Selecciona el idioma del comercial internacional.");
+      return;
+    }
+    if (status === "paused" && !pausedReason) {
+      setError("Selecciona el motivo de la pausa.");
+      return;
+    }
     const payload: UpdateSalesInput = {
       id,
       locationId,
       monthlyGoal,
       status,
+      department,
+      language: department === "internacional" ? language : null,
+      pausedReason: status === "paused" ? pausedReason || null : null,
+      joinedAt: joinedAtInput || null,
+      notes: notes.trim() ? notes.trim() : null,
     };
     startTransition(async () => {
       const r = await updateSales(payload);
@@ -103,7 +173,81 @@ export function SalesEditCard({
         <DataRow label="Email" value={email ?? "—"} />
         <DataRow label="Teléfono" value={phone ?? "—"} />
         <DataRow label="Slug" mono value={`/c/${slug}`} />
-        <DataRow label="Alta" value={fmtDate(joinedAt)} />
+
+        {/* Alta */}
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Alta</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <input
+                type="date"
+                value={joinedAtInput}
+                onChange={(e) => setJoinedAtInput(e.target.value)}
+                style={inputStyle}
+              />
+            ) : (
+              <span style={{ fontSize: 13.5 }}>{fmtDate(joinedAt)}</span>
+            )}
+          </dd>
+        </div>
+
+        {/* Departamento */}
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Departamento</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <select
+                value={department}
+                onChange={(e) => {
+                  const v = e.target.value as SalesDepartment | "";
+                  setDepartment(v);
+                  if (v !== "internacional") setLanguage("");
+                }}
+                style={inputStyle}
+              >
+                <option value="" disabled>
+                  Selecciona…
+                </option>
+                {DEPARTMENT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span style={{ fontSize: 13.5 }}>
+                {departmentLabel(initial.department) ?? "Sin asignar"}
+              </span>
+            )}
+          </dd>
+        </div>
+
+        {/* Idioma (solo internacional) */}
+        {(editing ? department === "internacional" : initial.department === "internacional") && (
+          <div style={rowGrid}>
+            <dt style={dtStyle}>Idioma</dt>
+            <dd style={{ margin: 0 }}>
+              {editing ? (
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="" disabled>
+                    Selecciona…
+                  </option>
+                  {SALES_LANGUAGES.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span style={{ fontSize: 13.5 }}>{initial.language ?? "—"}</span>
+              )}
+            </dd>
+          </div>
+        )}
 
         {/* Ficha */}
         <div style={rowGrid}>
@@ -155,26 +299,82 @@ export function SalesEditCard({
             {editing ? (
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value as ProfileStatus)}
+                onChange={(e) => {
+                  const v = e.target.value as Exclude<ProfileStatus, "archived">;
+                  setStatus(v);
+                  if (v !== "paused") setPausedReason("");
+                }}
                 style={inputStyle}
               >
-                <option value="invited">Invitado (no ha entrado)</option>
-                <option value="active">Activo</option>
-                <option value="paused">Pausado</option>
+                {STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             ) : (
               <Pill
                 tone={
-                  status === "active" ? "ok" : status === "paused" ? "warn" : "neutral"
+                  initial.status === "active"
+                    ? "ok"
+                    : initial.status === "paused"
+                      ? "warn"
+                      : "neutral"
                 }
                 withDot
               >
-                {status === "active"
-                  ? "Activo"
-                  : status === "paused"
-                    ? "Pausado"
-                    : "Invitado"}
+                {statusLabel(initial.status)}
               </Pill>
+            )}
+          </dd>
+        </div>
+
+        {/* Motivo de pausa (solo pausado) */}
+        {(editing ? status === "paused" : initial.status === "paused") && (
+          <div style={rowGrid}>
+            <dt style={dtStyle}>Motivo</dt>
+            <dd style={{ margin: 0 }}>
+              {editing ? (
+                <select
+                  value={pausedReason}
+                  onChange={(e) => setPausedReason(e.target.value as PauseReason | "")}
+                  style={inputStyle}
+                >
+                  <option value="" disabled>
+                    Selecciona…
+                  </option>
+                  {PAUSE_REASON_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span style={{ fontSize: 13.5 }}>
+                  {pauseReasonLabel(initial.pausedReason) ?? "—"}
+                </span>
+              )}
+            </dd>
+          </div>
+        )}
+
+        {/* Notas */}
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Notas</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                maxLength={500}
+                rows={2}
+                style={{ ...inputStyle, resize: "vertical", minHeight: 56 }}
+                placeholder="Aparecerán inline en el parte"
+              />
+            ) : (
+              <span style={{ fontSize: 13.5, color: initial.notes ? "var(--ink)" : "var(--ink-4)" }}>
+                {initial.notes ?? "—"}
+              </span>
             )}
           </dd>
         </div>
@@ -273,4 +473,29 @@ function DataRow({
       </dd>
     </div>
   );
+}
+
+function departmentLabel(d: SalesDepartment | null | undefined): string | null {
+  if (!d) return null;
+  return DEPARTMENT_OPTIONS.find((o) => o.value === d)?.label ?? d;
+}
+
+function pauseReasonLabel(r: PauseReason | null | undefined): string | null {
+  if (!r) return null;
+  return PAUSE_REASON_OPTIONS.find((o) => o.value === r)?.label ?? r;
+}
+
+function statusLabel(s: ProfileStatus): string {
+  if (s === "active") return "Activo";
+  if (s === "paused") return "Pausado";
+  if (s === "archived") return "Archivado";
+  return "Invitado";
+}
+
+function toDateInputValue(iso: string): string {
+  // El <input type="date"> exige yyyy-mm-dd. Convertimos el ISO en local.
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

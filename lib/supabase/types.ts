@@ -1,12 +1,29 @@
 export type Role = "admin" | "sales" | "reviews_manager";
 
-export type ProfileStatus = "invited" | "active" | "paused";
+export type ProfileStatus = "invited" | "active" | "paused" | "archived";
 
 export type MatchState = "counted" | "pending" | "unmatched";
 
 export type OauthStatus = "disconnected" | "connected" | "error";
 
 export type ShareSource = "whatsapp" | "email" | "sms" | "qr" | "direct";
+
+export type SalesDepartment = "nacional" | "internacional" | "castellon" | "valencia";
+
+export type PauseReason = "vacaciones" | "baja_medica" | "permiso_laboral";
+
+/** Lista cerrada de idiomas para comerciales internacionales. Si en el
+ *  futuro hay que añadir uno (Francés, Alemán, Italiano…), basta con
+ *  ampliar este array y la migración no necesita cambios — el campo en
+ *  DB es text libre, esta constante solo controla la UI. */
+export const SALES_LANGUAGES = [
+  "Inglés/Nórdico",
+  "Rumano",
+  "Polaco",
+  "Ruso/Búlgaro/Húngaro",
+] as const;
+
+export type SalesLanguage = (typeof SALES_LANGUAGES)[number];
 
 /**
  * Hand-rolled Database types. Replace with `supabase gen types typescript` output
@@ -26,6 +43,10 @@ export type Database = {
           oauth_status: OauthStatus;
           oauth_last_sync_at: string | null;
           oauth_last_sync_error: string | null;
+          total_review_count: number | null;
+          average_rating: number | null;
+          rating_updated_at: string | null;
+          rating_source: "manual" | "google_api" | null;
           created_at: string;
         };
         Insert: {
@@ -38,6 +59,10 @@ export type Database = {
           oauth_status?: OauthStatus;
           oauth_last_sync_at?: string | null;
           oauth_last_sync_error?: string | null;
+          total_review_count?: number | null;
+          average_rating?: number | null;
+          rating_updated_at?: string | null;
+          rating_source?: "manual" | "google_api" | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["locations"]["Insert"]>;
@@ -74,6 +99,11 @@ export type Database = {
           status: ProfileStatus;
           avatar_url: string | null;
           joined_at: string;
+          department: SalesDepartment | null;
+          language: string | null;
+          paused_reason: PauseReason | null;
+          notes: string | null;
+          archived_at: string | null;
         };
         Insert: {
           id: string;
@@ -87,6 +117,11 @@ export type Database = {
           status?: ProfileStatus;
           avatar_url?: string | null;
           joined_at?: string;
+          department?: SalesDepartment | null;
+          language?: string | null;
+          paused_reason?: PauseReason | null;
+          notes?: string | null;
+          archived_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
         Relationships: [];
@@ -202,6 +237,8 @@ export type Database = {
       match_state_enum: MatchState;
       oauth_status_enum: OauthStatus;
       share_source_enum: ShareSource;
+      sales_department_enum: SalesDepartment;
+      pause_reason_enum: PauseReason;
     };
     CompositeTypes: Record<string, never>;
   };

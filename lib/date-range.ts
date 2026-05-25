@@ -232,3 +232,40 @@ export function isFullNaturalMonth(range: DateRange): boolean {
   const lastDay = new Date(y, m, 0).getDate();
   return d2 === lastDay;
 }
+
+/**
+ * Dado un rango, devuelve el "rango anterior" que sirve de comparativa en
+ * el parte mensual. Reglas:
+ *   - Si el rango es un mes natural completo → devuelve el mes natural
+ *     inmediatamente anterior. Ej: mayo 2026 → abril 2026.
+ *   - Si es un rango libre → devuelve un rango de la misma duración que
+ *     termina el día anterior a `range.from`. Ej: 5 días desde 12-may
+ *     hasta 16-may → 7-may hasta 11-may.
+ */
+export function previousMonthRange(range: DateRange): DateRange {
+  const from = parseYmd(range.from);
+  const to = parseYmd(range.to);
+  if (isFullNaturalMonth(range)) {
+    const prevFrom = new Date(from.getFullYear(), from.getMonth() - 1, 1);
+    const prevTo = new Date(from.getFullYear(), from.getMonth(), 0);
+    return buildRange(prevFrom, prevTo);
+  }
+  // Rango libre: N días anteriores con la misma longitud.
+  const msDay = 24 * 60 * 60 * 1000;
+  const lengthDays = Math.round((to.getTime() - from.getTime()) / msDay) + 1;
+  const prevTo = new Date(from.getFullYear(), from.getMonth(), from.getDate() - 1);
+  const prevFrom = new Date(
+    prevTo.getFullYear(),
+    prevTo.getMonth(),
+    prevTo.getDate() - (lengthDays - 1),
+  );
+  return buildRange(prevFrom, prevTo);
+}
+
+/** Componentes año/mes del rango (útiles para etiquetas legibles). */
+export function rangeYearMonth(range: DateRange): { year: number; monthIndex: number; monthLabel: string } {
+  const parts = range.from.split("-").map(Number);
+  const y = parts[0] ?? 0;
+  const m = parts[1] ?? 1;
+  return { year: y, monthIndex: m - 1, monthLabel: MONTH_LABELS[m - 1] ?? "" };
+}

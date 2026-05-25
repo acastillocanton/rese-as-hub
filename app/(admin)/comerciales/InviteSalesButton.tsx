@@ -1,35 +1,64 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
+import { SALES_LANGUAGES, type SalesDepartment } from "@/lib/supabase/types";
 import { inviteSales } from "./actions";
 
 type LocationOption = { id: string; name: string };
+
+const DEPARTMENT_OPTIONS: { value: SalesDepartment; label: string }[] = [
+  { value: "nacional", label: "Nacional" },
+  { value: "internacional", label: "Internacional" },
+  { value: "castellon", label: "Castellón" },
+  { value: "valencia", label: "Valencia" },
+];
 
 export function InviteSalesButton({ locations }: { locations: LocationOption[] }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ link: string; email: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [department, setDepartment] = useState<SalesDepartment | "">("");
   const [isPending, startTransition] = useTransition();
+
+  // Sugerencia de ficha por defecto en función del departamento. El admin
+  // puede cambiarla en el select, esto solo evita pulsaciones tontas.
+  const defaultLocationId = useMemo(() => {
+    if (!department) return "";
+    const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+    const match = (needle: string) =>
+      locations.find((l) => norm(l.name).includes(needle))?.id ?? "";
+    if (department === "castellon") return match("castell");
+    if (department === "valencia") return match("valencia");
+    // Nacional e Internacional → Oropesa (ficha principal).
+    return match("oropesa");
+  }, [department, locations]);
 
   function close() {
     setOpen(false);
     setError(null);
     setSuccess(null);
     setCopied(false);
+    setDepartment("");
   }
 
   function handleSubmit(formData: FormData) {
     setError(null);
     setSuccess(null);
     startTransition(async () => {
+      const dept = String(formData.get("department") ?? "") as SalesDepartment | "";
       const input = {
         fullName: String(formData.get("fullName") ?? ""),
         email: String(formData.get("email") ?? ""),
         phone: String(formData.get("phone") ?? ""),
         locationId: String(formData.get("locationId") ?? ""),
         monthlyGoal: String(formData.get("monthlyGoal") ?? "50"),
+        department: dept,
+        language:
+          dept === "internacional" ? String(formData.get("language") ?? "") : null,
+        joinedAt: String(formData.get("joinedAt") ?? "") || null,
+        notes: String(formData.get("notes") ?? "") || null,
       };
       const result = await inviteSales(input as never);
       if (!result.ok) {
@@ -184,8 +213,51 @@ export function InviteSalesButton({ locations }: { locations: LocationOption[] }
                   <Field label="Teléfono (opcional)">
                     <input name="phone" type="tel" maxLength={40} style={inputStyle} />
                   </Field>
-                  <Field label="Ficha asignada">
-                    <select name="locationId" required style={inputStyle} defaultValue="">
+                  <Field
+                    label="Departamento"
+                    hint="Define en qué hoja del parte semanal aparece"
+                  >
+                    <select
+                      name="department"
+                      required
+                      style={inputStyle}
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value as SalesDepartment)}
+                    >
+                      <option value="" disabled>
+                        Selecciona…
+                      </option>
+                      {DEPARTMENT_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {department === "internacional" && (
+                    <Field label="Idioma" hint="Aparece como ZONA en la hoja Internacional">
+                      <select name="language" required style={inputStyle} defaultValue="">
+                        <option value="" disabled>
+                          Selecciona…
+                        </option>
+                        {SALES_LANGUAGES.map((l) => (
+                          <option key={l} value={l}>
+                            {l}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                  <Field label="Ficha asignada" hint="Ficha de Google donde caen sus reseñas">
+                    <select
+                      name="locationId"
+                      required
+                      style={inputStyle}
+                      // `key` fuerza remount cuando cambia el departamento
+                      // para que el defaultValue tome efecto.
+                      key={`loc-${department}-${defaultLocationId}`}
+                      defaultValue={defaultLocationId}
+                    >
                       <option value="" disabled>
                         Selecciona…
                       </option>
@@ -196,6 +268,14 @@ export function InviteSalesButton({ locations }: { locations: LocationOption[] }
                       ))}
                     </select>
                   </Field>
+                  <Field label="Fecha de incorporación">
+                    <input
+                      name="joinedAt"
+                      type="date"
+                      defaultValue={new Date().toISOString().slice(0, 10)}
+                      style={inputStyle}
+                    />
+                  </Field>
                   <Field label="Objetivo mensual">
                     <input
                       name="monthlyGoal"
@@ -205,6 +285,14 @@ export function InviteSalesButton({ locations }: { locations: LocationOption[] }
                       defaultValue={50}
                       required
                       style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="Notas (opcional)" hint="Aparecerán inline en el parte (p.ej. 'Baja médica hasta el 16 de marzo')">
+                    <textarea
+                      name="notes"
+                      maxLength={500}
+                      rows={2}
+                      style={{ ...inputStyle, resize: "vertical", minHeight: 56 }}
                     />
                   </Field>
                   {error && (
