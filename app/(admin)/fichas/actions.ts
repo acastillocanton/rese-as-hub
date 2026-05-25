@@ -4,6 +4,38 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import type { Role } from "@/lib/supabase/types";
+
+type ActorScope = { role: Role; locationId: string | null };
+
+/**
+ * Determina rol y location del actor. Para office_director devuelve su
+ * location_id; para admin devuelve null (sin scope). Otros roles → no autorizado.
+ */
+async function assertCanManageLocations(): Promise<
+  { ok: true; actor: ActorScope } | { ok: false; error: string }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "No autenticado." };
+  const { data } = await supabase
+    .from("profiles")
+    .select("role, location_id")
+    .eq("id", user.id)
+    .maybeSingle<{ role: Role; location_id: string | null }>();
+  if (!data || (data.role !== "admin" && data.role !== "office_director")) {
+    return { ok: false, error: "No autorizado." };
+  }
+  return { ok: true, actor: { role: data.role, locationId: data.location_id } };
+}
+
+/** Comprueba que `locationId` está en el scope del actor. */
+function inLocationScope(actor: ActorScope, locationId: string): boolean {
+  if (actor.role === "admin") return true;
+  return actor.role === "office_director" && actor.locationId === locationId;
+}
 
 const createSchema = z.object({
   name: z.string().min(2, "Nombre demasiado corto.").max(120, "Demasiado largo."),
@@ -18,6 +50,13 @@ const createSchema = z.object({
 export type CreateLocationInput = z.infer<typeof createSchema>;
 
 export async function createLocation(input: CreateLocationInput) {
+  // Crear fichas nuevas es solo-admin (no procede para office_director).
+  const auth = await assertCanManageLocations();
+  if (!auth.ok) return { error: auth.error };
+  if (auth.actor.role !== "admin") {
+    return { error: "Solo el admin general puede crear fichas." };
+  }
+
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
@@ -53,9 +92,14 @@ const linkSchema = z.object({
  * Tras esto, el cron de sync ya puede pedir reseñas para esta ficha.
  */
 export async function linkGoogleLocation(input: z.input<typeof linkSchema>) {
+  const auth = await assertCanManageLocations();
+  if (!auth.ok) return { ok: false as const, error: auth.error };
   const parsed = linkSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  if (!inLocationScope(auth.actor, parsed.data.locationId)) {
+    return { ok: false as const, error: "Solo puedes conectar la ficha de tu oficina." };
   }
   // Usamos service client para garantizar que el upsert pasa sin cuestiones
   // de RLS (este action solo se llama desde la página /fichas/[id]/conectar,
@@ -88,6 +132,11 @@ export async function linkGoogleLocation(input: z.input<typeof linkSchema>) {
  */
 export async function disconnectGoogleLocation(locationId: string) {
   if (!locationId) return { error: "Id inválido." };
+  const auth = await assertCanManageLocations();
+  if (!auth.ok) return { error: auth.error };
+  if (!inLocationScope(auth.actor, locationId)) {
+    return { error: "Solo puedes desconectar la ficha de tu oficina." };
+  }
   const admin = createServiceClient();
   // Tokens fuera. Si falla aquí abortamos: dejar la location en
   // disconnected con un refresh_token vivo en location_secrets sería un
@@ -144,9 +193,14 @@ const placeIdSchema = z.object({
  * habilita el cron de Places API (que solo necesita esto, no OAuth).
  */
 export async function updateLocationPlaceId(input: z.input<typeof placeIdSchema>) {
+  const auth = await assertCanManageLocations();
+  if (!auth.ok) return { ok: false as const, error: auth.error };
   const parsed = placeIdSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  if (!inLocationScope(auth.actor, parsed.data.locationId)) {
+    return { ok: false as const, error: "Solo puedes editar la ficha de tu oficina." };
   }
   // Service client: /fichas es admin-only por middleware, pero el unique
   // constraint sobre google_place_id puede chocar con RLS de update. Mejor
@@ -170,6 +224,12 @@ export async function updateLocationPlaceId(input: z.input<typeof placeIdSchema>
 export async function deleteLocation(id: string) {
   if (!id || typeof id !== "string") {
     return { error: "Id inválido." };
+  }
+  // Eliminar fichas: solo admin global (un director no borra su propia oficina).
+  const auth = await assertCanManageLocations();
+  if (!auth.ok) return { error: auth.error };
+  if (auth.actor.role !== "admin") {
+    return { error: "Solo el admin general puede eliminar fichas." };
   }
   const supabase = await createClient();
   const { error } = await supabase.from("locations").delete().eq("id", id);
@@ -200,9 +260,14 @@ export type UpdateLocationRatingInput = z.input<typeof ratingSchema>;
  * el cron sobrescribirá estos valores marcando rating_source='google_api'.
  */
 export async function updateLocationRating(input: UpdateLocationRatingInput) {
+  const auth = await assertCanManageLocations();
+  if (!auth.ok) return { ok: false as const, error: auth.error };
   const parsed = ratingSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  if (!inLocationScope(auth.actor, parsed.data.locationId)) {
+    return { ok: false as const, error: "Solo puedes editar el rating de tu oficina." };
   }
   const supabase = await createClient();
   const { error } = await supabase

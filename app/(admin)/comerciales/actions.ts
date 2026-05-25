@@ -7,28 +7,64 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { createInvitedProfile } from "@/lib/invite";
 import { generateAccessLink } from "@/lib/auth/resend-link";
 import { slugify } from "@/lib/utils";
+import type { Role } from "@/lib/supabase/types";
+import { canManageSales } from "@/lib/supabase/types";
+
+type Actor = { role: Role; locationId: string | null };
 
 /**
- * Comprueba que el caller puede administrar comerciales (admin o
- * reviews_manager). Defensa en profundidad sobre el gating de la UI y la
- * RLS — los server actions son endpoints HTTP y un atacante autenticado
- * pero sin rol suficiente no debe poder dispararlos aunque conozca la URL.
+ * Comprueba que el caller puede administrar comerciales (admin,
+ * reviews_manager o office_director). Defensa en profundidad sobre el gating
+ * de la UI y la RLS — los server actions son endpoints HTTP y un atacante
+ * autenticado pero sin rol suficiente no debe poder dispararlos aunque
+ * conozca la URL.
+ *
+ * Devuelve también el `locationId` del actor para que las acciones
+ * downstream puedan forzar el scope cuando el actor sea office_director.
  */
 async function assertCanManageSales(): Promise<
-  { ok: true } | { ok: false; error: string }
+  { ok: true; actor: Actor } | { ok: false; error: string }
 > {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "No autenticado." };
-  const { data: actor } = await supabase
+  const { data } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, location_id")
     .eq("id", user.id)
-    .maybeSingle<{ role: string }>();
-  if (actor?.role !== "admin" && actor?.role !== "reviews_manager") {
+    .maybeSingle<{ role: Role; location_id: string | null }>();
+  if (!data || !canManageSales(data.role)) {
     return { ok: false, error: "No autorizado." };
+  }
+  return { ok: true, actor: { role: data.role, locationId: data.location_id } };
+}
+
+/**
+ * Para office_director: valida que la acción afecte SOLO a un sales de su
+ * ficha. Lee el target sales y compara su `location_id` con el del actor.
+ * Admin y reviews_manager pasan sin chequeo (no tienen scope).
+ */
+async function assertSalesInScope(
+  actor: Actor,
+  targetSalesId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (actor.role !== "office_director") return { ok: true };
+  if (!actor.locationId) {
+    return { ok: false, error: "Director sin oficina asignada." };
+  }
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("location_id, role")
+    .eq("id", targetSalesId)
+    .maybeSingle<{ location_id: string | null; role: Role }>();
+  if (!data || data.role !== "sales") {
+    return { ok: false, error: "Comercial no encontrado." };
+  }
+  if (data.location_id !== actor.locationId) {
+    return { ok: false, error: "Comercial fuera de tu oficina." };
   }
   return { ok: true };
 }
@@ -96,6 +132,17 @@ export async function inviteSales(input: InviteSalesInput): Promise<
   const parsed = inviteSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  // Director: solo puede crear sales en SU ficha. Independientemente de lo
+  // que mande el formulario, forzamos el scope (no es solo defensa: la UI no
+  // expone otras locations al director, pero un POST manipulado podría).
+  if (auth.actor.role === "office_director") {
+    if (!auth.actor.locationId) {
+      return { ok: false, error: "Director sin oficina asignada." };
+    }
+    if (parsed.data.locationId !== auth.actor.locationId) {
+      return { ok: false, error: "Solo puedes crear comerciales en tu oficina." };
+    }
   }
   const baseSlug = slugify(parsed.data.fullName);
   if (!baseSlug) {
@@ -173,6 +220,15 @@ export async function updateSales(input: UpdateSalesInput) {
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
+  // Director: el sales target debe estar en su ficha Y el nuevo location_id
+  // del payload también (no puede "trasladar" un sales a otra oficina).
+  if (auth.actor.role === "office_director") {
+    const inScope = await assertSalesInScope(auth.actor, parsed.data.id);
+    if (!inScope.ok) return { ok: false as const, error: inScope.error };
+    if (parsed.data.locationId !== auth.actor.locationId) {
+      return { ok: false as const, error: "No puedes mover un comercial fuera de tu oficina." };
+    }
+  }
 
   const supabase = await createClient();
   // RLS: admin (profiles_admin_all) + reviews_manager (profiles_manager_update_sales
@@ -214,6 +270,8 @@ export async function resendSalesAccess(id: string): Promise<
   if (!id) return { ok: false, error: "Id inválido." };
   const auth = await assertCanManageSales();
   if (!auth.ok) return auth;
+  const inScope = await assertSalesInScope(auth.actor, id);
+  if (!inScope.ok) return inScope;
 
   const admin = createServiceClient();
   const { data: target } = await admin
@@ -242,6 +300,8 @@ export async function archiveSales(id: string) {
   if (!id) return { error: "Id inválido." };
   const auth = await assertCanManageSales();
   if (!auth.ok) return { error: auth.error };
+  const inScope = await assertSalesInScope(auth.actor, id);
+  if (!inScope.ok) return { error: inScope.error };
 
   const admin = createServiceClient();
   const { data: target } = await admin
@@ -288,6 +348,8 @@ export async function restoreSales(id: string) {
   if (!id) return { error: "Id inválido." };
   const auth = await assertCanManageSales();
   if (!auth.ok) return { error: auth.error };
+  const inScope = await assertSalesInScope(auth.actor, id);
+  if (!inScope.ok) return { error: inScope.error };
 
   const admin = createServiceClient();
   const { data: target } = await admin

@@ -8,7 +8,7 @@ type CreateInvitedProfileArgs = {
   email: string;
   phone: string | null;
   slug: string;
-  role: "sales" | "reviews_manager";
+  role: "sales" | "reviews_manager" | "office_director";
   /** Campos extra del profile específicos del rol (location_id, monthly_goal, …). */
   extra: Record<string, unknown>;
   /** Path al que se redirige al usuario tras aceptar el invite. */

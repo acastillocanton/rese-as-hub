@@ -118,10 +118,11 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
             : `${stats.total} en plantilla`
         }
         breadcrumb="Inseryal"
+        compact
         right={canEdit && !showArchived ? <InviteSalesButton locations={locations} /> : undefined}
       />
 
-      <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
+      <div className="m-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
         {dbError && (
           <Card>
             <div style={{ fontSize: 13, color: "var(--warn)", fontWeight: 500 }}>
@@ -144,6 +145,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
           <>
             {!showArchived && (
               <div
+                className="m-stats-4"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(4, 1fr)",
@@ -240,40 +242,47 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
                 )}
               </Card>
             ) : (
-              <Card padding={0}>
-                <div
-                  style={{
-                    padding: "12px 22px",
-                    borderBottom: "1px solid var(--line)",
-                    display: "grid",
-                    gridTemplateColumns: canEdit
-                      ? "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr 200px"
-                      : "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr",
-                    gap: 14,
-                    fontSize: 11,
-                    color: "var(--ink-4)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  <span>Comercial</span>
-                  <span>Depto.</span>
-                  <span>Ficha / Zona</span>
-                  <span>Email</span>
-                  <span style={{ textAlign: "right" }}>Objetivo</span>
-                  <span>Estado</span>
-                  {canEdit && <span></span>}
-                </div>
-                {salesList.map((s, i) => (
-                  <SalesRow
-                    key={s.id}
-                    s={s}
-                    last={i === salesList.length - 1}
-                    canEdit={canEdit}
-                    archived={showArchived}
-                  />
-                ))}
-              </Card>
+              // En mobile la tabla tiene 6-7 columnas que no caben en <767px.
+              // Permitimos scroll horizontal con un min-width que mantiene
+              // legibles las filas. Para el director (uso mobile real) esto
+              // basta — no llegamos a la complejidad del dual-layout sales.
+              <div style={{ overflowX: "auto" }}>
+                <Card padding={0}>
+                  <div
+                    style={{
+                      padding: "12px 22px",
+                      borderBottom: "1px solid var(--line)",
+                      display: "grid",
+                      gridTemplateColumns: canEdit
+                        ? "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr 200px"
+                        : "2fr 1.1fr 1.2fr 1fr 0.8fr 0.9fr",
+                      gap: 14,
+                      fontSize: 11,
+                      color: "var(--ink-4)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      minWidth: 720,
+                    }}
+                  >
+                    <span>Comercial</span>
+                    <span>Depto.</span>
+                    <span>Ficha / Zona</span>
+                    <span>Email</span>
+                    <span style={{ textAlign: "right" }}>Objetivo</span>
+                    <span>Estado</span>
+                    {canEdit && <span></span>}
+                  </div>
+                  {salesList.map((s, i) => (
+                    <SalesRow
+                      key={s.id}
+                      s={s}
+                      last={i === salesList.length - 1}
+                      canEdit={canEdit}
+                      archived={showArchived}
+                    />
+                  ))}
+                </Card>
+              </div>
             )}
           </>
         )}
@@ -326,6 +335,7 @@ function SalesRow({
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
+        minWidth: 720,
       }}
     >
       <Link

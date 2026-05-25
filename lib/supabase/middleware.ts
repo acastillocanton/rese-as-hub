@@ -10,6 +10,7 @@ const ROLE_HOME: Record<Role, string> = {
   admin: "/dashboard",
   sales: "/panel",
   reviews_manager: "/dashboard",
+  office_director: "/dashboard",
 };
 
 // Bots, crawlers y link-previewers. Reciben 403 incluso en rutas públicas
@@ -72,7 +73,8 @@ function isPublicPath(pathname: string): boolean {
 
 // Allowlist of route prefixes per role. Keep this explicit — do NOT use a
 // blanket `/api` match because future API routes default to NO access.
-function pathAllowedForRole(pathname: string, role: Role): boolean {
+// Exportado para test unit en lib/__tests__/route-access.test.ts.
+export function pathAllowedForRole(pathname: string, role: Role): boolean {
   // /perfil y /ayuda son accesibles a todos los roles. Perfil para foto +
   // datos personales; ayuda para el manual de uso (sales, admin, manager).
   if (pathname === "/perfil" || pathname.startsWith("/perfil/")) return true;
@@ -96,6 +98,25 @@ function pathAllowedForRole(pathname: string, role: Role): boolean {
       pathname.startsWith("/comerciales") ||
       pathname.startsWith("/manager") ||
       pathname.startsWith("/api/export")
+    );
+  }
+  if (role === "office_director") {
+    // El director es admin scoped a SU ficha. Misma IA que un admin global
+    // pero las pantallas filtran por `profiles.location_id` y los endpoints
+    // validan que cualquier `location_id` de input coincida con el suyo.
+    // NO accede a /gestores ni /ajustes (son globales, no de oficina).
+    // Solo accede a /manager/export (Excel) — el endpoint server-side fuerza
+    // location_id al suyo. NO accede a /manager/resenas (vista global del
+    // reviews_manager).
+    return (
+      pathname === "/dashboard" ||
+      pathname.startsWith("/comerciales") ||
+      pathname.startsWith("/fichas") ||
+      pathname.startsWith("/resenas/verificacion") ||
+      pathname === "/manager/export" ||
+      pathname.startsWith("/api/export") ||
+      pathname.startsWith("/api/sync") ||
+      pathname.startsWith("/api/google/oauth")
     );
   }
   return false;

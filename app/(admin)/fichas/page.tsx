@@ -48,9 +48,23 @@ export default async function FichasPage({
 
   let locations: LocationRow[] = [];
   let dbError: string | null = null;
+  let viewerRole: string | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle<{ role: string }>();
+      viewerRole = profile?.role ?? null;
+    }
+    // Para office_director la RLS restringe a una sola fila (su location).
+    // Para admin devuelve todas. No hace falta `.eq` explícito aquí.
     const { data, error } = await supabase
       .from("locations")
       .select(
@@ -64,22 +78,39 @@ export default async function FichasPage({
     }
   }
 
+  const isDirector = viewerRole === "office_director";
+  const canCreateLocations = viewerRole === "admin";
+
   return (
     <>
       <Topbar
-        title="Fichas Google"
-        subtitle="Fichas de Google Business Profile"
-        range={`${locations.length} ${locations.length === 1 ? "ficha" : "fichas"}`}
+        title={isDirector ? "Mi ficha" : "Fichas Google"}
+        subtitle={
+          isDirector
+            ? "Tu oficina en Google Business Profile"
+            : "Fichas de Google Business Profile"
+        }
+        range={
+          isDirector
+            ? locations[0]?.name ?? "—"
+            : `${locations.length} ${locations.length === 1 ? "ficha" : "fichas"}`
+        }
         breadcrumb="Inseryal"
+        compact={isDirector}
         right={
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <SyncNowButton label="Sincronizar todas" variant="ghost" />
-            <AddFichaButton />
+            <SyncNowButton
+              label={isDirector ? "Sincronizar" : "Sincronizar todas"}
+              variant="ghost"
+              locationId={isDirector ? locations[0]?.id : undefined}
+            />
+            {canCreateLocations && <AddFichaButton />}
           </div>
         }
       />
 
       <div
+        className="m-page-pad"
         style={{
           flex: 1,
           padding: "24px 32px 32px",
@@ -129,7 +160,9 @@ export default async function FichasPage({
                 letterSpacing: "-0.02em",
               }}
             >
-              Empieza añadiendo tu primera ficha
+              {isDirector
+                ? "Tu oficina aún no tiene ficha asignada"
+                : "Empieza añadiendo tu primera ficha"}
             </div>
             <p
               style={{
@@ -140,45 +173,63 @@ export default async function FichasPage({
                 maxWidth: 560,
               }}
             >
-              Cada apartamento / proyecto se representa por una ficha de Google
-              Business. Empieza por el nombre; el Place ID se rellena
-              automáticamente al conectar OAuth.
+              {isDirector
+                ? "Habla con el administrador general para que te asigne una ficha (location)."
+                : "Cada apartamento / proyecto se representa por una ficha de Google Business. Empieza por el nombre; el Place ID se rellena automáticamente al conectar OAuth."}
             </p>
-            <AddFichaButton />
+            {canCreateLocations && <AddFichaButton />}
           </Card>
         ) : (
-          <Card padding={0}>
-            <div
-              style={{
-                padding: "12px 22px",
-                borderBottom: "1px solid var(--line)",
-                display: "grid",
-                gridTemplateColumns: "1.6fr 1.1fr 0.9fr 0.8fr 0.9fr 400px",
-                gap: 14,
-                fontSize: 11,
-                color: "var(--ink-4)",
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-              }}
-            >
-              <span>Ficha</span>
-              <span>Cuenta Google</span>
-              <span>Sincronización</span>
-              <span>Alta</span>
-              <span style={{ textAlign: "right" }}>Rating · Total</span>
-              <span></span>
-            </div>
-            {locations.map((loc, i) => (
-              <FichaRow key={loc.id} loc={loc} last={i === locations.length - 1} />
-            ))}
-          </Card>
+          // Scroll horizontal en mobile — la tabla tiene 6 columnas y
+          // ~400px de botones; no caben en viewports <767px sin scroll.
+          <div style={{ overflowX: "auto" }}>
+            <Card padding={0}>
+              <div
+                style={{
+                  padding: "12px 22px",
+                  borderBottom: "1px solid var(--line)",
+                  display: "grid",
+                  gridTemplateColumns: "1.6fr 1.1fr 0.9fr 0.8fr 0.9fr 400px",
+                  gap: 14,
+                  fontSize: 11,
+                  color: "var(--ink-4)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  minWidth: 920,
+                }}
+              >
+                <span>Ficha</span>
+                <span>Cuenta Google</span>
+                <span>Sincronización</span>
+                <span>Alta</span>
+                <span style={{ textAlign: "right" }}>Rating · Total</span>
+                <span></span>
+              </div>
+              {locations.map((loc, i) => (
+                <FichaRow
+                  key={loc.id}
+                  loc={loc}
+                  last={i === locations.length - 1}
+                  canDelete={canCreateLocations}
+                />
+              ))}
+            </Card>
+          </div>
         )}
       </div>
     </>
   );
 }
 
-function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
+function FichaRow({
+  loc,
+  last,
+  canDelete,
+}: {
+  loc: LocationRow;
+  last: boolean;
+  canDelete: boolean;
+}) {
   // Estado consolidado de sincronización: la ficha trae reseñas si tiene
   // Business Profile conectado (preferido, paginable) o Places API vía
   // google_place_id. Si tiene OAuth en error pero NO tiene place_id, queda
@@ -207,6 +258,7 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
         gap: 14,
         alignItems: "center",
         fontSize: 13.5,
+        minWidth: 920,
       }}
     >
       <div style={{ minWidth: 0 }}>
@@ -306,7 +358,7 @@ function FichaRow({ loc, last }: { loc: LocationRow; last: boolean }) {
             {loc.oauth_status === "error" ? "Reconectar" : "Conectar Google"}
           </a>
         )}
-        <DeleteFichaButton id={loc.id} name={loc.name} />
+        {canDelete && <DeleteFichaButton id={loc.id} name={loc.name} />}
       </div>
     </div>
   );

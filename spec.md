@@ -12,8 +12,9 @@
 
 **Para quién**:
 - **Admin** (2 personas: Alejandro Castillo y Rafael Ibáñez) — visión global, alta/baja de fichas Google y comerciales, configuración del sistema.
+- **Director de oficina** (office_director, migración 011) — admin scoped a UNA ficha. Gestiona los comerciales de su oficina, conecta su Google Business Profile, verifica sus reseñas, exporta su Excel. NO accede a `/gestores` ni `/ajustes` (globales) ni a datos de otras oficinas. Solo el admin global lo invita/edita/elimina.
 - **Comercial** (sales) — recibe invitación, accede a su panel (escritorio + móvil), genera un enlace personalizado por cliente, ve sus reseñas y ranking.
-- **Gestor de reseñas** (reviews_manager) — entra en modo solo-lectura, filtra reseñas, descarga el Excel mensual.
+- **Gestor de reseñas** (reviews_manager) — comparte vista global con admin (dashboard + comerciales) y tiene plenos permisos sobre el rol sales (invitar, editar, eliminar). Pantallas adicionales: `/manager/resenas` y `/manager/export`. NO accede a `/gestores`, `/fichas`, `/resenas/verificacion`, `/ajustes`.
 
 **Por qué**:
 1. Eliminar el trabajo manual semanal del gestor de reseñas.

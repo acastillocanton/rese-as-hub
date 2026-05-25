@@ -1,4 +1,16 @@
-export type Role = "admin" | "sales" | "reviews_manager";
+export type Role = "admin" | "sales" | "reviews_manager" | "office_director";
+
+/** El office_director es admin scoped a una sola ficha (su `location_id`).
+ *  Helpers para tener un sitio único donde mirar capacidades transversales. */
+export function isAdminLike(role: Role | null | undefined): boolean {
+  return role === "admin" || role === "office_director";
+}
+export function isOfficeDirector(role: Role | null | undefined): boolean {
+  return role === "office_director";
+}
+export function canManageSales(role: Role | null | undefined): boolean {
+  return role === "admin" || role === "reviews_manager" || role === "office_director";
+}
 
 export type ProfileStatus = "invited" | "active" | "paused" | "archived";
 

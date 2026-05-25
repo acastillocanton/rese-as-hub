@@ -119,9 +119,11 @@ export default async function ResenasVerificacionPage({
               : `${removedCount} eliminadas`
         }
         breadcrumb="Inseryal"
+        compact
       />
 
       <div
+        className="m-page-pad"
         style={{
           flex: 1,
           padding: "24px 32px 32px",

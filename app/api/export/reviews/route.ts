@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
   const fromParam = url.searchParams.get("from");
   const toParam = url.searchParams.get("to");
   const salesIdFilter = url.searchParams.get("sales_id");
-  const locationIdFilter = url.searchParams.get("location_id");
+  let locationIdFilter = url.searchParams.get("location_id");
   const matchStateFilter = url.searchParams.get("match_state");
   const range = parseRange(fromParam, toParam);
   const previous = previousMonthRange(range);
@@ -137,11 +137,27 @@ export async function GET(request: NextRequest) {
   }
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, full_name")
+    .select("role, full_name, location_id")
     .eq("id", user.id)
-    .maybeSingle<{ role: string; full_name: string }>();
-  if (profile?.role !== "admin" && profile?.role !== "reviews_manager") {
+    .maybeSingle<{ role: string; full_name: string; location_id: string | null }>();
+  if (
+    profile?.role !== "admin" &&
+    profile?.role !== "reviews_manager" &&
+    profile?.role !== "office_director"
+  ) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  // Office director: forzamos location_id a su ficha, ignorando lo que mande
+  // el query string. La RLS también lo restringe, pero aquí evitamos hacer
+  // queries vacías a propósito y dejamos el log más claro.
+  if (profile.role === "office_director") {
+    if (!profile.location_id) {
+      return NextResponse.json(
+        { error: "director_without_location" },
+        { status: 400 },
+      );
+    }
+    locationIdFilter = profile.location_id;
   }
 
   // Límite defensivo para no timeout en Vercel (60s) ni saturar memoria al

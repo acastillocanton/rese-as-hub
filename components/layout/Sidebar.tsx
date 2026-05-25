@@ -263,3 +263,33 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
     ],
   },
 ];
+
+// Director de oficina: admin scoped a su location. Misma IA que admin pero
+// sin Gestores ni Ajustes globales, y "Fichas Google" se muestra como "Mi
+// ficha" porque solo verá la suya. /manager/export lo aprovecha para Excel
+// (con el location_id forzado server-side al suyo).
+export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
+  {
+    id: "home",
+    label: "Inicio",
+    items: [
+      { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
+    id: "reviews",
+    label: "Reseñas",
+    items: [
+      { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
+      { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },
+    ],
+  },
+  {
+    id: "team",
+    label: "Mi oficina",
+    items: [
+      { id: "sales", label: "Comerciales", href: "/comerciales", icon: Users },
+      { id: "branch", label: "Mi ficha", href: "/fichas", icon: MapPin },
+    ],
+  },
+];

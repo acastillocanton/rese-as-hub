@@ -15,6 +15,8 @@ export const maxDuration = 60;
  * Reglas por rol:
  *   - admin / reviews_manager: sin body → todas las fichas con place_id.
  *                              con location_id → solo esa.
+ *   - office_director: ignora body; sincroniza únicamente su `profiles.location_id`
+ *            (la ficha de su oficina).
  *   - sales: ignora body; sincroniza únicamente su `profiles.location_id`
  *            (la ficha que tiene asignada).
  *   - resto: 403.
@@ -58,10 +60,10 @@ export async function POST(request: NextRequest) {
     if (typeof body.location_id === "string" && body.location_id.length > 0) {
       locationIds = [body.location_id];
     } // si no, todas
-  } else if (profile.role === "sales") {
+  } else if (profile.role === "office_director" || profile.role === "sales") {
     if (!profile.location_id) {
       return NextResponse.json(
-        { error: "sales_without_location" },
+        { error: "user_without_location" },
         { status: 400 },
       );
     }

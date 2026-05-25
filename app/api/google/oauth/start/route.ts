@@ -6,9 +6,10 @@ import { getOAuthStartUrl } from "@/lib/google/business-profile";
 const STATE_COOKIE = "google_oauth_state";
 
 /**
- * Inicia el flujo OAuth con Google. Solo accesible para admin (middleware lo
- * gatea ya). Genera un state CSRF con nonce + location_id, lo guarda en cookie
- * httpOnly, y redirige al consent de Google.
+ * Inicia el flujo OAuth con Google. Accesible para admin global y para
+ * office_director (este último solo sobre SU ficha). Genera un state CSRF
+ * con nonce + location_id, lo guarda en cookie httpOnly, y redirige al
+ * consent de Google.
  *
  * Uso:
  *   GET /api/google/oauth/start?location_id=<uuid>
@@ -21,7 +22,8 @@ export async function GET(request: NextRequest) {
     return new NextResponse("location_id requerido", { status: 400 });
   }
 
-  // Defensa en profundidad: confirma que es admin (middleware ya lo restringe).
+  // Defensa en profundidad: confirma rol y, para director, que la ficha
+  // sea la suya (middleware ya gatea la ruta pero no inspecciona el param).
   const supabase = await createClient();
   const {
     data: { user },
@@ -30,11 +32,14 @@ export async function GET(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, location_id")
     .eq("id", user.id)
-    .maybeSingle<{ role: string }>();
-  if (profile?.role !== "admin") {
+    .maybeSingle<{ role: string; location_id: string | null }>();
+  if (profile?.role !== "admin" && profile?.role !== "office_director") {
     return new NextResponse("forbidden", { status: 403 });
+  }
+  if (profile.role === "office_director" && profile.location_id !== locationId) {
+    return new NextResponse("forbidden — fuera de tu oficina", { status: 403 });
   }
 
   // Confirma que la ficha existe (no necesario para la corrección, pero

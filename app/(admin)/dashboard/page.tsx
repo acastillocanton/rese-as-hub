@@ -311,6 +311,7 @@ export default async function DashboardPage({
         subtitle="Dashboard general"
         range={null}
         breadcrumb="Inseryal"
+        compact
         right={
           <RangePicker
             from={range.from}
@@ -321,9 +322,10 @@ export default async function DashboardPage({
         }
       />
 
-      <div style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
+      <div className="m-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
         {/* KPI row */}
         <div
+          className="m-stats-4"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(4, 1fr)",
@@ -372,6 +374,7 @@ export default async function DashboardPage({
 
         {/* Chart + goals */}
         <div
+          className="m-grid-hero"
           style={{
             display: "grid",
             gridTemplateColumns: "1.85fr 1fr",
@@ -538,6 +541,7 @@ export default async function DashboardPage({
 
         {/* Leaderboard + Recent visits */}
         <div
+          className="m-grid-hero"
           style={{
             display: "grid",
             gridTemplateColumns: "1.4fr 1fr",

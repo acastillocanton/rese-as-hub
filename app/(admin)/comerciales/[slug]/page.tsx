@@ -242,6 +242,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
         }`}
         breadcrumb="Comerciales"
         range={null}
+        compact
         right={
           <>
             <RangePicker
@@ -280,6 +281,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
       />
 
       <div
+        className="m-page-pad"
         style={{
           flex: 1,
           padding: "24px 32px 32px",
