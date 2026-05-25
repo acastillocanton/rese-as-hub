@@ -235,10 +235,10 @@ export default async function PanelPage({
         }
       />
 
-      <div className="sales-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
+      <div className="m-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
         <Card padding={28}>
           <div
-            className="sales-grid-hero"
+            className="m-grid-hero"
             style={{
               display: "grid",
               gridTemplateColumns: "1.2fr 1fr",
@@ -305,7 +305,7 @@ export default async function PanelPage({
               </div>
             </div>
 
-            <div className="sales-ring-row" style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            <div className="m-ring-row" style={{ display: "flex", alignItems: "center", gap: 24 }}>
               <Ring value={data.reviews} max={data.goal} size={140} />
               <div>
                 <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Objetivo mensual</div>
@@ -363,7 +363,7 @@ export default async function PanelPage({
         </Card>
 
         {/* Card "Mis clientes" — solo mobile (en desktop el sidebar ya lo cubre). */}
-        <div className="sales-mobile-only" style={{ marginTop: 16 }}>
+        <div className="m-mobile-only" style={{ marginTop: 16 }}>
           <Link
             href="/clientes"
             style={{

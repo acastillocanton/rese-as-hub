@@ -125,7 +125,7 @@ export default async function EnlacePage() {
         right={
           <Link
             href="/panel"
-            className="sales-hide-mobile"
+            className="m-hide-mobile"
             style={{
               padding: "7px 12px",
               border: "1px solid var(--line-strong)",
@@ -142,7 +142,7 @@ export default async function EnlacePage() {
       />
 
       <div
-        className="sales-page-pad"
+        className="m-page-pad"
         style={{
           flex: 1,
           padding: "24px 32px 32px",
@@ -154,7 +154,7 @@ export default async function EnlacePage() {
       >
         {/* Stats del enlace genérico */}
         <div
-          className="sales-stats-3"
+          className="m-stats-3"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(3, 1fr)",
@@ -199,7 +199,7 @@ export default async function EnlacePage() {
         {/* Card "Mis clientes" — solo mobile (en desktop el sidebar ya lo cubre). */}
         <Link
           href="/clientes"
-          className="sales-mobile-only"
+          className="m-mobile-only"
           style={{
             display: "flex",
             alignItems: "center",

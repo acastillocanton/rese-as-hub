@@ -12,7 +12,7 @@ type ProfileRow = {
   id: string;
   full_name: string;
   email: string | null;
-  role: "admin" | "sales" | "reviews_manager";
+  role: "admin" | "sales" | "reviews_manager" | "office_director";
   slug: string;
   status: "invited" | "active" | "paused";
   avatar_url: string | null;
@@ -21,6 +21,7 @@ type ProfileRow = {
 function roleLabel(role: ProfileRow["role"]): string {
   if (role === "admin") return "Administrador";
   if (role === "reviews_manager") return "Gestor de reseñas";
+  if (role === "office_director") return "Director de oficina";
   return "Comercial";
 }
 
@@ -75,9 +76,12 @@ export default async function PerfilPage() {
     : "—";
 
   const isSales = profile.role === "sales";
-  // Admin/manager no tienen MobileTabBar — en mobile necesitan un botón
-  // explícito para volver. Sales no lo necesita (ya tiene la tab bar).
-  const backHref = profile.role === "sales" ? "/panel" : "/dashboard";
+  const isDirector = profile.role === "office_director";
+  // Sales y office_director tienen MobileTabBar — no necesitan botón Volver.
+  // Admin/reviews_manager no tienen tab bar mobile: en mobile mostramos
+  // un botón explícito para volver al dashboard.
+  const hasMobileTabBar = isSales || isDirector;
+  const backHref = isSales ? "/panel" : "/dashboard";
 
   return (
     <>
@@ -88,10 +92,10 @@ export default async function PerfilPage() {
         range={null}
         compact
         right={
-          !isSales ? (
+          !hasMobileTabBar ? (
             <Link
               href={backHref}
-              className="sales-mobile-only"
+              className="m-mobile-only"
               style={{
                 padding: "7px 12px",
                 border: "1px solid var(--line-strong)",
@@ -109,7 +113,7 @@ export default async function PerfilPage() {
       />
 
       <div
-        className={isSales ? "sales-page-pad" : undefined}
+        className={hasMobileTabBar ? "m-page-pad" : undefined}
         style={{
           flex: 1,
           padding: "24px 32px 32px",

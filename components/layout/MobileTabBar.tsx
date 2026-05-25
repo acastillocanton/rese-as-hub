@@ -7,19 +7,28 @@ import {
   type LucideIcon,
   LayoutDashboard,
   Link2,
+  ListChecks,
+  MapPin,
   Star,
   Trophy,
+  Users,
 } from "lucide-react";
 import { pickActiveId } from "./active-item";
 
-type Tab = {
+export type MobileTab = {
   id: string;
   label: string;
   href: string;
   icon: LucideIcon;
 };
 
-const TABS: Tab[] = [
+/**
+ * Tabs de la versión mobile del rol `sales`. "Clientes" no está aquí
+ * intencionalmente: se accede desde el Panel (card "Mis clientes" mobile-only)
+ * o por URL directa, manteniendo la tab bar alineada con el mockup
+ * (_design_package/ReseñaHub/screens/mobile.jsx).
+ */
+export const SALES_MOBILE_TABS: MobileTab[] = [
   { id: "panel", label: "Panel", href: "/panel", icon: LayoutDashboard },
   { id: "link", label: "Enlace", href: "/panel/enlace", icon: Link2 },
   { id: "reviews", label: "Reseñas", href: "/panel/resenas", icon: Star },
@@ -27,17 +36,25 @@ const TABS: Tab[] = [
 ];
 
 /**
- * Tab bar fija inferior — solo se ve en mobile (viewport ≤767px) gracias al
- * wrapper `.sales-hide-desktop` que el (sales)/layout pone alrededor.
- *
- * Los 4 items son los del rol comercial. "Clientes" intencionalmente no está
- * aquí: se accede desde el Panel (card "Mis clientes" mobile-only) o por URL
- * directa. Esto mantiene la tab bar visualmente alineada con el mockup
- * (_design_package/ReseñaHub/screens/mobile.jsx) sin perder funcionalidad real.
+ * Tabs del rol `office_director` en mobile (migración 011). Las 4 destinos
+ * principales del director, espejando OFFICE_DIRECTOR_SIDEBAR_GROUPS minus
+ * el export Excel (poco frecuente y accesible desde el "más" implícito).
  */
-export function MobileTabBar() {
+export const DIRECTOR_MOBILE_TABS: MobileTab[] = [
+  { id: "dashboard", label: "Inicio", href: "/dashboard", icon: LayoutDashboard },
+  { id: "sales", label: "Comerciales", href: "/comerciales", icon: Users },
+  { id: "verification", label: "Reseñas", href: "/resenas/verificacion", icon: ListChecks },
+  { id: "branch", label: "Mi ficha", href: "/fichas", icon: MapPin },
+];
+
+/**
+ * Tab bar fija inferior — solo se ve en mobile (viewport ≤767px) gracias al
+ * wrapper `.m-hide-desktop` que el layout correspondiente pone alrededor.
+ * El array de tabs se pasa por prop para que cada rol consuma los suyos.
+ */
+export function MobileTabBar({ tabs }: { tabs: MobileTab[] }) {
   const pathname = usePathname() ?? "";
-  const activeId = useMemo(() => pickActiveId(TABS, pathname), [pathname]);
+  const activeId = useMemo(() => pickActiveId(tabs, pathname), [tabs, pathname]);
 
   return (
     <nav
@@ -58,7 +75,7 @@ export function MobileTabBar() {
         boxShadow: "0 -1px 0 rgba(0, 0, 0, 0.02)",
       }}
     >
-      {TABS.map((t) => {
+      {tabs.map((t) => {
         const on = t.id === activeId;
         const Icon = t.icon;
         return (

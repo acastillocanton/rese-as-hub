@@ -129,7 +129,7 @@ export function LinkArsenalBlock({ fullUrl, displayUrl, salesName, salesSlug }: 
 
       {/* QR + Mensaje en dos columnas */}
       <div
-        className="sales-qr-grid"
+        className="m-qr-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "minmax(220px, 260px) 1fr",

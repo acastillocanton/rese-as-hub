@@ -112,7 +112,7 @@ export function RangePicker({ from, to, label, shortcuts }: Props) {
         <div
           role="dialog"
           aria-label="Seleccionar rango de fechas"
-          className="sales-rangepicker-popover"
+          className="m-rangepicker-popover"
           style={{
             position: "absolute",
             top: "calc(100% + 6px)",

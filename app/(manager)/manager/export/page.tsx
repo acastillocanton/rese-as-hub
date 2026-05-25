@@ -46,9 +46,11 @@ export default async function ManagerExportPage() {
         subtitle="Parte de reseñas"
         range={null}
         breadcrumb="Inseryal"
+        compact
       />
 
       <div
+        className="m-page-pad"
         style={{
           flex: 1,
           padding: "24px 32px 32px",

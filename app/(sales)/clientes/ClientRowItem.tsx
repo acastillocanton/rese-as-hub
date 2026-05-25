@@ -45,7 +45,7 @@ export function ClientRowItem({
     <>
       {/* Desktop: fila tabular de 5 columnas */}
       <div
-        className="sales-hide-mobile"
+        className="m-hide-mobile"
         style={{
           padding: "14px 22px",
           borderBottom: last ? "none" : "1px solid var(--line)",
@@ -136,7 +136,7 @@ export function ClientRowItem({
 
       {/* Mobile: card vertical */}
       <div
-        className="sales-mobile-only"
+        className="m-mobile-only"
         style={{
           padding: "14px 16px",
           borderBottom: last ? "none" : "1px solid var(--line)",

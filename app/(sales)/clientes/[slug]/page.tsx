@@ -133,7 +133,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
           <div style={{ display: "flex", gap: 8 }}>
             <Link
               href="/clientes"
-              className="sales-hide-mobile"
+              className="m-hide-mobile"
               style={{
                 padding: "7px 12px",
                 background: "transparent",
@@ -153,7 +153,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       />
 
       <div
-        className="sales-page-pad"
+        className="m-page-pad"
         style={{
           flex: 1,
           padding: "24px 32px 32px",
@@ -165,7 +165,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       >
         {/* Datos + Actividad */}
         <div
-          className="sales-detail-grid"
+          className="m-detail-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(280px, 1fr) minmax(280px, 1fr)",

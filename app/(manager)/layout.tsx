@@ -3,15 +3,21 @@ import {
   Sidebar,
   ADMIN_SIDEBAR_GROUPS,
   MANAGER_SIDEBAR_GROUPS,
+  OFFICE_DIRECTOR_SIDEBAR_GROUPS,
 } from "@/components/layout/Sidebar";
+import {
+  MobileTabBar,
+  DIRECTOR_MOBILE_TABS,
+} from "@/components/layout/MobileTabBar";
+import { MobileProfileAvatar } from "@/components/layout/MobileProfileAvatar";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 /**
- * Layout del grupo (manager). Las pantallas viven bajo /manager/* pero el
- * admin también las consume (Reseñas global, Exportar Excel, vista de
- * comerciales). Cuando entra un admin le mostramos su sidebar de admin
- * y un subtítulo distinto; al gestor real le mostramos el suyo.
+ * Layout del grupo (manager). Las pantallas viven bajo /manager/* pero
+ * también las consumen admin, reviews_manager y office_director (este último
+ * solo /manager/export, por middleware). Pintamos el sidebar coherente con
+ * el rol del usuario y el subtítulo correspondiente.
  */
 export default async function ManagerLayout({
   children,
@@ -35,26 +41,57 @@ export default async function ManagerLayout({
     }
   }
 
-  const isAdmin = profile?.role === "admin";
-  const groups = isAdmin ? ADMIN_SIDEBAR_GROUPS : MANAGER_SIDEBAR_GROUPS;
-  const user = isAdmin
-    ? {
-        name: profile?.full_name ?? "Administrador",
-        subtitle: "Admin · Inseryal",
-        avatarUrl: profile?.avatar_url,
-      }
-    : {
-        name: profile?.full_name ?? "Gestor de reseñas",
-        subtitle: "Gestor · Inseryal",
-        avatarUrl: profile?.avatar_url,
-      };
+  const role = profile?.role ?? null;
+  const groups =
+    role === "admin"
+      ? ADMIN_SIDEBAR_GROUPS
+      : role === "office_director"
+        ? OFFICE_DIRECTOR_SIDEBAR_GROUPS
+        : MANAGER_SIDEBAR_GROUPS;
+  const user =
+    role === "admin"
+      ? {
+          name: profile?.full_name ?? "Administrador",
+          subtitle: "Admin · Inseryal",
+          avatarUrl: profile?.avatar_url,
+        }
+      : role === "office_director"
+        ? {
+            name: profile?.full_name ?? "Director de oficina",
+            subtitle: "Director · Inseryal",
+            avatarUrl: profile?.avatar_url,
+          }
+        : {
+            name: profile?.full_name ?? "Gestor de reseñas",
+            subtitle: "Gestor · Inseryal",
+            avatarUrl: profile?.avatar_url,
+          };
+
+  const isDirector = role === "office_director";
 
   return (
     <Frame>
-      <Sidebar groups={groups} user={user} />
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      <div
+        className={isDirector ? "m-hide-mobile" : undefined}
+        style={{ display: "contents" }}
+      >
+        <Sidebar groups={groups} user={user} />
+      </div>
+      <main
+        className={isDirector ? "m-main" : undefined}
+        style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}
+      >
         {children}
       </main>
+      {isDirector && (
+        <div className="m-hide-desktop">
+          <MobileProfileAvatar
+            name={user.name}
+            avatarUrl={user.avatarUrl ?? null}
+          />
+          <MobileTabBar tabs={DIRECTOR_MOBILE_TABS} />
+        </div>
+      )}
     </Frame>
   );
 }

@@ -7,13 +7,13 @@ type Props = {
 };
 
 /**
- * Avatar fijo arriba a la derecha en mobile sales — Link a /perfil.
- * Solo se monta dentro del wrapper `<div className="sales-hide-desktop">`
- * del (sales)/layout y del (profile)/layout (cuando el rol es sales),
- * así no aparece en desktop ni para admin/manager.
+ * Avatar fijo arriba a la derecha en mobile — Link a /perfil. Se monta
+ * dentro del wrapper `<div className="m-hide-desktop">` de los layouts
+ * con vista mobile (sales y, desde la migración 011, office_director).
+ * No aparece en desktop ni para admin/reviews_manager.
  *
  * Hay que reservar `padding-right` en el topbar mobile (clase
- * `sales-topbar-compact` en globals.css) para que sus controles no se
+ * `m-topbar-compact` en globals.css) para que sus controles no se
  * solapen con este avatar.
  */
 export function MobileProfileAvatar({ name, avatarUrl }: Props) {

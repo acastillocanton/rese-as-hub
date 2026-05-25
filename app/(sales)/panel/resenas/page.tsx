@@ -134,7 +134,7 @@ export default async function MisResenasPage({
             />
             <Link
               href="/panel"
-              className="sales-hide-mobile"
+              className="m-hide-mobile"
               style={{
                 padding: "7px 12px",
                 border: "1px solid var(--line-strong)",
@@ -152,7 +152,7 @@ export default async function MisResenasPage({
       />
 
       <div
-        className="sales-page-pad"
+        className="m-page-pad"
         style={{
           flex: 1,
           padding: "24px 32px 32px",
@@ -164,7 +164,7 @@ export default async function MisResenasPage({
       >
         {/* KPIs del rango */}
         <div
-          className="sales-stats-4"
+          className="m-stats-4"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(4, 1fr)",
@@ -254,7 +254,7 @@ function ReviewItem({
 }) {
   return (
     <div
-      className="sales-review-row"
+      className="m-review-row"
       style={{
         padding: "18px 22px",
         borderTop: "1px solid var(--line)",
@@ -323,7 +323,7 @@ function ReviewItem({
           </span>
         </div>
       </div>
-      <div className="sales-review-pill" style={{ display: "flex", alignItems: "center" }}>
+      <div className="m-review-pill" style={{ display: "flex", alignItems: "center" }}>
         <Pill withDot tone={matchStateTone(review.match_state)}>
           {matchStateLabel(review.match_state)}
         </Pill>
