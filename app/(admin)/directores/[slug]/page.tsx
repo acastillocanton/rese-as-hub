@@ -214,14 +214,15 @@ export default async function DirectorDetailPage({ params }: PageProps) {
               padding: "14px 22px",
               borderBottom: "1px solid var(--line)",
               display: "flex",
-              alignItems: "baseline",
+              alignItems: "center",
               justifyContent: "space-between",
+              gap: 16,
             }}
           >
             <div>
               <div style={sectionLabel}>Equipo</div>
               <div style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 2 }}>
-                Comerciales con <code>director_id = {director.full_name}</code>
+                Comerciales bajo la dirección de {director.full_name}
               </div>
             </div>
             <Pill withDot tone={activeTeam.length > 0 ? "ok" : "neutral"}>
