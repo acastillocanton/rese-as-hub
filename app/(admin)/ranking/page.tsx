@@ -32,7 +32,7 @@ export default async function RankingPage({
         <Topbar
           title="Ranking"
           subtitle="Producción del equipo"
-          range={range.label}
+          range={null}
           breadcrumb={getBrandBreadcrumb(brand)}
         />
         <div style={{ padding: "24px 32px" }}>
@@ -58,7 +58,7 @@ export default async function RankingPage({
       <Topbar
         title="Ranking"
         subtitle="Producción del equipo"
-        range={range.label}
+        range={null}
         breadcrumb={getBrandBreadcrumb(brand)}
         compact
         right={
