@@ -59,6 +59,9 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | Perfil global (`/perfil` + avatares) | ✅ |
 | Páginas legales (`/privacidad`, `/terminos`) | ✅ |
 | Centro de ayuda (`/ayuda`) con manual del comercial + lightbox | ✅ |
+| Multi-marca por `locations.brand` (Inseryal + Marina d'Or Construcciones) | ✅ (mig 014, ver §4.22) |
+| Director productor pleno (notificaciones, listados, Excel, verificación, /comerciales/[slug]) | ✅ |
+| Ranking: Top 10 en `/dashboard` + pantalla `/ranking` con lista completa | ✅ |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -443,7 +446,7 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
    - Loading states (`loading.tsx` por route group).
    - Seed más realista para dev.
    - Tests E2E Playwright (login → panel → crear cliente → compartir enlace; cron con fixture del Google API).
-5. **Ranking del comercial**: migración 011 + UI real para `/panel/ranking` (hoy ComingSoon).
+5. **Ranking mobile del comercial** (`/panel/ranking`): hoy ComingSoon. La pantalla `/ranking` de admin/manager/director ya está implementada (lista completa con RangePicker; ver §3); falta adaptarla a viewport mobile para el rol `sales` con tab bar propia.
 6. **Ajustes globales** (`/ajustes`): la ruta existe pero está **oculta del sidebar admin** hasta tener contenido (era un stub `ComingSoon` que confundía). Cuando se implemente alguna de las funcionalidades planeadas (reglas de matching configurables, plantilla del email de invitación, schedule del cron, plantilla del mensaje de WhatsApp), añadir de vuelta el item `{ id: "settings", label: "Ajustes", href: "/ajustes", icon: Settings }` en `ADMIN_SIDEBAR_GROUPS` de [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) (junto a "Fichas Google"). Sigue siendo solo-admin por middleware.
 
 ---
