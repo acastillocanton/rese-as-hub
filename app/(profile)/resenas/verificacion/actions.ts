@@ -513,7 +513,15 @@ export async function claimReview(input: ClaimReviewInput) {
   revalidatePath("/dashboard");
   revalidatePath("/clientes");
   revalidatePath("/ranking");
-  return { ok: true as const };
+  // Exponemos `clientId` y `wasNewClient` para que la UI pueda lanzar el
+  // modal de sugerencias (OrphanReviewsModal) cuando el sales creó cliente
+  // inline durante la reclamación. Si NO se creó cliente nuevo, el caller
+  // ignora estos campos.
+  return {
+    ok: true as const,
+    clientId,
+    wasNewClient,
+  };
 }
 
 /**

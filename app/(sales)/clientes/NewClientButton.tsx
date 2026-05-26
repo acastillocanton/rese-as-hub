@@ -2,8 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
-import { createClientRecord, type ClientRow } from "./actions";
+import {
+  createClientRecord,
+  findOrphanReviewsForClient,
+  type ClientRow,
+} from "./actions";
 import { ClientLinkDialog } from "./ClientLinkDialog";
+import { OrphanReviewsModal } from "@/components/clients/OrphanReviewsModal";
+import type { OrphanReviewCandidate } from "@/lib/clients/orphan-reviews";
 import type { Brand } from "@/lib/supabase/types";
 
 type NewClientButtonProps = {
@@ -17,12 +23,16 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand }: NewCli
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<ClientRow | null>(null);
+  const [orphanCandidates, setOrphanCandidates] = useState<OrphanReviewCandidate[]>([]);
+  const [showOrphans, setShowOrphans] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function close() {
     setOpen(false);
     setError(null);
     setCreated(null);
+    setOrphanCandidates([]);
+    setShowOrphans(false);
   }
 
   function handleSubmit(formData: FormData) {
@@ -39,6 +49,17 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand }: NewCli
         return;
       }
       setCreated(result.client);
+
+      // Buscar reseñas huérfanas del comercial que se parezcan al
+      // cliente recién creado. Si hay candidatas, abrimos el modal de
+      // sugerencias ANTES del ClientLinkDialog — vincular primero,
+      // compartir enlace después. Si no hay, ClientLinkDialog se abre
+      // directamente (created != null + showOrphans=false).
+      const orphans = await findOrphanReviewsForClient(result.client.id);
+      if (orphans.ok && orphans.candidates.length > 0) {
+        setOrphanCandidates(orphans.candidates);
+        setShowOrphans(true);
+      }
     });
   }
 
@@ -140,7 +161,17 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand }: NewCli
         </div>
       )}
 
-      {created && (
+      {created && showOrphans && (
+        <OrphanReviewsModal
+          open={true}
+          onClose={() => setShowOrphans(false)}
+          clientId={created.id}
+          clientName={created.full_name}
+          candidates={orphanCandidates}
+        />
+      )}
+
+      {created && !showOrphans && (
         <ClientLinkDialog
           open={true}
           onClose={close}

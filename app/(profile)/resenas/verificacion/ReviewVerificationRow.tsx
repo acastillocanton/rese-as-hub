@@ -15,6 +15,9 @@ import {
 } from "./actions";
 import { RemovalControls } from "@/components/ui/RemovalControls";
 import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
+import { OrphanReviewsModal } from "@/components/clients/OrphanReviewsModal";
+import { findOrphanReviewsForClient } from "@/app/(sales)/clientes/actions";
+import type { OrphanReviewCandidate } from "@/lib/clients/orphan-reviews";
 import type { Role } from "@/lib/supabase/types";
 
 type Review = {
@@ -289,6 +292,12 @@ function SalesRow({
   const [newClientName, setNewClientName] = useState<string>("");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Estado del modal de sugerencias de reseñas huérfanas. Solo aparece
+  // cuando el sales reclama esta reseña con un cliente nuevo y el sistema
+  // detecta OTRAS reseñas suyas counted sin client_id que podrían ser
+  // del mismo cliente (autor con nombre similar).
+  const [orphanCandidates, setOrphanCandidates] = useState<OrphanReviewCandidate[]>([]);
+  const [orphanClient, setOrphanClient] = useState<{ id: string; name: string } | null>(null);
 
   // Como la página ya filtra salesOptions al propio profile cuando el viewer
   // es sales, los clientes del único profile devuelto son sus clientes.
@@ -308,14 +317,28 @@ function SalesRow({
       return;
     }
     startTransition(async () => {
+      const newName = mode === "new" ? newClientName.trim() : null;
       const r = await claimReview({
         reviewId: review.id,
         clientId: mode === "existing" ? selectedClientId : null,
-        newClientName: mode === "new" ? newClientName.trim() : null,
+        newClientName: newName,
       });
       if (!r.ok) {
         setError(r.error);
         return;
+      }
+      // Si el sales creó un cliente nuevo durante la reclamación, buscar
+      // otras reseñas counted suyas con client_id=null cuyo autor se
+      // parezca al nombre del nuevo cliente, y ofrecerlas para vincular.
+      // Si encuentra ≥ 1, abrir el modal antes de hacer router.refresh()
+      // (la página se refrescará al cerrar el modal).
+      if (r.wasNewClient && r.clientId && newName) {
+        const orphans = await findOrphanReviewsForClient(r.clientId);
+        if (orphans.ok && orphans.candidates.length > 0) {
+          setOrphanCandidates(orphans.candidates);
+          setOrphanClient({ id: r.clientId, name: newName });
+          return; // no refresh aún, el modal lo hará al cerrarse.
+        }
       }
       router.refresh();
     });
@@ -489,6 +512,20 @@ function SalesRow({
             </GhostBtn>
           </div>
         </div>
+      )}
+
+      {orphanClient && (
+        <OrphanReviewsModal
+          open={true}
+          onClose={() => {
+            setOrphanClient(null);
+            setOrphanCandidates([]);
+            router.refresh();
+          }}
+          clientId={orphanClient.id}
+          clientName={orphanClient.name}
+          candidates={orphanCandidates}
+        />
       )}
     </Card>
   );

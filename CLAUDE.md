@@ -32,7 +32,7 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test               # Vitest unit tests (144 tests: matcher + date-range + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report)
+npm test               # Vitest unit tests (154 tests: matcher + date-range + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright happy paths (login + admin nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo
@@ -77,6 +77,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | v2 · Verificación abierta a todos los roles (mig 016) | ✅ (2026-05-26) |
 | v2 · Link a ficha de Google en cada listado de reseñas | ✅ (2026-05-26) |
 | v2 · Reformar exportación Excel (sidebar → /comerciales, + Excel individual) | ✅ (2026-05-26) |
+| v2 · Auto-sugerir vinculación de reseñas huérfanas al crear cliente | ✅ (2026-05-26) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -570,6 +571,33 @@ Hasta v2 había un item "Exportar Excel" en el sidebar (admin + manager + direct
 **Tests** ([lib/reports/__tests__/sales-report.test.ts](lib/reports/__tests__/sales-report.test.ts)): 18 unit tests de funciones puras (`formatJoinedAtForExcel`, `formatDepartmentForExcel`, `formatReviewDateForExcel`, `formatRatingForExcel`, `buildSalesReportFilename`). El Buffer del Excel no se testa (overkill — requiere abrir el binario).
 
 ⚠️ **NO confundir** con `weekly-report.ts` (parte GLOBAL con 4 hojas departamentales + Detalle). Son dos exports distintos: el global responde a "parte oficial de Raquel" y vive en `/api/export/reviews`; el individual responde a "auditoría de un comercial" y vive en `/api/export/sales/[id]`.
+
+### 4.28 Sugerencia de vinculación de reseñas huérfanas al crear cliente
+
+Caso real detectado en producción: la reseña de "Salvador Sanchis Plaus" apareció en el Excel de la comercial Judit sin nombre de cliente, aunque el cliente "salvador sanchis" sí existía en BD. Diagnóstico:
+
+- La reseña llegó el 26-may 09:56 vía Places API.
+- El cliente "salvador sanchis" se creó después (12:03), y su share_link se abrió a las 12:05.
+- Cuando el cron metió la reseña, no había share_link de Salvador → el matcher la dejó `unmatched` (`reason: no_share_links_in_window`).
+- Alguien la reclamó luego a Judit sin asignar cliente (`match_confidence: 0`).
+- Cuando se creó el cliente, nadie hizo el vínculo.
+
+Es un patrón legítimo: a veces el cliente deja la reseña **antes** de que el comercial le dé de alta en su CRM.
+
+**Solución**: cuando un sales/director crea un cliente, el sistema busca reseñas `counted` del mismo sales con `client_id IS NULL` cuyo `author_name` se parezca al nombre del cliente. Si encuentra ≥ 1 candidata, abre un modal `<OrphanReviewsModal>` que las muestra con un botón "Vincular" por fila.
+
+**Implementación**:
+- Helper puro [lib/clients/orphan-reviews.ts](lib/clients/orphan-reviews.ts) con `scoreOrphanCandidates(clientName, reviews)` que reutiliza `nameSimilarity` del matcher (mismo umbral 0-100). Threshold `ORPHAN_SUGGEST_THRESHOLD=50`, más conservador que el `PENDING_THRESHOLD=40` del matcher porque ya hay un humano decidiendo uno a uno. Limit 5 candidatas. Tests en [lib/clients/__tests__/orphan-reviews.test.ts](lib/clients/__tests__/orphan-reviews.test.ts) (10 tests).
+- Server actions `findOrphanReviewsForClient` + `linkOrphanReviewToClient` en [app/(sales)/clientes/actions.ts](app/(sales)/clientes/actions.ts). Auth: dueño del cliente (sales), director con scope al equipo del dueño, o admin/manager. `linkOrphanReviewToClient` aplica anti-fraude (mig 015) y deja audit log con `action='link_orphan'`. Race-safe: `.is("client_id", null)` en el WHERE del UPDATE → si otro lo vinculó entre lectura y escritura, matchea 0 filas → error UX.
+- Componente [components/clients/OrphanReviewsModal.tsx](components/clients/OrphanReviewsModal.tsx): modal con backdrop + lista de candidatas (autor + estrellas + similarity badge + fecha) + botón "Vincular" individual. Footer "Cerrar/Saltar". Tras vincular, refresh.
+
+**Integración en 2 flujos**:
+1. `NewClientButton` (en `/clientes`): tras `createClientRecord` exitoso, llama a `findOrphanReviewsForClient(client.id)`. Si hay candidatas, abre `OrphanReviewsModal` **antes** del `ClientLinkDialog` — primero vincular reseñas pasadas, después compartir el enlace.
+2. `claimReview` (en `/resenas/verificacion`): cuando un sales reclama una huérfana CON `newClientName` (crea cliente inline), el return de `claimReview` ahora incluye `{ clientId, wasNewClient }`. Si `wasNewClient=true`, el row busca OTRAS huérfanas con autor similar y abre el mismo modal antes del refresh.
+
+⚠️ **Threshold conservador**: `ORPHAN_SUGGEST_THRESHOLD=50` para minimizar falsos positivos. Casos como "Salvador Sanchis" vs "Salvador Sanchis Plaus" puntúan 90 (tokens del cliente contenidos en autor). Casos como "S. Sanchis" vs "Salvador Sanchis" puntúan 30 (sólo apellido coincide) y NO se sugieren — el sales debe asignarlos manualmente desde la verificación.
+
+⚠️ **No auto-vincular sin confirmación humana** (incluso con similarity > 90). Mantener el botón "Vincular" por fila preserva trazabilidad y evita catástrofes. Si alguien quiere auto-vincular > 90 en el futuro, hacerlo opt-in.
 
 ---
 
