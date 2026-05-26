@@ -44,6 +44,8 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 
 ## 3. Estado del proyecto
 
+> 🏁 **V1 cerrada el 2026-05-26**. Cubre todo el flujo end-to-end: alta de comerciales/directores/gestores, generación de enlaces, sincronización vía Places API (Business Profile esperando cuota), atribución automática, panel del comercial con mobile + ranking, export Excel del gestor, soft-delete, multi-marca, polish (loading states + a11y + E2E Playwright). Próxima iteración → v2 (sin features definidas todavía; ver §8 Backlog).
+>
 > Producto live y trayendo reseñas reales desde **2026-05-23** vía Google Places API (vía de respaldo mientras esperamos cuota de Business Profile API — caso `5-5855000041022`, ETA ~2026-06-04). El cron oficial de Business Profile sigue activo en paralelo; cuando Google apruebe, retomará automáticamente sin redeploy.
 
 | Fase | Estado |
@@ -68,6 +70,9 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | Loading states (`loading.tsx` por route group + `<Skeleton>`) | ✅ (2026-05-26) |
 | A11y: `eslint-plugin-jsx-a11y` activo + arreglos puntuales | ✅ (2026-05-26) |
 | Tests E2E Playwright (setup + login + admin-nav specs) | ✅ (2026-05-26) |
+| Edición de teléfono en ficha del comercial (paridad con director) | ✅ (2026-05-26) |
+| Breadcrumbs enlazados a la sección padre en sub-páginas | ✅ (2026-05-26) |
+| **🏁 V1 cerrada** | **2026-05-26** |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -428,7 +433,9 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
 
 ---
 
-## 8. Próximo paso
+## 8. Backlog v2
+
+> V1 cerrada (ver §3). Lo siguiente. Features concretas de v2 se irán definiendo conforme el negocio las pida; por ahora aquí quedan los pendientes técnicos y las open questions de spec.md que no se cerraron en v1.
 
 1. **Esperar aprobación Google Business Profile** (caso `5-5855000041022`, ETA ~2026-06-04). Mientras tanto el cron de Places API (§4.b) ya está trayendo reseñas reales diariamente a las 5:00 UTC.
 2. **Cuando Google apruebe Business Profile**:
@@ -447,11 +454,18 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
        and abs(extract(epoch from (places.google_created_at - biz.google_created_at))) < 3600;
      ```
 3. **Publicar consent screen fuera de Testing** (Verification de Google) si en el futuro hay testers externos al equipo interno actual.
-4. **Polish restante** (no resuelto en la auditoría):
+4. **Polish técnico restante**:
    - Seed más realista para dev (los E2E specs usan datos de prueba reales contra Supabase; cuando crezca el cubrimiento, considerar un proyecto Supabase de pruebas).
    - Ampliar E2E: sales-flow (crear cliente, compartir enlace) cuando haya un comercial fijo de pruebas en BD; cron con fixture del Google API.
    - Refactor de modal backdrops a componente Dialog compartido con focus trap + Escape handler (hoy lint warnings, no errors).
 5. **Ajustes globales** (`/ajustes`): la ruta existe pero está **oculta del sidebar admin** hasta tener contenido (era un stub `ComingSoon` que confundía). Cuando se implemente alguna de las funcionalidades planeadas (reglas de matching configurables, plantilla del email de invitación, schedule del cron, plantilla del mensaje de WhatsApp), añadir de vuelta el item `{ id: "settings", label: "Ajustes", href: "/ajustes", icon: Settings }` en `ADMIN_SIDEBAR_GROUPS` de [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) (junto a "Fichas Google"). Sigue siendo solo-admin por middleware.
+6. **Open questions abiertas en `spec.md` §9** (decisiones de producto pendientes):
+   - #1 Dominio definitivo (`reseñahub.es` vs `resenas.inseryal.es`).
+   - #2 Branding final (logo, paleta exacta, tipografía).
+   - #3 Integración CRM externo para alta de clientes (hoy manual).
+   - #6 Política de retención (¿borrar share_links >90 días? ¿reseñas archivadas?).
+   - #7 Alertas tiempo real al admin sobre reseñas ≤3★.
+   - #8 Encriptar `oauth_refresh_token` en reposo (Supabase Vault / pgcrypto).
 
 ---
 

@@ -2,10 +2,12 @@
 
 Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google Business Profile por comercial.
 
+> 🏁 **V1 cerrada el 2026-05-26 · v2.0.0 abierta** — sin features nuevas definidas todavía. Ver [`CLAUDE.md`](CLAUDE.md) §8 (Backlog v2) y [`spec.md`](spec.md) §9 (open questions pendientes).
+>
 > 📖 **Fuente de verdad del producto**: [`spec.md`](spec.md). Leer antes de añadir features o tomar decisiones de arquitectura.
 > 📋 **Estado actual del proyecto, workarounds y comandos**: [`CLAUDE.md`](CLAUDE.md). Leer al abrir el repo en una máquina nueva.
 
-**Roles**: Admin (gestor global), Comercial (envía enlace al cliente tras la visita), Gestor de reseñas (solo lectura + exporta a Excel).
+**Roles**: Admin (gestor global), Director de oficina (admin de su equipo + comercial productor), Comercial (envía enlace al cliente tras la visita), Gestor de reseñas (solo lectura + exporta a Excel).
 
 **Producción**: [`https://resenas.marinadorconstrucciones.com`](https://resenas.marinadorconstrucciones.com).
 
@@ -23,14 +25,16 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 - **Vercel Hobby** hosting + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC ≈ 6-7 AM España) + **GitHub Action horario** (cada hora 06-23 UTC) llamando al cron Places para fichas activas + botón **"Sincronizar ahora"** en UI (admin/gestor/comercial)
 - **ExcelJS** (dynamic import server-side) para export mensual del gestor
 - **qrcode.react** + Zod + middleware con RLS y redirección por rol
-- **Vitest** unit tests (matcher + date-range + schema importador + cliente Places, 70 verdes)
+- **Vitest** unit tests (99 verdes — matcher + date-range + schema importador + cliente Places + leaderboard + branding + messaging + role/route helpers)
+- **Playwright** E2E (login + admin-nav smoke; setup en [`playwright.config.ts`](playwright.config.ts) + helper de auth via `/login/manual`)
+- **eslint-plugin-jsx-a11y** activo (preset `recommended`); 0 errors, deuda menor en modal backdrops como warnings documentadas
 - **Content-Security-Policy** + HSTS + headers de seguridad en [`next.config.ts`](next.config.ts)
 
 ---
 
 ## Estado del producto
 
-Producto cerrado funcionalmente y **trayendo reseñas reales desde 2026-05-23** vía Google Places API (vía de respaldo). El cron oficial de Business Profile sigue activo en paralelo esperando la aprobación de cuota (caso `5-5855000041022`, ETA ~2026-06-04); cuando llegue, retomará automáticamente sin redeploy.
+🏁 **V1 cerrada el 2026-05-26**. Producto live y **trayendo reseñas reales desde 2026-05-23** vía Google Places API (vía de respaldo). El cron oficial de Business Profile sigue activo en paralelo esperando la aprobación de cuota (caso `5-5855000041022`, ETA ~2026-06-04); cuando llegue, retomará automáticamente sin redeploy.
 
 Por fase:
 
@@ -84,6 +88,10 @@ npm run dev
    supabase/migrations/008_audit_log_insert_policy.sql
    supabase/migrations/009_review_source.sql
    supabase/migrations/010_review_removed_at.sql
+   supabase/migrations/011_office_director_role.sql
+   supabase/migrations/012_office_director_policies.sql
+   supabase/migrations/013_director_team_scope.sql
+   supabase/migrations/014_location_brand.sql
    ```
 4. Auth: usar el flujo OTP `token_hash` documentado en [CLAUDE.md §4.1](CLAUDE.md). Las plantillas de email en Supabase Dashboard → Authentication → Emails deben usar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type={email|invite}`.
 
@@ -177,7 +185,8 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/panel`                       | sales             | KPIs propios + RangePicker + proyección ETA + card mobile clientes |
 | `/panel/enlace`                | sales             | URL + QR + plantilla editable + deep-links WhatsApp/Email/SMS    |
 | `/panel/resenas`               | sales             | Histórico de reseñas atribuidas con RangePicker                  |
-| `/panel/ranking`               | sales             | Placeholder ComingSoon (Fase futura)                             |
+| `/panel/ranking`               | sales             | Ranking de su equipo (sales con mismo `director_id`) en mobile cards |
+| `/ranking`                     | admin + manager + office_director | Ranking completo desktop (todos los productores según RLS) |
 | `/clientes`                    | sales             | Lista + alta + dialog QR/plantilla/deep-links                    |
 | `/clientes/:slug`              | sales             | Ficha cliente editable + visitas + reseñas atribuidas            |
 | `/manager/resenas`             | reviews_manager + admin | Lista global de reseñas con filtros                        |
@@ -199,9 +208,11 @@ npm run dev          # Next dev con Turbopack
 npm run build        # Build producción
 npm run start        # Server producción
 npm run typecheck    # tsc --noEmit (gate antes de cerrar tareas)
-npm run lint         # next lint
-npm test             # Vitest unit tests (matcher + date-range)
+npm run lint         # next lint (eslint-config-next + jsx-a11y/recommended)
+npm test             # Vitest unit tests (99 verdes)
 npm run test:watch   # Vitest en modo watch
+npm run test:e2e     # Playwright E2E (login + admin-nav). Primera vez: npx playwright install --with-deps chromium
+npm run test:e2e:ui  # Playwright en modo UI interactivo
 ```
 
 ---
@@ -221,7 +232,7 @@ app/
     panel/
     panel/enlace/                    "Sala de armas" URL + QR + plantilla
     panel/resenas/                   Histórico personal
-    panel/ranking/                   Placeholder ComingSoon
+    panel/ranking/                   Ranking del equipo del comercial (mobile cards)
     clientes/[slug]/
   (manager)/            ─ Pantallas del gestor de reseñas
     manager/resenas/
@@ -269,7 +280,11 @@ lib/
 supabase/migrations/    ─ 001 schema, 002 RLS, 003 seed, 004 google_oauth,
                          005 manager_sales_admin, 006 profile_avatars,
                          007 reviews_composite_indices, 008 audit_log_insert_policy,
-                         009 review_source (enum business_profile/places_api/manual)
+                         009 review_source (enum business_profile/places_api/manual),
+                         010 review_removed_at (soft delete + view reviews_active),
+                         011-013 office_director (role, policies, team scope por director_id),
+                         014 location_brand (enum inseryal/marina_dor_construcciones)
+e2e/                    ─ Playwright specs (login + admin-nav) + helpers/auth.ts
 test/                   ─ server-only-stub.ts (para que Vitest importe módulos server-only)
 middleware.ts           ─ Auth + roles + redirección por rol
 vercel.json             ─ Crons diarios 0 5 * * * (Places) y 5 5 * * * (Business Profile) UTC

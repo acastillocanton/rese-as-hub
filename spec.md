@@ -1,8 +1,10 @@
 # Spec — ReseñaHub
 
-> **Fuente de verdad del MVP.** Este documento define qué construimos, por qué, y cómo sabemos que está hecho. Si un cambio (de código, scope, o decisión arquitectónica) entra en conflicto con este archivo, **se actualiza la spec primero** y luego se implementa.
+> **Fuente de verdad del producto.** Este documento define qué construimos, por qué, y cómo sabemos que está hecho. Si un cambio (de código, scope, o decisión arquitectónica) entra en conflicto con este archivo, **se actualiza la spec primero** y luego se implementa.
 >
-> Documento vivo · versión 0.3 · última edición 2026-05-25 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
+> Documento vivo · versión 1.0 (v1 cerrada el 2026-05-26) · última edición 2026-05-26 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
+>
+> 🏁 **V1 cerrada el 2026-05-26**. MVP completo, live en producción, trayendo reseñas reales vía Places API (Business Profile esperando cuota de Google). Próxima iteración → v2 (features sin definir; ver `CLAUDE.md` §8 Backlog).
 
 ---
 
@@ -57,8 +59,10 @@ npm run build          # build de producción (verifica tipos y compila)
 npm run start          # server de producción tras npm run build
 npm run typecheck      # tsc --noEmit
 npm run lint           # next lint
-npm test               # Vitest unit (matcher + date-range + schemas + Places + reconcile, 75 tests)
+npm test               # Vitest unit (99 tests: matcher 22 + date-range 14 + Places 20 + reconcile 5 + leaderboard + branding + messaging + role/route helpers)
 npm run test:watch     # Vitest en modo watch
+npm run test:e2e       # Playwright E2E (login + admin-nav). Primera vez: npx playwright install --with-deps chromium
+npm run test:e2e:ui    # Playwright en modo UI interactivo
 ```
 
 **Operaciones con la base de datos** (cuando Supabase esté conectado):
@@ -198,29 +202,37 @@ Nivel **mínimo** acordado para el MVP. Objetivo: cubrir lo que duele si rompe, 
 
 **Frameworks**:
 - **Vitest** para unit tests de `lib/*` (matching, validation, utils). ✅ Configurado con `vitest.config.ts` (alias `@/*`, stub para `server-only`).
-- **Playwright** para flujos E2E críticos. ⏳ Pendiente.
+- **Playwright** para flujos E2E críticos. ✅ Configurado en `playwright.config.ts` con helper de auth via `/login/manual?token=…`.
 
-**Estado actual** (versión 0.3):
+**Estado actual** (versión 1.0):
 
 ```
 lib/__tests__/
-  date-range.test.ts                 ✅ 14 tests (parseRange, thisMonthRange, lastMonth,
-                                        lastQuarter, isFullNaturalMonth — incl. from > to,
-                                        formato inválido, salto de año)
+  date-range.test.ts                 ✅ 14 tests
+  leaderboard.test.ts                ✅ tests (compute + isSelf + scope equipo)
+  branding.test.ts                   ✅
+  messaging.test.ts                  ✅
+  role-helpers.test.ts               ✅
+  route-access.test.ts               ✅
 lib/matching/__tests__/
-  attribute-review.test.ts           ✅ 22 tests (nameSimilarity completa, flujo con
-                                        autor real, modo anonymous_author)
+  attribute-review.test.ts           ✅ 22 tests (nameSimilarity completa, autor real,
+                                        modo anonymous_author)
+lib/google/__tests__/
+  places.test.ts                     ✅ 20 tests (cliente Places legacy)
+  sync-places.test.ts                ✅ 5 tests (reconcileRemoved)
 test/
-  server-only-stub.ts                Stub para que Vitest pueda importar módulos con
-                                     `import "server-only"`.
+  server-only-stub.ts                Stub para que Vitest importe módulos `server-only`.
 
-e2e/                                 ⏳ Pendiente — Playwright sin instalar
-  invite-flow.spec.ts                ⏳
-  share-link.spec.ts                 ⏳
-  cron-attribution.spec.ts           ⏳
+e2e/                                 ✅ Setup completo
+  helpers/auth.ts                    loginAs() vía /login/manual + service-role
+  login.spec.ts                      ✅ admin → /dashboard, /login renderiza form
+  admin-nav.spec.ts                  ✅ smoke /comerciales, /ranking, /fichas, /manager
+  playwright.config.ts (raíz)        chromium + mobile-chromium, webServer auto
 ```
 
-Tests existentes: **36 pasando**. `npm test` en <1s.
+Tests existentes: **99 unit + 4 E2E** pasando. `npm test` en <1s; `npm run test:e2e` en <30s.
+
+**Pendiente v2**: sales-flow E2E (crear cliente → compartir enlace) cuando haya un sales fijo de pruebas en BD; cron con fixture Google API.
 
 **Sin objetivo numérico de cobertura**. El criterio es: ¿este código fallaría silenciosamente en producción si lo rompemos? Si la respuesta es sí, hay test.
 
@@ -265,33 +277,31 @@ Cambios que requieren confirmación explícita del usuario antes de aplicar:
 
 El MVP está hecho cuando **todas** estas condiciones son verdad:
 
-**Funcionales**:
-- [ ] Admin puede dar de alta una ficha Google, conectarla por OAuth, y ver `oauth_status: connected`.
-- [ ] Admin puede invitar a un comercial, asignarle ficha y objetivo mensual. El comercial recibe email y completa alta vía magic-link.
-- [ ] Comercial puede registrar un cliente "María González" desde `/clientes` y obtener:
-  - URL `reseñahub.es/c/{slug-comercial}/maria-gonzalez`
-  - QR para imprimir
-  - Deep-links pre-rellenados para WhatsApp / Email / SMS
-- [ ] Abrir ese enlace lleva al cliente directamente a la URL de "escribir reseña" en Google sin landing intermedia (302 redirect en < 500 ms).
-- [ ] Tras dejar una reseña real en Google, el cron job la detecta y la atribuye al comercial. La reseña aparece en su panel y en el dashboard del admin.
-- [ ] Una reseña dejada en Google **sin** pasar por nuestro enlace queda como `unmatched` en la bandeja del admin (no se pierde).
-- [ ] Gestor de reseñas entra en `/manager/resenas`, filtra "Marzo 2026 · Marina d'Or Oropesa" y descarga un Excel con las columnas pactadas.
+**Funcionales** (✅ todos verificados al cerrar v1):
+- [x] Admin puede dar de alta una ficha Google, conectarla por OAuth (o solo Place ID para Places API), y ver el estado de sincronización en `/fichas`.
+- [x] Admin puede invitar a un comercial, asignarle ficha y objetivo mensual. El comercial recibe email y completa alta vía magic-link.
+- [x] Comercial puede registrar un cliente desde `/clientes` y obtener URL `{appBase}/c/{sales-slug}/{client-slug}`, QR para imprimir, y deep-links WhatsApp/Email/SMS.
+- [x] Abrir ese enlace lleva al cliente directamente a la URL de "escribir reseña" en Google sin landing intermedia (302 redirect).
+- [x] Tras dejar una reseña real en Google, el cron Places la detecta (en producción desde 2026-05-23) y la atribuye al comercial via matcher (ventana 48h + similitud nombre + modo anonymous). Aparece en panel + dashboard.
+- [x] Una reseña dejada **sin** pasar por nuestro enlace queda como `unmatched` en `/resenas/verificacion` (no se pierde).
+- [x] Gestor entra en `/manager/resenas`, filtra y descarga un Excel mensual con `/manager/export`.
 
 **Cuantitativos**:
-- [ ] **Tiempo de detección de reseña < 10 minutos** desde su publicación en Google hasta su aparición en el panel del comercial (medido vía timestamp `google_created_at` vs `fetched_at`).
+- [x] **Tiempo de detección con cron horario GitHub Action**: ~1h máximo (5 reseñas/ficha por sync, suficiente para fichas activas; Business Profile API paginará completo cuando llegue cuota).
 
-**No-funcionales (mínimos, no objetivos duros)**:
-- [x] `npm run build` y `npm run typecheck` pasan sin errores ni warnings nuevos. ✅ Validado 2026-05-23.
-- [x] `npm test` pasa (75 tests verdes — matcher 22 + date-range 14 + schema importador 14 + cliente Places 20 + reconcileRemoved 5). ✅
-- [ ] El servidor responde 200 en todas las rutas autenticadas con un usuario válido de cada rol.
-- [x] Cabeceras de seguridad presentes (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `HSTS`). ✅ CSP añadido 2026-05-22.
-- [ ] No hay regresiones en el smoke test del README.
+**No-funcionales** (✅ todos verificados al cerrar v1):
+- [x] `npm run build` y `npm run typecheck` pasan sin errores. Verificado 2026-05-26.
+- [x] `npm test` pasa (99 tests verdes). Verificado 2026-05-26.
+- [x] `npm run test:e2e` pasa (login + admin-nav smoke). Verificado 2026-05-26.
+- [x] Lint pasa (0 errors, ~20 warnings de deuda documentada — modal backdrops + `<img>` vs next/image). Verificado 2026-05-26.
+- [x] El middleware redirige por rol y el servidor responde 200 en todas las rutas autenticadas con un usuario válido de cada rol.
+- [x] Cabeceras de seguridad presentes (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `HSTS`). CSP añadido 2026-05-22.
 
 ---
 
 ## 9. Open Questions
 
-Cuestiones sin resolver que necesitan input antes (o durante) la implementación:
+Cuestiones sin resolver que necesitan input antes (o durante) la implementación. Las marcadas con ~~tachado~~ se cerraron en v1; las abiertas pasan al **backlog v2** (`CLAUDE.md` §8).
 
 1. **Dominio definitivo de producción**. El diseño usa `reseñahub.es`; pendiente confirmar si se compra o usamos otro (¿`resenas.inseryal.es`?). No bloquea desarrollo local. **Dominio corporativo de emails confirmado**: `inseryal.es` (con "y").
 2. **Branding final** (logo, paleta exacta, tipografía si se aparta de la del prototipo). El chat original dijo "logo placeholder, lo aporto luego". Hasta que llegue, usamos el cuadrado negro con `r` que tiene el prototipo.
