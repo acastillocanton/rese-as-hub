@@ -3,8 +3,14 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
-import { deleteClientRecord, type ClientRow } from "./actions";
+import {
+  deleteClientRecord,
+  findOrphanReviewsForClient,
+  type ClientRow,
+} from "./actions";
 import { ClientLinkDialog } from "./ClientLinkDialog";
+import { OrphanReviewsModal } from "@/components/clients/OrphanReviewsModal";
+import type { OrphanReviewCandidate } from "@/lib/clients/orphan-reviews";
 import type { Brand } from "@/lib/supabase/types";
 
 type ClientRowItemProps = {
@@ -26,6 +32,12 @@ export function ClientRowItem({
 }: ClientRowItemProps) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // Estado del botón "Buscar reseñas" — abre el modal OrphanReviewsModal
+  // con las candidatas detectadas. Útil para vincular reseñas antiguas
+  // counted sin client_id que no se hayan detectado al crear el cliente.
+  const [orphanCandidates, setOrphanCandidates] = useState<OrphanReviewCandidate[]>([]);
+  const [orphanOpen, setOrphanOpen] = useState(false);
+  const [isSearchingOrphans, startOrphanSearch] = useTransition();
 
   function onDelete() {
     const ok = window.confirm(
@@ -35,6 +47,24 @@ export function ClientRowItem({
     startTransition(async () => {
       const r = await deleteClientRecord(client.id);
       if (!r.ok) alert(r.error);
+    });
+  }
+
+  function onSearchOrphans() {
+    startOrphanSearch(async () => {
+      const r = await findOrphanReviewsForClient(client.id);
+      if (!r.ok) {
+        alert(r.error);
+        return;
+      }
+      if (r.candidates.length === 0) {
+        alert(
+          `No hay reseñas sin vincular que se parezcan a ${client.full_name}.`,
+        );
+        return;
+      }
+      setOrphanCandidates(r.candidates);
+      setOrphanOpen(true);
     });
   }
 
@@ -116,21 +146,22 @@ export function ClientRowItem({
           {client.phone ?? "—"}
         </span>
         <span style={{ fontSize: 12.5, color: "var(--ink-4)" }}>{altaLabel}</span>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
           <GhostBtn onClick={() => setOpen(true)}>Ver enlace</GhostBtn>
+          <button
+            type="button"
+            onClick={onSearchOrphans}
+            disabled={isSearchingOrphans}
+            title="Buscar reseñas counted sin cliente que se parezcan a este nombre"
+            style={smallBtn(isSearchingOrphans)}
+          >
+            {isSearchingOrphans ? "…" : "Buscar reseñas"}
+          </button>
           <button
             type="button"
             onClick={onDelete}
             disabled={isPending}
-            style={{
-              padding: "5px 10px",
-              background: "transparent",
-              border: "1px solid var(--line-strong)",
-              borderRadius: 7,
-              fontSize: 12,
-              color: "var(--ink-3)",
-              cursor: isPending ? "wait" : "pointer",
-            }}
+            style={smallBtn(isPending)}
           >
             {isPending ? "…" : "Eliminar"}
           </button>
@@ -197,21 +228,21 @@ export function ClientRowItem({
             {altaLabel}
           </div>
         </div>
-        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+        <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <GhostBtn onClick={() => setOpen(true)}>Ver enlace</GhostBtn>
+          <button
+            type="button"
+            onClick={onSearchOrphans}
+            disabled={isSearchingOrphans}
+            style={mobileBtn(isSearchingOrphans)}
+          >
+            {isSearchingOrphans ? "…" : "Buscar reseñas"}
+          </button>
           <button
             type="button"
             onClick={onDelete}
             disabled={isPending}
-            style={{
-              padding: "6px 12px",
-              background: "transparent",
-              border: "1px solid var(--line-strong)",
-              borderRadius: 7,
-              fontSize: 12.5,
-              color: "var(--ink-3)",
-              cursor: isPending ? "wait" : "pointer",
-            }}
+            style={mobileBtn(isPending)}
           >
             {isPending ? "…" : "Eliminar"}
           </button>
@@ -230,6 +261,43 @@ export function ClientRowItem({
         clientPhone={client.phone}
         brand={brand}
       />
+
+      {orphanOpen && (
+        <OrphanReviewsModal
+          open={true}
+          onClose={() => {
+            setOrphanOpen(false);
+            setOrphanCandidates([]);
+          }}
+          clientId={client.id}
+          clientName={client.full_name}
+          candidates={orphanCandidates}
+        />
+      )}
     </>
   );
+}
+
+function smallBtn(loading: boolean): React.CSSProperties {
+  return {
+    padding: "5px 10px",
+    background: "transparent",
+    border: "1px solid var(--line-strong)",
+    borderRadius: 7,
+    fontSize: 12,
+    color: "var(--ink-3)",
+    cursor: loading ? "wait" : "pointer",
+  };
+}
+
+function mobileBtn(loading: boolean): React.CSSProperties {
+  return {
+    padding: "6px 12px",
+    background: "transparent",
+    border: "1px solid var(--line-strong)",
+    borderRadius: 7,
+    fontSize: 12.5,
+    color: "var(--ink-3)",
+    cursor: loading ? "wait" : "pointer",
+  };
 }
