@@ -144,6 +144,20 @@ export default async function MisResenasPage({
               shortcuts={shortcuts}
             />
             <Link
+              href={`/api/export/sales/${profile.id}?from=${range.from}&to=${range.to}`}
+              style={{
+                padding: "7px 12px",
+                background: "var(--ink)",
+                color: "#fff",
+                borderRadius: 9,
+                fontSize: 13,
+                fontWeight: 500,
+                textDecoration: "none",
+              }}
+            >
+              Descargar Excel
+            </Link>
+            <Link
               href="/panel"
               className="m-hide-mobile"
               style={{

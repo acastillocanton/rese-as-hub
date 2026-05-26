@@ -26,7 +26,7 @@ describe("pathAllowedForRole — admin", () => {
 });
 
 describe("pathAllowedForRole — sales", () => {
-  it("/panel, /clientes, /perfil, /ayuda + verificación (mig 016)", () => {
+  it("/panel, /clientes, /perfil, /ayuda + verificación (mig 016) + export propio", () => {
     expect(pathAllowedForRole("/panel", "sales")).toBe(true);
     expect(pathAllowedForRole("/panel/ranking", "sales")).toBe(true);
     expect(pathAllowedForRole("/clientes", "sales")).toBe(true);
@@ -35,6 +35,9 @@ describe("pathAllowedForRole — sales", () => {
     expect(pathAllowedForRole("/ayuda", "sales")).toBe(true);
     // mig 016: el sales puede reclamar huérfanas de su ficha.
     expect(pathAllowedForRole("/resenas/verificacion", "sales")).toBe(true);
+    // Autoservicio Excel propio desde /panel/resenas. El endpoint
+    // valida en código que el sales solo descargue su propio id.
+    expect(pathAllowedForRole("/api/export/sales/abc-123", "sales")).toBe(true);
   });
   it("NO entra a admin ni a manager", () => {
     expect(pathAllowedForRole("/dashboard", "sales")).toBe(false);
@@ -43,6 +46,7 @@ describe("pathAllowedForRole — sales", () => {
     expect(pathAllowedForRole("/gestores", "sales")).toBe(false);
     expect(pathAllowedForRole("/ajustes", "sales")).toBe(false);
     expect(pathAllowedForRole("/manager/resenas", "sales")).toBe(false);
+    // /api/export/reviews es el parte GLOBAL; sales no debe entrar.
     expect(pathAllowedForRole("/api/export/reviews", "sales")).toBe(false);
   });
 });

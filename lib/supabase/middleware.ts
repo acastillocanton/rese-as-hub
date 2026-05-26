@@ -85,7 +85,11 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
       pathname.startsWith("/panel") ||
       pathname.startsWith("/clientes") ||
       // mig 016: el comercial puede "Reclamar" reseñas huérfanas de su ficha.
-      pathname.startsWith("/resenas/verificacion")
+      pathname.startsWith("/resenas/verificacion") ||
+      // Autoservicio: descarga del Excel propio desde /panel/resenas. El
+      // endpoint /api/export/sales/[id] valida en código que el sales solo
+      // pueda exportar su propio id (resto sigue siendo admin/manager/director).
+      pathname.startsWith("/api/export/sales")
     );
   }
   if (role === "reviews_manager") {

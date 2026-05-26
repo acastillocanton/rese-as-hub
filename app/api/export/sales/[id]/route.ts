@@ -21,8 +21,7 @@ import type { Role, SalesDepartment } from "@/lib/supabase/types";
  * Acceso:
  *   • admin, reviews_manager → cualquier sales_id.
  *   • office_director → solo self o un sales con `director_id = self`.
- *   • sales → 403 (out-of-scope; futuro: dejarles exportar lo suyo
- *     desde /panel/resenas).
+ *   • sales → solo self (autoservicio desde /panel/resenas).
  *
  * Las reseñas se cargan vía service-client porque el handler ya hace
  * gating en código (defensa en profundidad) y la RLS del director está
@@ -83,9 +82,14 @@ export async function GET(
   if (
     actorRole !== "admin" &&
     actorRole !== "reviews_manager" &&
-    actorRole !== "office_director"
+    actorRole !== "office_director" &&
+    actorRole !== "sales"
   ) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  // Sales: solo puede exportar su propio Excel.
+  if (actorRole === "sales" && salesId !== user.id) {
+    return NextResponse.json({ error: "forbidden_scope" }, { status: 403 });
   }
 
   // Service-client desde aquí: la RLS del director sobre profiles está
