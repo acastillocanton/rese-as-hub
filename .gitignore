@@ -47,3 +47,12 @@ _design_package/design.tar
 # Scripts ad-hoc con datos reales (seed-people.mjs lleva emails y teléfonos
 # inline — nunca commitear). Si añades scripts de uso general, usa otra ruta.
 scripts/
+
+# Playwright
+playwright-report/
+test-results/
+e2e/.auth/
+.playwright/
+
+# Excel lock files (~$ prefix)
+~$*.xlsx
