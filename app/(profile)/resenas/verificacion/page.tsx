@@ -51,12 +51,19 @@ export default async function ResenasVerificacionPage({
 }) {
   const params = await searchParams;
   const brand = await getCurrentUserBrand();
-  const stateFilter: "pending" | "unmatched" | "removed" =
+  // El default state depende del rol: el sales solo trabaja con huérfanas,
+  // así que entra directamente a "unmatched". El resto (admin/manager/director)
+  // entra a "pending" porque su trabajo principal es validar propuestas del
+  // matcher. Necesitamos resolver el rol antes; lo hacemos abajo y derivamos
+  // el stateFilter después.
+  const explicitState =
     params.state === "unmatched"
-      ? "unmatched"
-      : params.state === "removed"
-        ? "removed"
-        : "pending";
+      ? ("unmatched" as const)
+      : params.state === "pending"
+        ? ("pending" as const)
+        : params.state === "removed"
+          ? ("removed" as const)
+          : null;
 
   if (!isSupabaseConfigured()) {
     return (
@@ -81,6 +88,11 @@ export default async function ResenasVerificacionPage({
   const scope = await getRoleScope(supabase);
   const viewerRole = (scope.role ?? "sales") as Role;
   const viewerId = scope.userId ?? "";
+  const isSalesViewer = viewerRole === "sales";
+
+  // Resolver state filter ahora que conocemos el rol.
+  const stateFilter: "pending" | "unmatched" | "removed" =
+    explicitState ?? (isSalesViewer ? "unmatched" : "pending");
 
   const reviewsQueryBase = supabase
     .from("reviews")
@@ -147,7 +159,11 @@ export default async function ResenasVerificacionPage({
     <>
       <Topbar
         title="Verificación"
-        subtitle="Bandeja de matching dudoso"
+        subtitle={
+          isSalesViewer
+            ? "Reseñas huérfanas de tu ficha"
+            : "Bandeja de matching dudoso"
+        }
         range={
           stateFilter === "pending"
             ? `${pendingCount} pendientes`
@@ -181,34 +197,54 @@ export default async function ResenasVerificacionPage({
               maxWidth: 640,
             }}
           >
-            Las reseñas <strong>Pendientes</strong> tienen una propuesta del matcher
-            con confianza entre 40% y 75% — el algoritmo cree saber quién las
-            generó pero no se atreve a contabilizar sin tu confirmación. Las{" "}
-            <strong>Sin atribuir</strong> no encontraron candidato razonable;
-            úsalas para reasignar manualmente si reconoces al cliente.
+            {isSalesViewer ? (
+              <>
+                Aquí aparecen las reseñas <strong>huérfanas</strong> de tu
+                ficha — las que dejaron clientes sin pasar por tu enlace
+                personal y no las pudimos atribuir automáticamente. Si
+                reconoces al cliente que la dejó, pulsa{" "}
+                <strong>&ldquo;Es mía&rdquo;</strong> para atribuirla a tu
+                cuenta. Si no la reconoces, déjala — un compañero o el gestor
+                podrá identificarla.
+              </>
+            ) : (
+              <>
+                Las reseñas <strong>Pendientes</strong> tienen una propuesta del matcher
+                con confianza entre 40% y 75% — el algoritmo cree saber quién las
+                generó pero no se atreve a contabilizar sin tu confirmación. Las{" "}
+                <strong>Sin atribuir</strong> no encontraron candidato razonable;
+                úsalas para reasignar manualmente si reconoces al cliente.
+              </>
+            )}
           </p>
         </Card>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <FilterChip
-            href="/resenas/verificacion?state=pending"
-            label={`Pendientes (${pendingCount})`}
-            active={stateFilter === "pending"}
-            tone="warn"
-          />
-          <FilterChip
-            href="/resenas/verificacion?state=unmatched"
-            label={`Sin atribuir (${unmatchedCount})`}
-            active={stateFilter === "unmatched"}
-            tone="neutral"
-          />
-          <FilterChip
-            href="/resenas/verificacion?state=removed"
-            label={`Eliminadas (${removedCount})`}
-            active={stateFilter === "removed"}
-            tone="neutral"
-          />
-        </div>
+        {/* Pestañas: el sales solo trabaja con "Sin atribuir" — ocultamos
+            Pendientes (nunca le va a tocar validar matches dudosos del
+            matcher: o son suyas directas, o son huérfanas) y Eliminadas
+            (no puede gestionarlas). */}
+        {!isSalesViewer && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <FilterChip
+              href="/resenas/verificacion?state=pending"
+              label={`Pendientes (${pendingCount})`}
+              active={stateFilter === "pending"}
+              tone="warn"
+            />
+            <FilterChip
+              href="/resenas/verificacion?state=unmatched"
+              label={`Sin atribuir (${unmatchedCount})`}
+              active={stateFilter === "unmatched"}
+              tone="neutral"
+            />
+            <FilterChip
+              href="/resenas/verificacion?state=removed"
+              label={`Eliminadas (${removedCount})`}
+              active={stateFilter === "removed"}
+              tone="neutral"
+            />
+          </div>
+        )}
 
         {reviews.length === 0 ? (
           <Card padding={32}>
@@ -216,7 +252,9 @@ export default async function ResenasVerificacionPage({
               {stateFilter === "pending"
                 ? "Bandeja vacía"
                 : stateFilter === "unmatched"
-                  ? "Sin reseñas no atribuidas"
+                  ? isSalesViewer
+                    ? "Sin huérfanas en tu ficha"
+                    : "Sin reseñas no atribuidas"
                   : "Sin reseñas eliminadas"}
             </div>
             <div
@@ -230,7 +268,9 @@ export default async function ResenasVerificacionPage({
               {stateFilter === "pending"
                 ? "Todo en orden por aquí"
                 : stateFilter === "unmatched"
-                  ? "Cero reseñas huérfanas"
+                  ? isSalesViewer
+                    ? "Nada que reclamar"
+                    : "Cero reseñas huérfanas"
                   : "Ninguna eliminación detectada"}
             </div>
             <p
@@ -242,22 +282,28 @@ export default async function ResenasVerificacionPage({
                 maxWidth: 560,
               }}
             >
-              {stateFilter === "pending"
-                ? "Cuando el cron sincronice una reseña con confianza intermedia, aparecerá aquí para que decidas. Mientras tanto puedes revisar las reseñas "
-                : stateFilter === "unmatched"
-                  ? "El matcher ha encontrado un candidato razonable para todas las reseñas sincronizadas. Si crees que hay alguna mal asignada, revisa la pestaña "
-                  : "Cuando el cron de Places API note que una reseña ya no aparece en Google, se marcará aquí automáticamente. También puedes marcarla a mano desde las pestañas "}
-              <Link
-                href={
-                  stateFilter === "pending"
-                    ? "/resenas/verificacion?state=unmatched"
-                    : "/resenas/verificacion?state=pending"
-                }
-                style={{ color: "var(--ink)" }}
-              >
-                {stateFilter === "pending" ? "sin atribuir" : "pendientes"}
-              </Link>
-              .
+              {isSalesViewer ? (
+                "Ahora mismo no hay reseñas huérfanas pendientes de identificar en tu ficha. Vuelve a esta sección cuando recibas una notificación o sospeches que alguna reseña de Google no entró por tu enlace."
+              ) : (
+                <>
+                  {stateFilter === "pending"
+                    ? "Cuando el cron sincronice una reseña con confianza intermedia, aparecerá aquí para que decidas. Mientras tanto puedes revisar las reseñas "
+                    : stateFilter === "unmatched"
+                      ? "El matcher ha encontrado un candidato razonable para todas las reseñas sincronizadas. Si crees que hay alguna mal asignada, revisa la pestaña "
+                      : "Cuando el cron de Places API note que una reseña ya no aparece en Google, se marcará aquí automáticamente. También puedes marcarla a mano desde las pestañas "}
+                  <Link
+                    href={
+                      stateFilter === "pending"
+                        ? "/resenas/verificacion?state=unmatched"
+                        : "/resenas/verificacion?state=pending"
+                    }
+                    style={{ color: "var(--ink)" }}
+                  >
+                    {stateFilter === "pending" ? "sin atribuir" : "pendientes"}
+                  </Link>
+                  .
+                </>
+              )}
             </p>
           </Card>
         ) : (
