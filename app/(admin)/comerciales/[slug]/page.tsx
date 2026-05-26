@@ -244,8 +244,10 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
   const pct = isMonthRange && meta > 0 ? Math.round((reviewsCounted / meta) * 100) : null;
 
   // Querystring para los enlaces dependientes del rango (Excel, etc.).
+  // El Excel individual usa el endpoint /api/export/sales/[id] con
+  // formato propio del comercial (cabecera + tabla limpia), distinto del
+  // parte global /api/export/reviews (4 hojas departamentales + Detalle).
   const exportParams = new URLSearchParams({
-    sales_id: sales.id,
     from: range.from,
     to: range.to,
   });
@@ -285,7 +287,10 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
               label={range.label}
               shortcuts={shortcuts}
             />
-            <Link href={`/api/export/reviews?${exportParams.toString()}`} style={primaryBtn}>
+            <Link
+              href={`/api/export/sales/${sales.id}?${exportParams.toString()}`}
+              style={primaryBtn}
+            >
               Descargar Excel
             </Link>
             <Link href="/comerciales" style={linkBtn}>

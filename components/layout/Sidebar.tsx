@@ -12,7 +12,6 @@ import {
   MapPin,
   ListChecks,
   Star,
-  Download,
   Link2,
   LifeBuoy,
   Trophy,
@@ -223,7 +222,6 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
     items: [
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
       { id: "review-list", label: "Lista de reseñas", href: "/manager/resenas", icon: Star },
-      { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },
     ],
   },
   {
@@ -283,7 +281,6 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
       // (mig 016 abre /resenas/verificacion al gestor).
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
       { id: "reviews", label: "Reseñas", href: "/manager/resenas", icon: Star },
-      { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },
     ],
   },
 ];
@@ -319,7 +316,6 @@ export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
     label: "Reseñas del equipo",
     items: [
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
-      { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },
     ],
   },
   {

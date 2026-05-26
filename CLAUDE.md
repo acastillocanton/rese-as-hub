@@ -32,7 +32,7 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test               # Vitest unit tests (126 tests: matcher + date-range + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url)
+npm test               # Vitest unit tests (144 tests: matcher + date-range + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright happy paths (login + admin nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo
@@ -76,6 +76,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | Anti-fraude: marcado de reseñas duplicadas por client_id (mig 015) | ✅ (2026-05-26) |
 | v2 · Verificación abierta a todos los roles (mig 016) | ✅ (2026-05-26) |
 | v2 · Link a ficha de Google en cada listado de reseñas | ✅ (2026-05-26) |
+| v2 · Reformar exportación Excel (sidebar → /comerciales, + Excel individual) | ✅ (2026-05-26) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -540,6 +541,39 @@ Hoy corren ambos crons en paralelo (`0 5 * * *` Places + `5 5 * * *` Business Pr
 - Hacer el bloque A en orden: si la primera ficha falla OAuth, no continuar con las otras 6.
 - Bloque B (dedup) ejecutar **manualmente** vía Supabase Dashboard → SQL Editor. NO meterlo como migración (es one-shot, no idempotente).
 - Bloque C-E pueden hacerse en commits separados después.
+
+### 4.27 Exportación Excel — sidebar → `/comerciales` + Excel individual
+
+Hasta v2 había un item "Exportar Excel" en el sidebar (admin + manager + director) que llevaba a `/manager/export`, además de un botón "Descargar Excel" en `/comerciales/[slug]` que en realidad descargaba el parte GLOBAL filtrado por sales_id (engañoso).
+
+**Reorganización (2026-05-26)**:
+
+- **Item del sidebar eliminado** de los 3 sidebars. La ruta `/manager/export` sigue existiendo (acceso por URL directa para filtros avanzados: ficha, match_state, etc.). El icono `Download` ya no se importa en `Sidebar.tsx`.
+- **Card "Exportar resultados" en `/comerciales`** (entre stats y `SalesFilters`, oculta con `?archived=1`). Tres atajos rápidos: Mes actual / Mes pasado / Último trimestre. Apuntan al endpoint global `/api/export/reviews` (sin cambios). Link discreto a "exportación personalizada" → `/manager/export` para filtros avanzados. Calculados con `defaultShortcuts()` de [lib/date-range.ts](lib/date-range.ts).
+- **Botón "Descargar Excel" en `/comerciales/[slug]`** ahora apunta al **endpoint nuevo** `/api/export/sales/[id]?from=Y&to=Z` que devuelve un Excel propio del comercial.
+
+**Excel individual** ([lib/reports/sales-report.ts](lib/reports/sales-report.ts), endpoint en [app/api/export/sales/[id]/route.ts](app/api/export/sales/[id]/route.ts)):
+
+- 1 sola hoja "Reseñas". Bloque cabecera (filas 3-7):
+  - Comercial · Fecha incorporación (DD/MM/YYYY) · Zona ("Nacional (Pardiñas)") · Periodo · Total reseñas.
+- Tabla (fila 9+): Fecha · Cliente · Autor · Valoración (`★★★★☆ (4)`) · Enlace.
+- Columna Enlace: hyperlink Excel a `buildGoogleReviewListUrl(place_id)` (§4.25). Si la ficha no tiene place_id, muestra "—".
+- **Reseñas incluidas**: solo `counted` + `is_duplicate=false` + `removed_at IS NULL` (KPI-grade, mig 015 anti-fraude aplicado). Si no hay nada en el rango, la tabla muestra "Sin reseñas atribuidas en este periodo.".
+
+**Auth del nuevo endpoint** (defensa en profundidad además del middleware):
+- admin / reviews_manager → cualquier `sales_id`.
+- office_director → solo `self` o un sales con `director_id = self`. Si intenta exportar a alguien fuera de equipo: `403 forbidden_scope`.
+- sales → `403 forbidden` (out-of-scope ahora; futuro: dejarles desde `/panel/resenas` con el mismo endpoint).
+
+**Reutilización**: ExcelJS dynamic import (igual que `/api/export/reviews`); `buildGoogleReviewListUrl` (§4.25); `parseRange` ([lib/date-range.ts](lib/date-range.ts)); `createServiceClient` para leer las reseñas (gating en código ya cubierto).
+
+**Tests** ([lib/reports/__tests__/sales-report.test.ts](lib/reports/__tests__/sales-report.test.ts)): 18 unit tests de funciones puras (`formatJoinedAtForExcel`, `formatDepartmentForExcel`, `formatReviewDateForExcel`, `formatRatingForExcel`, `buildSalesReportFilename`). El Buffer del Excel no se testa (overkill — requiere abrir el binario).
+
+⚠️ **NO confundir** con `weekly-report.ts` (parte GLOBAL con 4 hojas departamentales + Detalle). Son dos exports distintos: el global responde a "parte oficial de Raquel" y vive en `/api/export/reviews`; el individual responde a "auditoría de un comercial" y vive en `/api/export/sales/[id]`.
+
+---
+
+## 5. Setup en otro Mac
 
 `.env.local` está en `.gitignore` — no viaja. En cada Mac:
 
