@@ -59,7 +59,7 @@ npm run build          # build de producción (verifica tipos y compila)
 npm run start          # server de producción tras npm run build
 npm run typecheck      # tsc --noEmit
 npm run lint           # next lint
-npm test               # Vitest unit (99 tests: matcher 22 + date-range 14 + Places 20 + reconcile 5 + leaderboard + branding + messaging + role/route helpers)
+npm test               # Vitest unit (107 tests: matcher 22 + date-range 14 + Places 20 + reconcile 5 + leaderboard + branding + messaging + role/route + duplicate-detection 8)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright E2E (login + admin-nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo
@@ -302,6 +302,8 @@ El MVP está hecho cuando **todas** estas condiciones son verdad:
 ## 9. Open Questions
 
 Cuestiones sin resolver que necesitan input antes (o durante) la implementación. Las marcadas con ~~tachado~~ se cerraron en v1; las abiertas pasan al **backlog v2** (`CLAUDE.md` §8).
+
+**Cerrada en v2 (2026-05-26) · Anti-fraude por enlace de cliente**: cuando un cliente reenvía su enlace a familia/amigos, varias reseñas pueden llegar al mismo `client_id`. **Decisión**: todas se atribuyen al mismo `sales_id` (correcto — el comercial sabe que su cliente trajo más gente), pero solo la primera por `google_created_at` cuenta en KPIs/pagos. Migración 015 introduce `reviews.is_duplicate boolean`. Ver `CLAUDE.md` §4.23 para el flujo completo (cron + server actions + UI badge + Excel).
 
 1. **Dominio definitivo de producción**. El diseño usa `reseñahub.es`; pendiente confirmar si se compra o usamos otro (¿`resenas.inseryal.es`?). No bloquea desarrollo local. **Dominio corporativo de emails confirmado**: `inseryal.es` (con "y").
 2. **Branding final** (logo, paleta exacta, tipografía si se aparta de la del prototipo). El chat original dijo "logo placeholder, lo aporto luego". Hasta que llegue, usamos el cuadrado negro con `r` que tiene el prototipo.

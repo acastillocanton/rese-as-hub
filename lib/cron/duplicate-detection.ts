@@ -28,6 +28,37 @@ export type DuplicateDecision = {
 };
 
 /**
+ * Función PURA — decide la marca de duplicado de una reseña entrante dada
+ * la lista de principales activas (is_duplicate=false, removed_at IS NULL)
+ * que comparten su mismo `client_id`.
+ *
+ * Se separa para tener tests unitarios sin mockear Supabase. La consulta
+ * a BD vive en `decideDuplicateForClient`.
+ */
+export function decideFromPrincipals(
+  principals: { id: string; google_created_at: string }[],
+  incomingGoogleCreatedAt: string,
+): DuplicateDecision {
+  if (principals.length === 0) {
+    return { newIsDuplicate: false, demotedReviewId: null };
+  }
+  // Aunque en el caso ideal solo hay 1 principal activa por client_id, si
+  // hubiera varias (estado inconsistente) comparamos contra la más antigua.
+  const oldest = principals.reduce((min, r) =>
+    new Date(r.google_created_at).getTime() <
+    new Date(min.google_created_at).getTime()
+      ? r
+      : min,
+  );
+  const incomingMs = new Date(incomingGoogleCreatedAt).getTime();
+  const oldestMs = new Date(oldest.google_created_at).getTime();
+  if (incomingMs >= oldestMs) {
+    return { newIsDuplicate: true, demotedReviewId: null };
+  }
+  return { newIsDuplicate: false, demotedReviewId: oldest.id };
+}
+
+/**
  * Decide si una reseña que va a insertarse (o reasignarse a un client) debe
  * marcarse duplicada, y si hay que demotar a una principal previa.
  *
@@ -59,29 +90,7 @@ export async function decideDuplicateForClient(
     { id: string; google_created_at: string }[]
   >();
 
-  if (!principals || principals.length === 0) {
-    return { newIsDuplicate: false, demotedReviewId: null };
-  }
-
-  // Debería ser exactamente 1 (índice UNIQUE en migración futura si quisieras
-  // el constraint duro). Si por accidente hay varias, comparamos contra la
-  // más antigua — defensivo.
-  const oldest = principals.reduce((min, r) =>
-    new Date(r.google_created_at).getTime() <
-    new Date(min.google_created_at).getTime()
-      ? r
-      : min,
-  );
-
-  const incomingMs = new Date(args.incomingGoogleCreatedAt).getTime();
-  const oldestMs = new Date(oldest.google_created_at).getTime();
-
-  if (incomingMs >= oldestMs) {
-    // La nueva llega después → es duplicada.
-    return { newIsDuplicate: true, demotedReviewId: null };
-  }
-  // La nueva es más antigua → ella pasa a principal, la vieja a duplicada.
-  return { newIsDuplicate: false, demotedReviewId: oldest.id };
+  return decideFromPrincipals(principals ?? [], args.incomingGoogleCreatedAt);
 }
 
 /**

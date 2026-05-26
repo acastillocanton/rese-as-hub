@@ -25,7 +25,7 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 - **Vercel Hobby** hosting + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC ≈ 6-7 AM España) + **GitHub Action horario** (cada hora 06-23 UTC) llamando al cron Places para fichas activas + botón **"Sincronizar ahora"** en UI (admin/gestor/comercial)
 - **ExcelJS** (dynamic import server-side) para export mensual del gestor
 - **qrcode.react** + Zod + middleware con RLS y redirección por rol
-- **Vitest** unit tests (99 verdes — matcher + date-range + schema importador + cliente Places + leaderboard + branding + messaging + role/route helpers)
+- **Vitest** unit tests (107 verdes — matcher + date-range + schema importador + cliente Places + leaderboard + branding + messaging + role/route helpers + duplicate-detection)
 - **Playwright** E2E (login + admin-nav smoke; setup en [`playwright.config.ts`](playwright.config.ts) + helper de auth via `/login/manual`)
 - **eslint-plugin-jsx-a11y** activo (preset `recommended`); 0 errors, deuda menor en modal backdrops como warnings documentadas
 - **Content-Security-Policy** + HSTS + headers de seguridad en [`next.config.ts`](next.config.ts)
@@ -92,6 +92,7 @@ npm run dev
    supabase/migrations/012_office_director_policies.sql
    supabase/migrations/013_director_team_scope.sql
    supabase/migrations/014_location_brand.sql
+   supabase/migrations/015_review_duplicates.sql
    ```
 4. Auth: usar el flujo OTP `token_hash` documentado en [CLAUDE.md §4.1](CLAUDE.md). Las plantillas de email en Supabase Dashboard → Authentication → Emails deben usar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type={email|invite}`.
 
@@ -283,7 +284,8 @@ supabase/migrations/    ─ 001 schema, 002 RLS, 003 seed, 004 google_oauth,
                          009 review_source (enum business_profile/places_api/manual),
                          010 review_removed_at (soft delete + view reviews_active),
                          011-013 office_director (role, policies, team scope por director_id),
-                         014 location_brand (enum inseryal/marina_dor_construcciones)
+                         014 location_brand (enum inseryal/marina_dor_construcciones),
+                         015 review_duplicates (is_duplicate boolean + backfill anti-fraude)
 e2e/                    ─ Playwright specs (login + admin-nav) + helpers/auth.ts
 test/                   ─ server-only-stub.ts (para que Vitest importe módulos server-only)
 middleware.ts           ─ Auth + roles + redirección por rol
