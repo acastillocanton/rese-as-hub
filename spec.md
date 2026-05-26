@@ -59,7 +59,7 @@ npm run build          # build de producción (verifica tipos y compila)
 npm run start          # server de producción tras npm run build
 npm run typecheck      # tsc --noEmit
 npm run lint           # next lint
-npm test               # Vitest unit (107 tests: matcher 22 + date-range 14 + Places 20 + reconcile 5 + leaderboard + branding + messaging + role/route + duplicate-detection 8)
+npm test               # Vitest unit (172 tests: matcher 22 + date-range 14 + Places 20 + reconcile 5 + leaderboard + branding + messaging + role/route + duplicate-detection 8 + verification-gating 14 + review-url 5 + sales-report 18 + orphan-reviews 10 + low-rating-alerts 18)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright E2E (login + admin-nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo

@@ -25,7 +25,7 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 - **Vercel Hobby** hosting + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC ≈ 6-7 AM España) + **GitHub Action horario** (cada hora 06-23 UTC) llamando al cron Places para fichas activas + botón **"Sincronizar ahora"** en UI (admin/gestor/comercial)
 - **ExcelJS** (dynamic import server-side) para export mensual del gestor
 - **qrcode.react** + Zod + middleware con RLS y redirección por rol
-- **Vitest** unit tests (107 verdes — matcher + date-range + schema importador + cliente Places + leaderboard + branding + messaging + role/route helpers + duplicate-detection)
+- **Vitest** unit tests (172 verdes — matcher + date-range + cliente Places + leaderboard + branding + messaging + role/route helpers + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts)
 - **Playwright** E2E (login + admin-nav smoke; setup en [`playwright.config.ts`](playwright.config.ts) + helper de auth via `/login/manual`)
 - **eslint-plugin-jsx-a11y** activo (preset `recommended`); 0 errors, deuda menor en modal backdrops como warnings documentadas
 - **Content-Security-Policy** + HSTS + headers de seguridad en [`next.config.ts`](next.config.ts)
@@ -93,6 +93,8 @@ npm run dev
    supabase/migrations/013_director_team_scope.sql
    supabase/migrations/014_location_brand.sql
    supabase/migrations/015_review_duplicates.sql
+   supabase/migrations/016_verification_open_to_all.sql
+   supabase/migrations/017_low_rating_alerts.sql
    ```
 4. Auth: usar el flujo OTP `token_hash` documentado en [CLAUDE.md §4.1](CLAUDE.md). Las plantillas de email en Supabase Dashboard → Authentication → Emails deben usar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type={email|invite}`.
 
@@ -176,20 +178,21 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/privacidad`, `/terminos`     | público           | Páginas legales (linkadas desde login)                           |
 | `/perfil`                      | admin + sales + manager | Foto + datos de cuenta + cerrar sesión                     |
 | `/ayuda`                       | admin + sales + manager | Manual del comercial (10 secciones + 9 capturas + lightbox) |
-| `/dashboard`                   | admin + manager   | KPIs reales: visitas/comerciales/fichas + chart 6 meses + leaderboard |
-| `/comerciales`                 | admin + manager   | Lista + invite + delete + fila navegable                         |
-| `/comerciales/:slug`           | admin + manager   | Ficha editable: datos, KPIs, clientes, reseñas                   |
+| `/dashboard`                   | admin + manager   | KPIs reales: ≤2★/comerciales/fichas/reseñas + chart reseñas 6 meses + banner alertas + leaderboard |
+| `/comerciales`                 | admin + manager + office_director | Lista + invite + card "Exportar resultados" con RangePicker |
+| `/comerciales/:slug`           | admin + manager + office_director | Ficha editable: KPIs, clientes, reseñas + bot. "Descargar Excel" individual |
+| `/directores`                  | admin + manager   | Lista + invite + delete de directores de oficina (mig 011)       |
 | `/gestores`                    | admin             | Lista + invite + delete de gestores                              |
-| `/fichas`                      | admin             | Lista + Conectar/Desconectar Google                              |
-| `/fichas/:id/conectar`         | admin             | UI selección de Business Profile location                        |
-| `/resenas/verificacion`        | admin             | Bandeja pending/unmatched/eliminadas + confirm/reject/reassign/marcar eliminada |
+| `/fichas`                      | admin + office_director | Lista + Conectar/Desconectar Google                        |
+| `/fichas/:id/conectar`         | admin + office_director | UI selección de Business Profile location                  |
+| `/resenas/verificacion`        | 4 roles (mig 016) | Bandeja pending/unmatched/eliminadas + confirm/reject/reassign/marcar eliminada/claim |
 | `/panel`                       | sales             | KPIs propios + RangePicker + proyección ETA + card mobile clientes |
 | `/panel/enlace`                | sales             | URL + QR + plantilla editable + deep-links WhatsApp/Email/SMS    |
-| `/panel/resenas`               | sales             | Histórico de reseñas atribuidas con RangePicker                  |
+| `/panel/resenas`               | sales             | Histórico de reseñas atribuidas con RangePicker + bot. "Descargar Excel" propio |
 | `/panel/ranking`               | sales             | Ranking de su equipo (sales con mismo `director_id`) en mobile cards |
 | `/ranking`                     | admin + manager + office_director | Ranking completo desktop (todos los productores según RLS) |
 | `/clientes`                    | sales             | Lista + alta + dialog QR/plantilla/deep-links                    |
-| `/clientes/:slug`              | sales             | Ficha cliente editable + visitas + reseñas atribuidas            |
+| `/clientes/:slug`              | sales             | Ficha cliente editable + visitas (info contextual del comercial) + reseñas atribuidas + botón "Buscar reseñas" |
 | `/manager/resenas`             | reviews_manager + admin | Lista global de reseñas con filtros                        |
 | `/manager/export`              | reviews_manager + admin | Descarga del Excel mensual                                 |
 | `/api/google/oauth/start`      | admin             | Inicia consent OAuth con state CSRF                              |
@@ -197,7 +200,8 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/api/cron/sync-google-reviews`| `Bearer CRON_SECRET` | Sincroniza reseñas Business Profile + matcher + email batch  |
 | `/api/cron/sync-places-reviews`| `Bearer CRON_SECRET` | Sincroniza reseñas Places API + matcher + email batch         |
 | `/api/sync/now`                | admin + manager + sales | Sync manual on-demand. Admin/manager → todas o location_id concreto. Sales → solo su ficha asignada. |
-| `/api/export/reviews`          | admin + manager   | Devuelve `.xlsx` con ExcelJS (límite 5000 reviews defensivo)    |
+| `/api/export/reviews`          | admin + manager + office_director | Excel global (4 hojas departamentales + Detalle) con ExcelJS dynamic import |
+| `/api/export/sales/[id]`       | admin + manager + office_director + sales (self) | Excel individual del comercial (cabecera + tabla con hyperlinks Google) |
 | `/api/admin/notify-failed`     | admin             | GET lista + POST reintenta emails de notificación fallidos      |
 
 ---
