@@ -15,8 +15,8 @@
 **Para quién**:
 - **Admin** (2 personas: Alejandro Castillo y Rafael Ibáñez) — visión global, alta/baja de fichas Google, directores y gestores, configuración del sistema.
 - **Director de oficina** (office_director, migraciones 011-013) — rol DUAL: admin scoped a SU EQUIPO de comerciales (`profiles.director_id`) **+ comercial productor** (tiene su propio `/c/{slug}`, clientes y reseñas atribuidas como un sales). Tiene los mismos campos productivos que un sales (department, language si internacional, monthly_goal) y aparece en leaderboard/Excel marcado con "★". Una location puede tener varios directores, cada uno con su equipo. Gestiona los comerciales de su equipo, verifica sus reseñas, exporta su Excel; sobre su ficha puede conectar OAuth/Place ID. NO accede a `/gestores`, `/directores` ni `/ajustes`. Solo admin / reviews_manager lo invitan/editan/archivan desde `/directores`.
-- **Comercial** (sales) — recibe invitación, accede a su panel (escritorio + móvil), genera un enlace personalizado por cliente, ve sus reseñas y ranking. Puede tener un `director_id` asignado (su responsable directo dentro de la ficha) o quedar en el pool del admin/reviews_manager si es null.
-- **Gestor de reseñas** (reviews_manager) — comparte vista global con admin (dashboard + comerciales) y tiene plenos permisos sobre el rol sales (invitar, editar, eliminar, reasignar `director_id`). Pantallas adicionales: `/manager/resenas` y `/manager/export`. NO accede a `/gestores`, `/directores`, `/fichas`, `/resenas/verificacion`, `/ajustes`.
+- **Comercial** (sales) — recibe invitación, accede a su panel (escritorio + móvil), genera un enlace personalizado por cliente, ve sus reseñas y ranking. Puede tener un `director_id` asignado (su responsable directo dentro de la ficha) o quedar en el pool del admin/reviews_manager si es null. Desde mig 016 también accede a `/resenas/verificacion` con permiso acotado a "Reclamar" reseñas huérfanas (unmatched) de SU ficha — útil cuando un cliente deja reseña sin pasar por el enlace personal.
+- **Gestor de reseñas** (reviews_manager) — comparte vista global con admin (dashboard + comerciales) y tiene plenos permisos sobre el rol sales (invitar, editar, eliminar, reasignar `director_id`). Pantallas adicionales: `/manager/resenas`, `/manager/export` y `/resenas/verificacion` (paridad con admin tras mig 016: confirm/reject/reassign/markRemoved/restore). NO accede a `/gestores`, `/directores`, `/fichas`, `/ajustes`.
 
 **Por qué**:
 1. Eliminar el trabajo manual semanal del gestor de reseñas.
@@ -97,7 +97,6 @@ app/                              Next.js App Router
     dashboard/                    01 · Dashboard general
     comerciales/                  02 · Lista
     comerciales/[slug]/           03 · Ficha del comercial
-    resenas/verificacion/         06 · Motor de verificación
     fichas/                       Gestión de fichas Google + OAuth
     ajustes/
   (sales)/                        Layout + páginas del rol comercial
@@ -106,7 +105,10 @@ app/                              Next.js App Router
   (manager)/                      Layout + páginas del gestor de reseñas
     manager/resenas/              Listado solo-lectura
     manager/export/               Generador Excel
-  (profile)/                      Layout compartido (3 roles)
+  (profile)/                      Layout compartido (4 roles)
+    perfil/                       Datos personales + avatar
+    ayuda/                        Centro de ayuda
+    resenas/verificacion/         06 · Motor de verificación (mig 016: 4 roles con permisos por rol)
     perfil/                       Foto + datos + cerrar sesión
     ayuda/                        Manual del comercial (10 secciones + capturas)
   c/[salesSlug]/                  Landing pública (route handler, sin layout)

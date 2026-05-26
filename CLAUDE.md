@@ -299,7 +299,7 @@ La tabla `reviews` tiene columna `removed_at` (migración 010). Cuando es NOT NU
 - NO cuenta en KPIs.
 - SÍ se conserva en BD (con su `match_state`, `sales_id`, `client_id` intactos) por si Google la restaura.
 
-Solo vía **manual**: server actions `markReviewRemoved` / `restoreReview` en `app/(admin)/resenas/verificacion/actions.ts`. Componente client `<RemovalControls />` integrado en `/resenas/verificacion` (todas las pestañas) y en cada fila de `/manager/resenas`. Acceso: admin + reviews_manager.
+Solo vía **manual**: server actions `markReviewRemoved` / `restoreReview` en `app/(profile)/resenas/verificacion/actions.ts` (movido en mig 016 desde `(admin)/`). Componente client `<RemovalControls />` integrado en `/resenas/verificacion` (todas las pestañas) y en cada fila de `/manager/resenas`. Acceso: admin + reviews_manager + office_director (scope a su equipo o location). El rol sales NO puede marcar/restaurar.
 
 ⚠️ **Detección automática DESACTIVADA**: `lib/google/sync-places.ts` tiene una función `reconcileRemoved` (testada y exportada como `__test_reconcileRemoved`) pero **NO se llama desde el flujo principal**. Razón: Google Places API con `reviews_sort=newest` no es consistente entre llamadas — distintos frontales pueden devolver conjuntos ligeramente distintos del mismo Place ID, causando falsos positivos (marcar como eliminada una reseña que sigue existiendo y reaparece en el siguiente sync). En el primer despliegue de la lógica automática se marcaron 2 reseñas reales como eliminadas; se restauraron manualmente y se desactivó la lógica.
 
@@ -378,7 +378,7 @@ Un cliente puede reenviar su enlace `/c/{sales-slug}/{client-slug}` a familia/am
 2. Nueva > principal existente (cronológicamente) → marca duplicada.
 3. Nueva < principal existente (Places API trae histórico) → la nueva pasa a principal, demota la antigua + entrada `audit_log` con `action='demoted_by_older_duplicate'`.
 
-**Flujo en verificación manual** ([app/(admin)/resenas/verificacion/actions.ts](app/(admin)/resenas/verificacion/actions.ts)):
+**Flujo en verificación manual** ([app/(profile)/resenas/verificacion/actions.ts](app/(profile)/resenas/verificacion/actions.ts) — movido en mig 016):
 - `confirmReview`: re-aplica la regla al cambiar a `counted`.
 - `reassignReview`: idem + promueve la siguiente duplicada activa del cliente "huérfano" cuando se mueve el reviewId a otro cliente.
 - `rejectReview`: si la rechazada era principal con duplicadas activas, promueve la siguiente más antigua a principal (sin esto, todas quedarían como duplicadas y nadie cuenta).
@@ -415,6 +415,14 @@ La pantalla `/resenas/verificacion` vivía en `app/(admin)/resenas/verificacion/
 - Nueva server action `claimReview` específica para sales — reutiliza `createClientRecord` (existente en `app/(sales)/clientes/actions.ts`), aplica anti-fraude (mig 015) y deja audit log con `action='claim'`. Race-safe: el UPDATE con `.is("sales_id", null)` + RLS `reviews_sales_claim_update` WITH CHECK bloquea reclamaciones concurrentes.
 - `ReviewVerificationRow.tsx` se ramifica entre `<SalesRow>` (panel "Es mía" con dropdown de clientes propios + "+ Nuevo cliente" inline) y `<FullRow>` (UX original para admin/manager/director).
 - Sidebar: `SALES_SIDEBAR_GROUPS` ganó grupo "Reseñas" con item Verificación. `MANAGER_SIDEBAR_GROUPS` lo añadió entre Comerciales y Reseñas. `OFFICE_DIRECTOR_SIDEBAR_GROUPS` ya lo tenía.
+
+**UX dedicada por rol en `page.tsx`** (commit `0303323`):
+- **Default state**: sales entra a `?state=unmatched` (huérfanas de su ficha); el resto entra a `?state=pending`. El sales nunca tiene pending propias relevantes, así que arrancar ahí le mostraba pantalla vacía y daba la impresión de "estoy en el panel del admin".
+- **Pestañas ocultas para sales**: no se renderizan las 3 chips de filtro (Pendientes / Sin atribuir / Eliminadas). El sales solo trabaja con huérfanas, así que ocultarlas evita ruido. Los otros 3 roles las siguen viendo.
+- **Copy del Topbar y de la card "Cómo usar esta bandeja"** se ramifica según `isSalesViewer`:
+  - sales → subtitle "Reseñas huérfanas de tu ficha" + explicación de qué son las huérfanas y cómo reclamar.
+  - resto → subtitle "Bandeja de matching dudoso" + copy original sobre matcher con confianza intermedia.
+- **Empty state** también ramificado: "Nada que reclamar" / "Sin huérfanas en tu ficha" para sales, sin link cruzado a otras pestañas que él no tiene.
 
 **Patrón mixto cookie/service-client en `actions.ts`** (decisión consciente):
 - **sales (claim)** → cookie-client + RLS `reviews_sales_claim_update` WITH CHECK como garantía dura.
