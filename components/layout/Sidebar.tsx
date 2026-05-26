@@ -295,9 +295,6 @@ export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
     label: "Inicio",
     items: [
       { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      // Ranking del equipo del director (filtrado por RLS) — él mismo
-      // aparece como una fila más del leaderboard porque es productor.
-      { id: "team-ranking", label: "Ranking", href: "/ranking", icon: Trophy },
     ],
   },
   {
@@ -310,18 +307,15 @@ export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
     ],
   },
   {
-    id: "team-reviews",
-    label: "Reseñas del equipo",
-    items: [
-      { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
-    ],
-  },
-  {
     id: "team",
     label: "Mi oficina",
     items: [
+      { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
       { id: "sales", label: "Comerciales", href: "/comerciales", icon: Users },
       { id: "branch", label: "Mi ficha", href: "/fichas", icon: MapPin },
+      // Ranking del equipo del director (filtrado por RLS) — él mismo
+      // aparece como una fila más del leaderboard porque es productor.
+      { id: "team-ranking", label: "Ranking", href: "/ranking", icon: Trophy },
     ],
   },
 ];
