@@ -86,6 +86,36 @@ export async function recordOpenAndRedirect(opts: {
     clientId = client?.id ?? null;
   }
 
+  const truncatedUA = truncate(opts.userAgent, 512);
+
+  // Dedupe defensivo: si el mismo navegador (user_agent) del mismo
+  // cliente abrió este enlace en los últimos 5 minutos, NO insertamos
+  // otra fila. Casos típicos:
+  //   • Usuario abre Google, vuelve atrás y re-click.
+  //   • Previews/prefetch del navegador en móvil que disparan dos GETs.
+  //   • Comercial probando su propio enlace varias veces seguidas.
+  // El segundo GET sigue redirigiendo normal — el usuario no nota nada.
+  // Solo evitamos inflar KPIs y la lista "Visitas recientes" del
+  // dashboard. Solo aplicamos si hay client_id Y user_agent (las visitas
+  // anónimas o sin UA fingerprintable se cuentan tal cual).
+  if (clientId && truncatedUA) {
+    const cutoff = new Date(Date.now() - 5 * 60_000).toISOString();
+    const { data: recent } = await supabase
+      .from("share_links")
+      .select("id")
+      .eq("sales_id", sales.id)
+      .eq("client_id", clientId)
+      .eq("user_agent", truncatedUA)
+      .gte("opened_at", cutoff)
+      .limit(1);
+    if (recent && recent.length > 0) {
+      return {
+        redirectTo: buildGoogleReviewUrl(loc?.google_place_id ?? null),
+        recorded: false,
+      };
+    }
+  }
+
   const linkToken = randomBytes(8).toString("hex");
   const payload = {
     sales_id: sales.id,
@@ -93,7 +123,7 @@ export async function recordOpenAndRedirect(opts: {
     location_id: sales.location_id,
     link_token: linkToken,
     source,
-    user_agent: truncate(opts.userAgent, 512),
+    user_agent: truncatedUA,
   };
   // NOTE: cast until we regenerate types with `supabase gen types typescript`.
   await supabase.from("share_links").insert(payload as never);
