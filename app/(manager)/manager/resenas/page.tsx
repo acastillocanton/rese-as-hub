@@ -209,7 +209,7 @@ export default async function ManagerResenasPage({
             method="GET"
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr auto",
+              gridTemplateColumns: "1fr 1fr 1fr 1fr auto",
               gap: 12,
               alignItems: "end",
             }}
