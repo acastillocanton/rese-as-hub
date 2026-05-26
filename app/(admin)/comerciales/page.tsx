@@ -14,7 +14,8 @@ import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendSalesAccess } from "./actions";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
-import { defaultShortcuts } from "@/lib/date-range";
+import { defaultShortcuts, parseRange, type DateRange } from "@/lib/date-range";
+import { RangePicker } from "@/components/ui/RangePicker";
 import { Download } from "lucide-react";
 
 const DEPARTMENTS = new Set<SalesDepartment>([
@@ -64,6 +65,8 @@ type PageProps = {
     location_id?: string;
     director_id?: string;
     department?: string;
+    from?: string;
+    to?: string;
   }>;
 };
 
@@ -79,6 +82,11 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
   // Escape %_, dentro del término — PostgREST usa ',' como separador en .or()
   // y %/_ son comodines de LIKE. Sin sanear esto abriría una inyección trivial.
   const filterQ = sp.q?.trim().replace(/[%_,]/g, "") || undefined;
+
+  // Rango activo para la card de exportación (RangePicker en la card
+  // actualiza los query params `from` y `to`, y el botón "Descargar
+  // Excel" usa ese rango). Default: mes en curso.
+  const exportRange = parseRange(sp.from, sp.to);
 
   // Para el componente cliente preservamos los valores originales tal cual,
   // sin el saneo interno (igualdad ?q=… queda visible en el input).
@@ -254,7 +262,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
               </div>
             )}
 
-            {!showArchived && <ExportarResultadosCard />}
+            {!showArchived && <ExportarResultadosCard range={exportRange} />}
 
             <SalesFilters
               locations={locations}
@@ -600,12 +608,13 @@ function SalesRow({
 
 /**
  * Card de descarga rápida del parte global (4 hojas departamentales +
- * Detalle, igual que /manager/export pero condensado a 3 atajos
- * comunes). Mes actual / pasado / último trimestre son los 3 rangos
- * que cubren el 95% del uso. Para filtros avanzados (sales_id, ficha,
- * match_state) el usuario va a /manager/export por URL directa.
+ * Detalle, igual que /manager/export pero condensado). El usuario
+ * elige el periodo con el RangePicker (atajos mes actual / pasado /
+ * último trimestre incluidos en el dropdown) y descarga con un click.
+ * Para filtros avanzados (sales_id, ficha, match_state) hay un link a
+ * /manager/export que ya conserva la UI completa.
  */
-function ExportarResultadosCard() {
+function ExportarResultadosCard({ range }: { range: DateRange }) {
   const shortcuts = defaultShortcuts();
   return (
     <div style={{ marginBottom: 16 }}>
@@ -639,8 +648,9 @@ function ExportarResultadosCard() {
                 lineHeight: 1.55,
               }}
             >
-              Descarga el parte de reseñas con KPIs por departamento. Para
-              periodos personalizados o filtros avanzados, usa la{" "}
+              Descarga el parte de reseñas con KPIs por departamento del
+              periodo seleccionado. Para filtros avanzados (comercial, ficha,
+              estado matching), usa la{" "}
               <Link href="/manager/export" style={{ color: "var(--ink)" }}>
                 exportación personalizada
               </Link>
@@ -655,16 +665,19 @@ function ExportarResultadosCard() {
               alignItems: "center",
             }}
           >
-            {shortcuts.map((s, idx) => (
-              <a
-                key={s.key}
-                href={`/api/export/reviews?from=${s.from}&to=${s.to}`}
-                style={idx === 0 ? exportPrimaryBtn : exportGhostBtn}
-              >
-                <Download size={14} strokeWidth={1.75} aria-hidden="true" />
-                <span>{s.label}</span>
-              </a>
-            ))}
+            <RangePicker
+              from={range.from}
+              to={range.to}
+              label={range.label}
+              shortcuts={shortcuts}
+            />
+            <a
+              href={`/api/export/reviews?from=${range.from}&to=${range.to}`}
+              style={exportPrimaryBtn}
+            >
+              <Download size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>Descargar Excel</span>
+            </a>
           </div>
         </div>
       </Card>
@@ -683,20 +696,6 @@ const exportPrimaryBtn: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 500,
   textDecoration: "none",
-};
-
-const exportGhostBtn: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "7px 12px",
-  background: "var(--surface)",
-  color: "var(--ink)",
-  borderRadius: 9,
-  fontSize: 13,
-  fontWeight: 500,
-  textDecoration: "none",
-  border: "1px solid var(--line-strong)",
 };
 
 function MiniStat({ label, value, sub }: { label: string; value: number; sub: string }) {
