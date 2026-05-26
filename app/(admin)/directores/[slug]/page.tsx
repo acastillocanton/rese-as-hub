@@ -196,7 +196,7 @@ export default async function DirectorDetailPage({ params }: PageProps) {
               }}
             >
               Este director está archivado. Para editar sus datos restáuralo
-              primero con el botón "Restaurar director" del topbar.
+              primero con el botón &quot;Restaurar director&quot; del topbar.
             </p>
             <dl style={{ marginTop: 14, display: "grid", rowGap: 10 }}>
               <Row label="Nombre" value={director.full_name} />
@@ -245,7 +245,7 @@ export default async function DirectorDetailPage({ params }: PageProps) {
                 <Link href="/comerciales" style={{ color: "var(--ink)" }}>
                   /comerciales
                 </Link>{" "}
-                y selecciónalo en "Director responsable".
+                y selecciónalo en &quot;Director responsable&quot;.
               </p>
             </div>
           ) : (

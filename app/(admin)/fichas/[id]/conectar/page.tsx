@@ -135,8 +135,8 @@ export default async function ConectarFichaPage({ params }: PageProps) {
                 lineHeight: 1.55,
               }}
             >
-              Si ves un 403 o "User not authorized", suele significar que la API
-              "My Business Account Management" aún no está habilitada en el
+              Si ves un 403 o &quot;User not authorized&quot;, suele significar que la API
+              &quot;My Business Account Management&quot; aún no está habilitada en el
               proyecto de Google Cloud, o que tu email no está en la lista de
               test users del consent screen.
             </p>

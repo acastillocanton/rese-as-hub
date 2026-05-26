@@ -223,7 +223,7 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
                   <Link href="/comerciales" style={{ color: "var(--ink)" }}>
                     /comerciales
                   </Link>{" "}
-                  con el selector "Director responsable".
+                  con el selector &quot;Director responsable&quot;.
                 </p>
                 <InviteDirectorButton locations={locations} primary />
               </Card>

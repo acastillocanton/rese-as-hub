@@ -482,7 +482,7 @@ export default async function PanelPage({
                 <CopyLinkButton url={fullUrl} label="Copiar" />
               </div>
               <div style={{ marginTop: 12 }}>
-                <a
+                <Link
                   href="/clientes"
                   style={{
                     display: "inline-block",
@@ -497,7 +497,7 @@ export default async function PanelPage({
                   }}
                 >
                   Generar enlace por cliente →
-                </a>
+                </Link>
               </div>
             </div>
           </Card>

@@ -119,6 +119,7 @@ export function SyncNowButton({
         type="button"
         onClick={onClick}
         disabled={isPending}
+        aria-busy={isPending}
         style={{
           padding,
           fontSize,

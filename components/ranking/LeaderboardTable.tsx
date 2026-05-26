@@ -23,8 +23,9 @@ export function LeaderboardTable({
   const visible = typeof limit === "number" ? rows.slice(0, limit) : rows;
 
   return (
-    <div style={{ padding: "4px 22px 14px" }}>
+    <div role="table" aria-label="Ranking de productores" style={{ padding: "4px 22px 14px" }}>
       <div
+        role="row"
         style={{
           display: "grid",
           gridTemplateColumns: "28px 1.6fr 1fr 0.7fr 0.7fr 0.7fr 100px",
@@ -37,18 +38,20 @@ export function LeaderboardTable({
           borderBottom: "1px solid var(--line)",
         }}
       >
-        <span>#</span>
-        <span>Comercial</span>
-        <span>Ficha</span>
-        <span style={{ textAlign: "right" }}>Visitas</span>
-        <span style={{ textAlign: "right" }}>Reseñas</span>
-        <span style={{ textAlign: "right" }}>Conv.</span>
-        <span style={{ textAlign: "right" }}>Tendencia</span>
+        <span role="columnheader">#</span>
+        <span role="columnheader">Comercial</span>
+        <span role="columnheader">Ficha</span>
+        <span role="columnheader" style={{ textAlign: "right" }}>Visitas</span>
+        <span role="columnheader" style={{ textAlign: "right" }}>Reseñas</span>
+        <span role="columnheader" style={{ textAlign: "right" }}>Conv.</span>
+        <span role="columnheader" style={{ textAlign: "right" }}>Tendencia</span>
       </div>
       {visible.map((p, i) => (
         <Link
           key={p.id}
           href={`/comerciales/${p.slug}`}
+          role="row"
+          aria-label={`${p.name}, posición ${i + 1}, ${p.reviews} reseñas, ${p.visits} visitas`}
           style={{
             display: "grid",
             gridTemplateColumns: "28px 1.6fr 1fr 0.7fr 0.7fr 0.7fr 100px",
@@ -63,6 +66,7 @@ export function LeaderboardTable({
           }}
         >
           <span
+            role="cell"
             style={{
               fontVariantNumeric: "tabular-nums",
               color: i < 3 ? "var(--ink)" : "var(--ink-4)",
@@ -71,7 +75,7 @@ export function LeaderboardTable({
           >
             {(i + 1).toString().padStart(2, "0")}
           </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <div role="cell" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <Avatar name={p.name} size={28} />
             <div style={{ minWidth: 0 }}>
               <div
@@ -97,8 +101,9 @@ export function LeaderboardTable({
               </div>
             </div>
           </div>
-          <span style={{ color: "var(--ink-3)", fontSize: 12.5 }}>{p.branch}</span>
+          <span role="cell" style={{ color: "var(--ink-3)", fontSize: 12.5 }}>{p.branch}</span>
           <span
+            role="cell"
             style={{
               textAlign: "right",
               fontVariantNumeric: "tabular-nums",
@@ -108,6 +113,7 @@ export function LeaderboardTable({
             {p.visits}
           </span>
           <span
+            role="cell"
             style={{
               textAlign: "right",
               fontVariantNumeric: "tabular-nums",
@@ -118,6 +124,7 @@ export function LeaderboardTable({
             {p.reviews}
           </span>
           <span
+            role="cell"
             style={{
               textAlign: "right",
               fontVariantNumeric: "tabular-nums",
@@ -126,7 +133,7 @@ export function LeaderboardTable({
           >
             {p.visits > 0 ? `${p.conv}%` : "—"}
           </span>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div role="cell" style={{ display: "flex", justifyContent: "flex-end" }}>
             <Sparkline
               data={[0, 0, 0, 0, 0, p.visits]}
               width={84}
