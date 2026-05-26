@@ -6,6 +6,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { ReviewVerificationRow } from "./ReviewVerificationRow";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
+import { getRoleScope } from "@/lib/auth/role-scope";
+import type { Role } from "@/lib/supabase/types";
 
 type SearchParams = Promise<{ state?: string }>;
 
@@ -23,6 +25,15 @@ type ReviewRow = {
   sales: { id: string; full_name: string; slug: string } | null;
   client: { id: string; full_name: string } | null;
   location: { id: string; name: string } | null;
+};
+
+type SalesOptionWithDirector = {
+  id: string;
+  full_name: string;
+  slug: string;
+  role: "sales" | "office_director";
+  director_id: string | null;
+  clients: { id: string; full_name: string }[];
 };
 
 export type SalesOption = {
@@ -67,6 +78,9 @@ export default async function ResenasVerificacionPage({
   }
 
   const supabase = await createClient();
+  const scope = await getRoleScope(supabase);
+  const viewerRole = (scope.role ?? "sales") as Role;
+  const viewerId = scope.userId ?? "";
 
   const reviewsQueryBase = supabase
     .from("reviews")
@@ -99,17 +113,35 @@ export default async function ResenasVerificacionPage({
         .not("removed_at", "is", null),
       supabase
         .from("profiles")
-        .select("id, full_name, slug, role, clients:clients(id, full_name)")
+        .select("id, full_name, slug, role, director_id, clients:clients(id, full_name)")
         .in("role", ["sales", "office_director"])
         .order("full_name")
-        .returns<SalesOption[]>(),
+        .returns<SalesOptionWithDirector[]>(),
     ]);
 
   const reviews = reviewsRes.data ?? [];
   const pendingCount = pendingCountRes.count ?? 0;
   const unmatchedCount = unmatchedCountRes.count ?? 0;
   const removedCount = removedCountRes.count ?? 0;
-  const salesOptions = salesWithClientsRes.data ?? [];
+  const allSalesOptions = salesWithClientsRes.data ?? [];
+
+  // Filtrado de salesOptions según rol del viewer:
+  //  • sales            → solo su propio profile (con sus clientes).
+  //  • office_director  → su equipo (director_id === viewerId) + él mismo.
+  //  • admin / manager  → todos.
+  const salesOptions: SalesOption[] = (() => {
+    if (viewerRole === "sales") {
+      return allSalesOptions
+        .filter((s) => s.id === viewerId)
+        .map(({ director_id: _, ...rest }) => rest);
+    }
+    if (viewerRole === "office_director") {
+      return allSalesOptions
+        .filter((s) => s.id === viewerId || s.director_id === viewerId)
+        .map(({ director_id: _, ...rest }) => rest);
+    }
+    return allSalesOptions.map(({ director_id: _, ...rest }) => rest);
+  })();
 
   return (
     <>
@@ -234,6 +266,8 @@ export default async function ResenasVerificacionPage({
               key={r.id}
               review={r}
               salesOptions={salesOptions}
+              viewerRole={viewerRole}
+              viewerId={viewerId}
             />
           ))
         )}

@@ -83,21 +83,22 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
   if (role === "sales") {
     return (
       pathname.startsWith("/panel") ||
-      pathname.startsWith("/clientes")
+      pathname.startsWith("/clientes") ||
+      // mig 016: el comercial puede "Reclamar" reseñas huérfanas de su ficha.
+      pathname.startsWith("/resenas/verificacion")
     );
   }
   if (role === "reviews_manager") {
     // El gestor comparte vistas con el admin (Dashboard + comerciales) y
-    // tiene plenos permisos de administración sobre el rol `sales` (migración
-    // 005): invitar, editar, reenviar acceso, eliminar. Lo que sigue siendo
-    // solo-admin: /gestores, /fichas, /resenas/verificacion, /ajustes.
-    // /manager/* aloja los listados read-only del propio gestor (lista global
-    // de reseñas, exportar Excel).
+    // tiene plenos permisos de administración sobre el rol `sales` (mig 005).
+    // mig 016 le da paridad con admin también en /resenas/verificacion.
+    // Sigue siendo solo-admin: /gestores, /fichas, /ajustes, /directores.
     return (
       pathname === "/dashboard" ||
       pathname.startsWith("/comerciales") ||
       pathname.startsWith("/ranking") ||
       pathname.startsWith("/manager") ||
+      pathname.startsWith("/resenas/verificacion") ||
       pathname.startsWith("/api/export")
     );
   }

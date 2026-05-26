@@ -258,7 +258,16 @@ export const SALES_SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "panel", label: "Mi panel", href: "/panel", icon: LayoutDashboard },
       { id: "link", label: "Mi enlace", href: "/panel/enlace", icon: Link2 },
       { id: "clients", label: "Mis clientes", href: "/clientes", icon: Users },
+    ],
+  },
+  {
+    id: "reviews",
+    label: "Reseñas",
+    items: [
       { id: "reviews", label: "Mis reseñas", href: "/panel/resenas", icon: Star },
+      // Verificación: el comercial puede reclamar reseñas huérfanas de su
+      // ficha que no entraron por su enlace personal (mig 016).
+      { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
     ],
   },
 ];
@@ -270,6 +279,9 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { id: "ranking", label: "Ranking", href: "/ranking", icon: Trophy },
       { id: "team", label: "Comerciales", href: "/comerciales", icon: Users },
+      // Verificación: paridad con admin sobre matching manual de reseñas
+      // (mig 016 abre /resenas/verificacion al gestor).
+      { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
       { id: "reviews", label: "Reseñas", href: "/manager/resenas", icon: Star },
       { id: "export", label: "Exportar Excel", href: "/manager/export", icon: Download },
     ],

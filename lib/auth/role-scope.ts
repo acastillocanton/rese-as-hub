@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Role } from "@/lib/supabase/types";
 
+// Aceptamos cualquier SupabaseClient<Database> independientemente de los
+// generics extra que añaden las versiones recientes de @supabase/supabase-js
+// y @supabase/ssr (signatures de 3 vs 4 type args). El segundo generic en
+// realidad se ignora a nivel runtime; lo dejamos abierto.
+type AnySupabaseClient = SupabaseClient<Database, any, any, any>;
+
 export type RoleScope = {
   /** Rol del usuario actual. `null` si no hay sesión o no hay profile. */
   role: Role | null;
@@ -29,7 +35,7 @@ export type RoleScope = {
  * encontrar usuarios sin sesión aquí, pero el helper es defensivo.
  */
 export async function getRoleScope(
-  supabase: SupabaseClient<Database>,
+  supabase: AnySupabaseClient,
 ): Promise<RoleScope> {
   const {
     data: { user },

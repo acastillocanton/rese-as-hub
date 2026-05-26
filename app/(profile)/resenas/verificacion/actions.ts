@@ -10,16 +10,28 @@ import {
   promoteNextPrincipal,
 } from "@/lib/cron/duplicate-detection";
 import type { Role } from "@/lib/supabase/types";
+import {
+  canPerformAction,
+  claimReviewSchema,
+  type ClaimReviewInput,
+  type VerificationAction,
+} from "@/lib/auth/verification-gating";
+import { createClientRecord } from "@/app/(sales)/clientes/actions";
 
 const reviewIdSchema = z.string().uuid();
 
 type Actor = { userId: string; role: Role; locationId: string | null };
 
 /**
- * Para acciones de matching (confirmar, rechazar, reasignar): admin global o
- * office_director (este último limitado por scope a su location).
+ * Resuelve el actor autenticado y verifica que su rol puede ejecutar la
+ * acción solicitada. Defensa en profundidad por encima de la RLS (mig 016
+ * + mig 013).
+ *
+ *   admin / reviews_manager → todo.
+ *   office_director        → todo excepto "claim" (usa reassign con self).
+ *   sales                  → solo "claim".
  */
-async function getMatchingActor(): Promise<Actor | null> {
+async function getActorForAction(action: VerificationAction): Promise<Actor | null> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -31,63 +43,105 @@ async function getMatchingActor(): Promise<Actor | null> {
     .eq("id", user.id)
     .maybeSingle<{ role: Role; location_id: string | null }>();
   if (!data) return null;
-  if (data.role === "admin" || data.role === "office_director") {
-    return { userId: user.id, role: data.role, locationId: data.location_id };
-  }
-  return null;
+  if (!canPerformAction(data.role, action)) return null;
+  return { userId: user.id, role: data.role, locationId: data.location_id };
 }
 
 /**
- * Para acciones operativas (marcar eliminada, restaurar) admitimos también
- * al gestor de reseñas. Estas acciones no afectan a matching ni a stats
- * permanentes; solo soft-delete + soft-restore con audit trail.
- */
-async function getRemovalActor(): Promise<Actor | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase
-    .from("profiles")
-    .select("role, location_id")
-    .eq("id", user.id)
-    .maybeSingle<{ role: Role; location_id: string | null }>();
-  if (!data) return null;
-  if (
-    data.role === "admin" ||
-    data.role === "reviews_manager" ||
-    data.role === "office_director"
-  ) {
-    return { userId: user.id, role: data.role, locationId: data.location_id };
-  }
-  return null;
-}
-
-/**
- * Para office_director: verifica que la reseña pertenece a su ficha.
- * Lookup vía service-client para evitar problemas con RLS si la policy
- * todavía no ve la reseña por algún edge case.
+ * Verifica que la reseña está dentro del scope del actor:
+ *
+ *   admin / reviews_manager → siempre.
+ *   sales                  → unmatched, no eliminada, de SU location.
+ *   office_director        → counted/pending de su equipo o de sí mismo,
+ *                            o unmatched de su location.
+ *
+ * Lookup vía service-client para evitar dependencia de RLS (la fila
+ * podría ser unmatched, que el director no ve a través de las policies
+ * de mig 013 — sí a través de la nueva policy SELECT de mig 016).
  */
 async function assertReviewInScope(
   actor: Actor,
   reviewId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (actor.role !== "office_director") return { ok: true };
-  if (!actor.locationId) {
-    return { ok: false, error: "Director sin oficina asignada." };
+  if (actor.role === "admin" || actor.role === "reviews_manager") {
+    return { ok: true };
   }
   const admin = createServiceClient();
   const { data } = await admin
     .from("reviews")
-    .select("location_id")
+    .select("location_id, sales_id, removed_at")
     .eq("id", reviewId)
-    .maybeSingle<{ location_id: string }>();
+    .maybeSingle<{
+      location_id: string;
+      sales_id: string | null;
+      removed_at: string | null;
+    }>();
   if (!data) return { ok: false, error: "Reseña no encontrada." };
-  if (data.location_id !== actor.locationId) {
-    return { ok: false, error: "Esa reseña no es de tu oficina." };
+
+  if (actor.role === "sales") {
+    if (data.removed_at !== null) {
+      return { ok: false, error: "Esta reseña fue eliminada." };
+    }
+    if (data.sales_id !== null) {
+      return { ok: false, error: "Esta reseña ya está atribuida." };
+    }
+    if (!actor.locationId || data.location_id !== actor.locationId) {
+      return { ok: false, error: "Esta reseña no es de tu ficha." };
+    }
+    return { ok: true };
   }
-  return { ok: true };
+
+  if (actor.role === "office_director") {
+    if (!actor.locationId) {
+      return { ok: false, error: "Director sin oficina asignada." };
+    }
+    // Unmatched → ok si es de su location.
+    if (data.sales_id === null) {
+      if (data.location_id !== actor.locationId) {
+        return { ok: false, error: "Esa reseña no es de tu oficina." };
+      }
+      return { ok: true };
+    }
+    // Atribuida → ok si es self o miembro del equipo.
+    if (data.sales_id === actor.userId) return { ok: true };
+    const { data: teamMember } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("id", data.sales_id)
+      .eq("director_id", actor.userId)
+      .maybeSingle<{ id: string }>();
+    if (!teamMember) {
+      return { ok: false, error: "Esa reseña no es de tu equipo." };
+    }
+    return { ok: true };
+  }
+
+  return { ok: false, error: "No autorizado." };
+}
+
+/**
+ * Devuelve el cliente con el que ejecutar el UPDATE según el actor.
+ * Para office_director usamos service-role porque la RLS está scoped a
+ * `sales_id IN team` (mig 013) y no cubre los movimientos sobre unmatched
+ * (mig 016 abre SELECT, no UPDATE). El gating en código
+ * (canPerformAction + assertReviewInScope) es la autoridad para director.
+ *
+ * Para sales seguimos con cookie-client: la WITH CHECK de
+ * `reviews_sales_claim_update` (mig 016) es la garantía dura de que solo
+ * puede dejar la fila con sales_id = auth.uid() y match_state='counted'.
+ *
+ * Para admin/manager seguimos con cookie-client + RLS amplia.
+ */
+// Devuelve el cliente Supabase con el que ejecutar el UPDATE según el actor.
+// Casteamos el cookie-client al mismo tipo que el service-client para que
+// el union type no rompa el `.from(...).update(...)` posterior: las
+// versiones recientes de @supabase/supabase-js y @supabase/ssr tipan los
+// generics distintos pero el runtime es idéntico.
+type Writer = ReturnType<typeof createServiceClient>;
+
+async function writerForActor(actor: Actor): Promise<Writer> {
+  if (actor.role === "office_director") return createServiceClient();
+  return (await createClient()) as unknown as Writer;
 }
 
 async function audit(
@@ -95,29 +149,28 @@ async function audit(
   action: string,
   payload: Record<string, unknown>,
 ) {
-  // audit_log tiene RLS habilitado sin política de INSERT para ningún rol:
-  // se escribe vía service-role para que el comercial/admin no pueda fabricar
-  // entradas a mano. Helper en lib/audit.ts.
+  // audit_log se escribe vía service-role para que el actor no pueda
+  // fabricar entradas a mano. Helper en lib/audit.ts.
   await recordAudit({ entityType: "review", entityId, action, payload });
 }
 
 /**
  * Confirma la atribución propuesta por el matcher. Marca match_state='counted'
  * y deja sales_id/client_id como estaban. Usado para reseñas con confianza
- * entre 40-75 donde la propuesta del algoritmo es razonable y el admin la
+ * intermedia donde la propuesta del algoritmo es razonable y el actor la
  * valida sin cambios.
  */
 export async function confirmReview(reviewId: string) {
   const parsed = reviewIdSchema.safeParse(reviewId);
   if (!parsed.success) return { ok: false as const, error: "Id inválido." };
 
-  const actor = await getMatchingActor();
+  const actor = await getActorForAction("confirm");
   if (!actor) return { ok: false as const, error: "No autorizado." };
   const inScope = await assertReviewInScope(actor, parsed.data);
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
 
-  // Si la reseña confirmada tiene client_id, aplicar la regla anti-fraude
-  // (migración 015): comprobar si ya hay otra principal del mismo cliente.
+  // Anti-fraude (mig 015): si la reseña confirmada tiene client_id,
+  // comprobar si ya hay otra principal del mismo cliente.
   const adminSrv = createServiceClient();
   const { data: current } = await adminSrv
     .from("reviews")
@@ -141,8 +194,8 @@ export async function confirmReview(reviewId: string) {
     });
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  const writer = await writerForActor(actor);
+  const { error } = await writer
     .from("reviews")
     .update({
       match_state: "counted",
@@ -172,22 +225,21 @@ export async function confirmReview(reviewId: string) {
 }
 
 /**
- * Rechaza la atribución: limpia sales_id/client_id/share_link_id y marca como
- * 'unmatched'. La reseña permanece en la base (sigue siendo una reseña real
- * de Google) pero ya no se contabiliza para ningún comercial.
+ * Rechaza la atribución: limpia sales_id/client_id/share_link_id y marca
+ * como 'unmatched'. La reseña permanece en la base pero ya no se
+ * contabiliza para ningún comercial.
  */
 export async function rejectReview(reviewId: string) {
   const parsed = reviewIdSchema.safeParse(reviewId);
   if (!parsed.success) return { ok: false as const, error: "Id inválido." };
 
-  const actor = await getMatchingActor();
+  const actor = await getActorForAction("reject");
   if (!actor) return { ok: false as const, error: "No autorizado." };
   const inScope = await assertReviewInScope(actor, parsed.data);
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
 
-  // Si la reseña a rechazar era PRINCIPAL de un client_id que tiene
-  // duplicadas activas, debemos promover la siguiente más antigua tras
-  // limpiar la atribución para que no queden todas como duplicadas.
+  // Si era PRINCIPAL de un client_id con duplicadas activas, promover la
+  // siguiente más antigua tras limpiar la atribución.
   const adminSrv = createServiceClient();
   const { data: current } = await adminSrv
     .from("reviews")
@@ -196,15 +248,14 @@ export async function rejectReview(reviewId: string) {
     .maybeSingle<{ client_id: string | null; is_duplicate: boolean }>();
   const wasPrincipalOf = current && !current.is_duplicate ? current.client_id : null;
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  const writer = await writerForActor(actor);
+  const { error } = await writer
     .from("reviews")
     .update({
       match_state: "unmatched",
       sales_id: null,
       client_id: null,
       share_link_id: null,
-      // Al desatribuir, ya no tiene cliente, no aplica la marca duplicada.
       is_duplicate: false,
     } as never)
     .eq("id", parsed.data);
@@ -236,9 +287,7 @@ const reassignSchema = z.object({
 
 /**
  * Reasigna manualmente la reseña a otro comercial (y opcionalmente otro
- * cliente). Marca como 'counted'. Usado cuando el matcher acertó en parte
- * o cuando el admin sabe a quién corresponde porque tiene contexto que el
- * algoritmo no puede tener.
+ * cliente). Marca como 'counted'.
  */
 export async function reassignReview(input: z.input<typeof reassignSchema>) {
   const parsed = reassignSchema.safeParse(input);
@@ -249,13 +298,12 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
     };
   }
 
-  const actor = await getMatchingActor();
+  const actor = await getActorForAction("reassign");
   if (!actor) return { ok: false as const, error: "No autorizado." };
   const inScope = await assertReviewInScope(actor, parsed.data.reviewId);
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
-  // Director: el destino debe ser él mismo (auto-asignación productor) o un
-  // sales de su equipo (director_id = actor.userId). Migración 013 cambió el
-  // scope del director de location_id a director_id; aquí validamos eso.
+
+  // Director: el destino debe ser él mismo o un sales de su equipo.
   if (actor.role === "office_director") {
     const adminSrv = createServiceClient();
     const { data: target } = await adminSrv
@@ -269,7 +317,10 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
     const isSelf = parsed.data.salesId === actor.userId;
     const isTeamSales = target.role === "sales" && target.director_id === actor.userId;
     if (!isSelf && !isTeamSales) {
-      return { ok: false as const, error: "Solo puedes atribuir reseñas a ti o a tu equipo." };
+      return {
+        ok: false as const,
+        error: "Solo puedes atribuir reseñas a ti o a tu equipo.",
+      };
     }
   }
 
@@ -303,8 +354,8 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
     });
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  const writer = await writerForActor(actor);
+  const { error } = await writer
     .from("reviews")
     .update({
       match_state: "counted",
@@ -325,15 +376,8 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
       .eq("id", dup.demotedReviewId);
   }
 
-  // Si la reasignación dejó "huérfano" a un client_id que perdía su principal
-  // (porque el reviewId movió a otro cliente o se quedó sin cliente), promover
-  // la siguiente duplicada activa para que el comercial original no pierda la
-  // cuenta arbitrariamente.
   let promotedOrphanId: string | null = null;
-  if (
-    wasPrincipalOf &&
-    wasPrincipalOf !== newClientId
-  ) {
+  if (wasPrincipalOf && wasPrincipalOf !== newClientId) {
     promotedOrphanId = await promoteNextPrincipal(adminSrv, wasPrincipalOf);
   }
 
@@ -352,25 +396,141 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
 }
 
 /**
- * Marca una reseña como eliminada en Google (soft delete). Usado para
- * casos que el cron de Places API no puede detectar automáticamente
- * (reseñas antiguas fuera del top-5, modificaciones que Google reordena
- * etc.). Admin y reviews_manager.
+ * "Reclamar" — acción específica del rol sales. Toma una reseña unmatched
+ * de su location y la atribuye a sí mismo, opcionalmente con un client_id
+ * existente o creando un cliente nuevo inline.
  *
- * No tocamos sales_id/client_id ni match_state — si Google la vuelve a
- * mostrar y la restauramos, el matching propuesto sigue ahí.
+ * Garantías:
+ *   • Schema XOR: clientId o newClientName, no ambos.
+ *   • RLS WITH CHECK (`reviews_sales_claim_update`, mig 016) fuerza que
+ *     la fila resultante quede con sales_id = auth.uid() y
+ *     match_state='counted'. Imposible reasignar a otro o desatribuir
+ *     vía esta acción.
+ *   • Doble candado `.is("sales_id", null).is("removed_at", null)` en el
+ *     WHERE: si otro sales se adelantó, el UPDATE matchea 0 filas y
+ *     devolvemos error UX claro.
+ *   • Anti-fraude (mig 015): si el cliente ya tiene principal, la nueva
+ *     entra como duplicada.
+ */
+export async function claimReview(input: ClaimReviewInput) {
+  const parsed = claimReviewSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      error: parsed.error.issues[0]?.message ?? "Datos inválidos.",
+    };
+  }
+
+  const actor = await getActorForAction("claim");
+  if (!actor) return { ok: false as const, error: "No autorizado." };
+  const inScope = await assertReviewInScope(actor, parsed.data.reviewId);
+  if (!inScope.ok) return { ok: false as const, error: inScope.error };
+
+  // Resolver el cliente: existente, nuevo o ninguno.
+  let clientId: string | null = parsed.data.clientId;
+  let wasNewClient = false;
+  if (parsed.data.newClientName) {
+    const created = await createClientRecord({
+      fullName: parsed.data.newClientName,
+      phone: null,
+      email: null,
+    });
+    if (!created.ok) {
+      return { ok: false as const, error: created.error };
+    }
+    clientId = created.client.id;
+    wasNewClient = true;
+  }
+
+  // Anti-fraude (mig 015): si la reclamada cae bajo un client_id con
+  // principal previa, decide cuál queda como principal.
+  const adminSrv = createServiceClient();
+  const { data: current } = await adminSrv
+    .from("reviews")
+    .select("google_created_at")
+    .eq("id", parsed.data.reviewId)
+    .maybeSingle<{ google_created_at: string }>();
+  if (!current) {
+    return { ok: false as const, error: "Reseña no encontrada." };
+  }
+
+  let dup: { newIsDuplicate: boolean; demotedReviewId: string | null } = {
+    newIsDuplicate: false,
+    demotedReviewId: null,
+  };
+  if (clientId) {
+    dup = await decideDuplicateForClient(adminSrv, {
+      clientId,
+      incomingGoogleCreatedAt: current.google_created_at,
+      excludeReviewId: parsed.data.reviewId,
+    });
+  }
+
+  // UPDATE con cookie-client. RLS `reviews_sales_claim_update` con WITH
+  // CHECK estricta + WHERE explícito sobre sales_id IS NULL bloquea race
+  // conditions y abusos.
+  const supabase = await createClient();
+  const { error, data: updated } = await supabase
+    .from("reviews")
+    .update({
+      match_state: "counted",
+      sales_id: actor.userId,
+      client_id: clientId,
+      is_duplicate: dup.newIsDuplicate,
+    } as never)
+    .eq("id", parsed.data.reviewId)
+    .is("sales_id", null)
+    .is("removed_at", null)
+    .select("id");
+  if (error) {
+    console.error("[verificacion] claimReview failed:", error);
+    return { ok: false as const, error: error.message };
+  }
+  if (!updated || updated.length === 0) {
+    return {
+      ok: false as const,
+      error: "Otro comercial se adelantó o la reseña ya no está disponible.",
+    };
+  }
+
+  if (dup.demotedReviewId) {
+    await adminSrv
+      .from("reviews")
+      .update({ is_duplicate: true } as never)
+      .eq("id", dup.demotedReviewId);
+  }
+
+  await audit(parsed.data.reviewId, "claim", {
+    claimed_by: actor.userId,
+    client_id: clientId,
+    was_new_client: wasNewClient,
+    is_duplicate: dup.newIsDuplicate,
+    demoted_review_id: dup.demotedReviewId,
+  });
+  revalidatePath("/resenas/verificacion");
+  revalidatePath("/panel/resenas");
+  revalidatePath("/panel");
+  revalidatePath("/dashboard");
+  revalidatePath("/clientes");
+  revalidatePath("/ranking");
+  return { ok: true as const };
+}
+
+/**
+ * Marca una reseña como eliminada en Google (soft delete). admin,
+ * reviews_manager o office_director (dentro de su scope).
  */
 export async function markReviewRemoved(reviewId: string) {
   const parsed = reviewIdSchema.safeParse(reviewId);
   if (!parsed.success) return { ok: false as const, error: "Id inválido." };
 
-  const actor = await getRemovalActor();
+  const actor = await getActorForAction("mark_removed");
   if (!actor) return { ok: false as const, error: "No autorizado." };
   const inScope = await assertReviewInScope(actor, parsed.data);
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  const writer = await writerForActor(actor);
+  const { error } = await writer
     .from("reviews")
     .update({ removed_at: new Date().toISOString() } as never)
     .eq("id", parsed.data)
@@ -392,22 +552,19 @@ export async function markReviewRemoved(reviewId: string) {
 }
 
 /**
- * Restaura una reseña que estaba marcada como eliminada (volver a
- * removed_at = NULL). Usado cuando se marcó por error, o cuando Google
- * la vuelve a mostrar y el admin quiere reactivarla a mano (el cron lo
- * haría también en el siguiente run, pero acelera).
+ * Restaura una reseña que estaba marcada como eliminada.
  */
 export async function restoreReview(reviewId: string) {
   const parsed = reviewIdSchema.safeParse(reviewId);
   if (!parsed.success) return { ok: false as const, error: "Id inválido." };
 
-  const actor = await getRemovalActor();
+  const actor = await getActorForAction("restore");
   if (!actor) return { ok: false as const, error: "No autorizado." };
   const inScope = await assertReviewInScope(actor, parsed.data);
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  const writer = await writerForActor(actor);
+  const { error } = await writer
     .from("reviews")
     .update({ removed_at: null } as never)
     .eq("id", parsed.data)

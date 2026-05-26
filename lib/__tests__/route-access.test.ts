@@ -26,13 +26,15 @@ describe("pathAllowedForRole — admin", () => {
 });
 
 describe("pathAllowedForRole — sales", () => {
-  it("solo /panel, /clientes, /perfil, /ayuda", () => {
+  it("/panel, /clientes, /perfil, /ayuda + verificación (mig 016)", () => {
     expect(pathAllowedForRole("/panel", "sales")).toBe(true);
     expect(pathAllowedForRole("/panel/ranking", "sales")).toBe(true);
     expect(pathAllowedForRole("/clientes", "sales")).toBe(true);
     expect(pathAllowedForRole("/clientes/foo", "sales")).toBe(true);
     expect(pathAllowedForRole("/perfil", "sales")).toBe(true);
     expect(pathAllowedForRole("/ayuda", "sales")).toBe(true);
+    // mig 016: el sales puede reclamar huérfanas de su ficha.
+    expect(pathAllowedForRole("/resenas/verificacion", "sales")).toBe(true);
   });
   it("NO entra a admin ni a manager", () => {
     expect(pathAllowedForRole("/dashboard", "sales")).toBe(false);
@@ -46,7 +48,7 @@ describe("pathAllowedForRole — sales", () => {
 });
 
 describe("pathAllowedForRole — reviews_manager", () => {
-  it("dashboard + comerciales + manager + export", () => {
+  it("dashboard + comerciales + manager + export + verificación (mig 016)", () => {
     expect(pathAllowedForRole("/dashboard", "reviews_manager")).toBe(true);
     expect(pathAllowedForRole("/comerciales", "reviews_manager")).toBe(true);
     expect(pathAllowedForRole("/comerciales/foo", "reviews_manager")).toBe(true);
@@ -55,12 +57,13 @@ describe("pathAllowedForRole — reviews_manager", () => {
     expect(pathAllowedForRole("/api/export/reviews", "reviews_manager")).toBe(true);
     expect(pathAllowedForRole("/perfil", "reviews_manager")).toBe(true);
     expect(pathAllowedForRole("/ayuda", "reviews_manager")).toBe(true);
+    // mig 016: paridad con admin en verificación de reseñas.
+    expect(pathAllowedForRole("/resenas/verificacion", "reviews_manager")).toBe(true);
   });
-  it("NO entra a /fichas, /gestores, /ajustes, /resenas/verificacion", () => {
+  it("NO entra a /fichas, /gestores, /ajustes", () => {
     expect(pathAllowedForRole("/fichas", "reviews_manager")).toBe(false);
     expect(pathAllowedForRole("/gestores", "reviews_manager")).toBe(false);
     expect(pathAllowedForRole("/ajustes", "reviews_manager")).toBe(false);
-    expect(pathAllowedForRole("/resenas/verificacion", "reviews_manager")).toBe(false);
   });
 });
 

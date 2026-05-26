@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { markReviewRemoved, restoreReview } from "@/app/(admin)/resenas/verificacion/actions";
+import { markReviewRemoved, restoreReview } from "@/app/(profile)/resenas/verificacion/actions";
 
 /**
  * Controles de soft-delete para una reseña:
