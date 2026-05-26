@@ -295,9 +295,8 @@ export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
     label: "Inicio",
     items: [
       { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      // /ranking pinta el ranking del equipo del director (filtrado por
-      // RLS) y a él mismo como productor. Distinto a "Mi ranking" del
-      // grupo "Mi panel" que va a /panel/ranking (ComingSoon, futuro).
+      // Ranking del equipo del director (filtrado por RLS) — él mismo
+      // aparece como una fila más del leaderboard porque es productor.
       { id: "team-ranking", label: "Ranking", href: "/ranking", icon: Trophy },
     ],
   },
@@ -308,7 +307,6 @@ export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "link", label: "Mi enlace", href: "/panel/enlace", icon: Link2 },
       { id: "myclients", label: "Mis clientes", href: "/clientes", icon: Users },
       { id: "myreviews", label: "Mis reseñas", href: "/panel/resenas", icon: Star },
-      { id: "ranking", label: "Mi ranking", href: "/panel/ranking", icon: Trophy },
     ],
   },
   {
