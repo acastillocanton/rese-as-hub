@@ -12,8 +12,12 @@ import { createServiceClient } from "@/lib/supabase/service";
  *   - `getLeaderboard({ from, to })`: hace su propia query (mínima) y llama a
  *     `computeLeaderboard`. Es lo que consume la pantalla `/ranking`.
  *
- * El sort es estable: reviews DESC, visits DESC, full_name ASC (para que el
- * orden de productores con 0/0 sea determinista en tests).
+ * El sort es estable: reviews DESC, full_name ASC (para que el orden de
+ * productores con 0 reseñas sea determinista en tests). `visits` se sigue
+ * calculando como dato útil interno (compatibilidad con tests y campos
+ * que algún componente puede mostrar a futuro), pero NO se usa para
+ * ordenar — las visitas no son un KPI accionable según decisión de
+ * producto.
  */
 
 export type LeaderboardSales = {
@@ -112,7 +116,6 @@ export function computeLeaderboard(args: {
     .sort(
       (a, b) =>
         b.reviews - a.reviews ||
-        b.visits - a.visits ||
         a.name.localeCompare(b.name, "es"),
     );
 }

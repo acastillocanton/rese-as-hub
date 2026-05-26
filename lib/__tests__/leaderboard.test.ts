@@ -27,7 +27,7 @@ describe("computeLeaderboard", () => {
     expect(rows).toEqual([]);
   });
 
-  it("sorts by reviews DESC, then visits DESC, then name ASC", () => {
+  it("sorts by reviews DESC, then name ASC (visits ya no desempata)", () => {
     const sales: LeaderboardSales[] = [
       baseSale({ id: "a", full_name: "Ana", slug: "ana" }),
       baseSale({ id: "b", full_name: "Bea", slug: "bea" }),
@@ -40,8 +40,8 @@ describe("computeLeaderboard", () => {
       shares: [
         { sales_id: "a" },
         { sales_id: "a" },
-        { sales_id: "b" }, // bea: 1 visita, 1 reseña → empate por reseñas con dani
-        { sales_id: "d" },
+        { sales_id: "b" }, // bea: 1 visita, 1 reseña
+        { sales_id: "d" }, // dani: 2 visitas, 1 reseña → empate con bea por reseñas
         { sales_id: "d" },
       ],
       reviews: [
@@ -49,13 +49,15 @@ describe("computeLeaderboard", () => {
         { sales_id: "a", match_state: "counted" }, // ana: 2 reseñas total
         { sales_id: "b", match_state: "counted" }, // bea: 1
         { sales_id: "d", match_state: "counted" }, // dani: 1
-        // cris: 0 visitas, 0 reseñas → último
+        // cris: 0 reseñas → último
       ],
     });
 
-    expect(rows.map((r) => r.id)).toEqual(["a", "d", "b", "c"]);
-    // ana primero (2 reseñas), dani 2º (1 reseña + 2 visitas) > bea (1 reseña + 1 visita),
-    // cris último.
+    // ana primero (2 reseñas). bea y dani empatan a 1 reseña → desempata
+    // alfabéticamente, "Bea" < "Dani". cris último (0 reseñas).
+    // Decisión de producto 2026-05-26: visits ya no desempata
+    // (ver lib/leaderboard.ts).
+    expect(rows.map((r) => r.id)).toEqual(["a", "b", "d", "c"]);
   });
 
   it("calculates conversion as round(reviews/visits * 100)", () => {

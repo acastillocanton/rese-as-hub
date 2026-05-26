@@ -414,15 +414,6 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
             <Stat
-              label="Visitas al enlace"
-              value={visitsInRange.toString()}
-              sub={
-                lastVisitISO
-                  ? `Última · ${fmtDateTime(lastVisitISO)}`
-                  : `${range.label}`
-              }
-            />
-            <Stat
               label="Reseñas atribuidas"
               value={
                 isMonthRange
@@ -440,15 +431,6 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                 pct === null ? undefined : pct >= 100 ? "ok" : pct >= 60 ? "neutral" : "warn"
               }
               delta={pct !== null && pct > 0 ? `${pct}%` : undefined}
-            />
-            <Stat
-              label="Conversión"
-              value={conversion !== null ? `${conversion}%` : "—"}
-              sub={
-                conversion === null
-                  ? "Sin visitas todavía"
-                  : "atribuidas ÷ visitas"
-              }
             />
             <Stat
               label="Valoración media"
@@ -475,7 +457,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
           >
             <div style={sectionLabel}>Clientes registrados ({clients.length})</div>
             <span style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
-              Visitas y reseñas del rango · {range.label}
+              Reseñas del rango · {range.label}
             </span>
           </div>
 
@@ -491,7 +473,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
               >
                 Este comercial aún no ha registrado clientes. En cuanto añada uno
                 desde su pestaña <strong style={{ color: "var(--ink-2)" }}>Mis clientes</strong>,
-                aparecerá aquí con sus visitas y reseñas asociadas.
+                aparecerá aquí con sus reseñas asociadas.
               </div>
             </div>
           ) : (
@@ -501,7 +483,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                   padding: "10px 22px",
                   borderBottom: "1px solid var(--line)",
                   display: "grid",
-                  gridTemplateColumns: "2fr 0.8fr 0.8fr 1fr",
+                  gridTemplateColumns: "2.4fr 0.8fr 1fr",
                   gap: 14,
                   fontSize: 11,
                   color: "var(--ink-4)",
@@ -510,7 +492,6 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                 }}
               >
                 <span>Cliente</span>
-                <span style={{ textAlign: "right" }}>Visitas</span>
                 <span style={{ textAlign: "right" }}>Reseñas</span>
                 <span>Alta</span>
               </div>
@@ -521,7 +502,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                     padding: "12px 22px",
                     borderBottom: i === clients.length - 1 ? "none" : "1px solid var(--line)",
                     display: "grid",
-                    gridTemplateColumns: "2fr 0.8fr 0.8fr 1fr",
+                    gridTemplateColumns: "2.4fr 0.8fr 1fr",
                     gap: 14,
                     alignItems: "center",
                     fontSize: 13.5,
@@ -541,15 +522,6 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                       /c/{sales.slug}/{c.slug}
                     </div>
                   </div>
-                  <span
-                    style={{
-                      textAlign: "right",
-                      fontVariantNumeric: "tabular-nums",
-                      color: c.visits > 0 ? "var(--ink)" : "var(--ink-4)",
-                    }}
-                  >
-                    {c.visits}
-                  </span>
                   <span
                     style={{
                       textAlign: "right",

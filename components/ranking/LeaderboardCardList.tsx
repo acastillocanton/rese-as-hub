@@ -114,13 +114,7 @@ export function LeaderboardCardList({ rows }: { rows: LeaderboardRow[] }) {
                 paddingTop: 4,
               }}
             >
-              <StatCell label="Visitas" value={p.visits} muted={p.visits === 0} />
               <StatCell label="Reseñas" value={p.reviews} muted={p.reviews === 0} strong />
-              <StatCell
-                label="Conversión"
-                value={p.visits > 0 ? `${p.conv}%` : "—"}
-                muted={p.visits === 0}
-              />
               <StatCell label="Meta" value={p.goal} muted={p.goal === 0} />
             </div>
           </article>

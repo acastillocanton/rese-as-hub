@@ -48,10 +48,10 @@ export default async function RankingPage({
 
   const rows = await getLeaderboard({ startIso: range.startIso, endIso: range.endIso });
 
-  // Empty si nadie ha producido nada en el rango (ni visitas ni reseñas).
-  // Distinto a no haber productores en BD: aquí siempre hay perfiles, pero
-  // pueden estar a 0/0 si el rango está fuera de su actividad.
-  const hasActivity = rows.some((r) => r.visits > 0 || r.reviews > 0);
+  // Empty si nadie ha producido nada en el rango. Distinto a no haber
+  // productores en BD: aquí siempre hay perfiles, pero pueden estar a 0
+  // si el rango está fuera de su actividad.
+  const hasActivity = rows.some((r) => r.reviews > 0);
 
   return (
     <>
@@ -120,7 +120,7 @@ export default async function RankingPage({
               Cambia el rango o espera a la próxima sincronización
             </div>
             <p style={{ margin: "10px 0 0", color: "var(--ink-3)", fontSize: 13.5, lineHeight: 1.55, maxWidth: 560 }}>
-              Ningún productor ha tenido visitas a su enlace ni reseñas atribuidas en el periodo seleccionado. Usa los atajos del calendario para ir al mes pasado o al último trimestre.
+              Ningún productor ha tenido reseñas atribuidas en el periodo seleccionado. Usa los atajos del calendario para ir al mes pasado o al último trimestre.
             </p>
           </Card>
         ) : (
@@ -140,7 +140,7 @@ export default async function RankingPage({
                 {rows.length} {rows.length === 1 ? "productor" : "productores"} · ordenados por reseñas
               </div>
               <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "var(--ink-4)", lineHeight: 1.5 }}>
-                Empate por reseñas → desempata por visitas. Los productores con 0/0 quedan al final ordenados alfabéticamente.
+                Ordenados por reseñas atribuidas. Los productores sin actividad quedan al final ordenados alfabéticamente.
               </p>
             </div>
             <LeaderboardTable rows={rows} />

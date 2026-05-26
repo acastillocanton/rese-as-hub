@@ -364,12 +364,13 @@ export default async function ManagerResenasPage({
                 maxWidth: 640,
               }}
             >
-              Cuando Google apruebe el acceso a la Business Profile API y el cron sincronice,
-              las reseñas atribuidas aparecerán aquí. Mientras tanto puedes navegar a{" "}
-              <Link href="/comerciales" style={{ color: "var(--ink)" }}>
-                Comerciales
+              Cuando entren reseñas nuevas vía cron (Places API hoy, Business
+              Profile cuando llegue cuota), aparecerán aquí. Si esperabas ver
+              alguna concreta, revisa el{" "}
+              <Link href="/dashboard" style={{ color: "var(--ink)" }}>
+                Dashboard
               </Link>{" "}
-              para revisar las visitas a enlaces.
+              para el banner de alertas.
             </p>
           </Card>
         ) : (

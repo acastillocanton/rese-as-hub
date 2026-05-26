@@ -28,7 +28,7 @@ export function LeaderboardTable({
         role="row"
         style={{
           display: "grid",
-          gridTemplateColumns: "28px 1.6fr 1fr 0.7fr 0.7fr 0.7fr 100px",
+          gridTemplateColumns: "28px 2fr 1fr 0.7fr 100px",
           gap: 14,
           padding: "8px 0",
           fontSize: 11,
@@ -41,9 +41,7 @@ export function LeaderboardTable({
         <span role="columnheader">#</span>
         <span role="columnheader">Comercial</span>
         <span role="columnheader">Ficha</span>
-        <span role="columnheader" style={{ textAlign: "right" }}>Visitas</span>
         <span role="columnheader" style={{ textAlign: "right" }}>Reseñas</span>
-        <span role="columnheader" style={{ textAlign: "right" }}>Conv.</span>
         <span role="columnheader" style={{ textAlign: "right" }}>Tendencia</span>
       </div>
       {visible.map((p, i) => (
@@ -51,10 +49,10 @@ export function LeaderboardTable({
           key={p.id}
           href={`/comerciales/${p.slug}`}
           role="row"
-          aria-label={`${p.name}, posición ${i + 1}, ${p.reviews} reseñas, ${p.visits} visitas`}
+          aria-label={`${p.name}, posición ${i + 1}, ${p.reviews} reseñas`}
           style={{
             display: "grid",
-            gridTemplateColumns: "28px 1.6fr 1fr 0.7fr 0.7fr 0.7fr 100px",
+            gridTemplateColumns: "28px 2fr 1fr 0.7fr 100px",
             gap: 14,
             padding: "12px 0",
             alignItems: "center",
@@ -107,38 +105,18 @@ export function LeaderboardTable({
             style={{
               textAlign: "right",
               fontVariantNumeric: "tabular-nums",
-              color: p.visits > 0 ? "var(--ink)" : "var(--ink-4)",
-            }}
-          >
-            {p.visits}
-          </span>
-          <span
-            role="cell"
-            style={{
-              textAlign: "right",
-              fontVariantNumeric: "tabular-nums",
               fontWeight: 600,
               color: p.reviews > 0 ? "var(--ink)" : "var(--ink-4)",
             }}
           >
             {p.reviews}
           </span>
-          <span
-            role="cell"
-            style={{
-              textAlign: "right",
-              fontVariantNumeric: "tabular-nums",
-              color: "var(--ink-3)",
-            }}
-          >
-            {p.visits > 0 ? `${p.conv}%` : "—"}
-          </span>
           <div role="cell" style={{ display: "flex", justifyContent: "flex-end" }}>
             <Sparkline
-              data={[0, 0, 0, 0, 0, p.visits]}
+              data={[0, 0, 0, 0, 0, p.reviews]}
               width={84}
               height={22}
-              stroke={p.visits > 0 ? "var(--ink-2)" : "#D6D6D9"}
+              stroke={p.reviews > 0 ? "var(--ink-2)" : "#D6D6D9"}
             />
           </div>
         </Link>

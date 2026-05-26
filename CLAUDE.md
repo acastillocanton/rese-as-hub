@@ -80,6 +80,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | v2 · Auto-sugerir vinculación de reseñas huérfanas al crear cliente | ✅ (2026-05-26) |
 | v2 · Sales descarga su propio Excel desde /panel/resenas | ✅ (2026-05-26) |
 | v2 · Alertas tempranas por reseñas ≤2★ (mig 017) | ✅ (2026-05-26) |
+| v2 · Quitar visitas a enlaces de la UI de management (decision negocio) | ✅ (2026-05-26) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -645,6 +646,32 @@ Cierra la open question #7 de [`spec.md`](spec.md). Cuando entra una reseña con
 **Open question #7 de spec.md cerrada** con esta implementación.
 
 ⚠️ **No confundir con `notifyNewReview`** (email transaccional al comercial atribuido, indep. del rating). Ambos pueden disparar a la vez: si entra una 1★ counted, el comercial recibe el email normal de "tienes nueva reseña" + el email de alerta ≤2★.
+
+### 4.30 Visitas a enlaces — uso interno solo (decisión de producto 2026-05-26)
+
+Decisión de negocio: las visitas a enlaces personales (`/c/{salesSlug}/{clientSlug}` → INSERT en `share_links`) **NO son un KPI accionable**. Una visita no es venta; el comercial puede tener 100 visitas y 5 reseñas y eso no cambia decisiones. Lo que importa es **reseñas counted no duplicadas** (anti-fraude mig 015 ya filtra).
+
+**Cambios en UI** (commit consolidado tras esta decisión):
+
+- **`/dashboard` (admin/manager)**:
+  - KPI hero "Visitas a enlaces" eliminado → reemplazado por "Reseñas ≤2★ en el periodo" (más accionable, conecta con §4.29).
+  - Chart "Visitas vs reseñas verificadas" simplificado a "Reseñas atribuidas · últimos 6 meses" (una sola serie). `AreaChart` ahora acepta `enviados?` opcional.
+  - Card "Actividad · Visitas recientes a enlaces" **eliminada completa**.
+  - GoalRow "Visitas registradas" eliminada de la card "Objetivos".
+  - Footer card "Rendimiento por ficha" muestra ahora reseñas en lugar de visitas como número grande.
+- **`/comerciales/[slug]`**: KPI "Visitas al enlace" + KPI "Conversión" eliminados. Quedan 2 KPIs en una fila: "Reseñas atribuidas" + "Valoración media". Columna "Visitas" de la tabla de clientes eliminada (grid 4 cols → 3 cols).
+- **`/ranking`**: columna "Visitas" + "Conv." eliminadas de `<LeaderboardTable>`. StatCells "Visitas" + "Conversión" eliminadas de `<LeaderboardCardList>` (mobile). Sparkline ahora basado en `reviews` en lugar de `visits`. Sort secundario (desempate) cambia de `visits DESC` a `name ASC`. Texto de empty state y subtítulo ajustados.
+- **`/manager/resenas`**: empty state reformulado para no mencionar "visitas a enlaces".
+
+**Lo que NO se toca**:
+- Tabla `share_links` (la usa el matcher para atribuir reseñas — sin esto no hay producto, ver §4.b matcher ventana 48h).
+- Endpoint `/c/{salesSlug}/{clientSlug}` (sigue registrando visitas internamente).
+- Pantallas del rol **sales**: `/clientes/[slug]` y `/panel/enlace` conservan visitas como info contextual ("¿este cliente abrió mi link?", "0 visitas hoy → comparte el enlace"). Útil para el comercial individual, no para management.
+- Tipo `LeaderboardRow.visits` y `LeaderboardRow.conv` siguen calculándose en `lib/leaderboard.ts` (compatibilidad + uso futuro si se reactivara), solo dejan de mostrarse.
+
+**Dedupe en backend** ([lib/landing.ts](lib/landing.ts), commit `1b750c5`): antes del INSERT en `share_links`, si existe ya una visita con `(sales_id, client_id, user_agent)` idénticos en los últimos 5 minutos, NO insertamos. El usuario sigue siendo redirigido a Google igual; solo evitamos inflar KPIs cuando el mismo navegador hace re-click (prefetch, vuelta atrás, comercial probando). Solo aplica cuando hay `client_id` + `user_agent` — visitas anónimas se cuentan tal cual.
+
+⚠️ **Si en el futuro se quiere reactivar "Tasa de conversión" como KPI**, el campo `LeaderboardRow.conv` sigue existiendo. Solo hay que mostrarlo. Si se quiere mostrar visitas otra vez en un sitio concreto, idem.
 
 ---
 

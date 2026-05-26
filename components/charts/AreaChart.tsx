@@ -1,5 +1,7 @@
 type AreaChartProps = {
-  enviados: number[];
+  /** Serie secundaria opcional (línea punteada). Si no se pasa, solo
+   *  se pinta la serie principal `conseguidos`. */
+  enviados?: number[];
   conseguidos: number[];
   labels: string[];
   height?: number;
@@ -14,9 +16,11 @@ export function AreaChart({ enviados, conseguidos, labels, height = 210 }: AreaC
   const padB = 22;
   const innerW = w - padL - padR;
   const innerH = h - padT - padB;
-  const max = Math.max(...enviados, ...conseguidos, 1);
+  const enviadosSafe = enviados ?? [];
+  const max = Math.max(...enviadosSafe, ...conseguidos, 1);
   const niceMax = Math.ceil(max / 10) * 10;
-  const xOf = (i: number) => padL + (i / Math.max(1, enviados.length - 1)) * innerW;
+  const xOf = (i: number) =>
+    padL + (i / Math.max(1, conseguidos.length - 1)) * innerW;
   const yOf = (v: number) => padT + innerH - (v / niceMax) * innerH;
   const path = (arr: number[]) =>
     arr.map((v, i) => (i ? "L" : "M") + xOf(i).toFixed(1) + " " + yOf(v).toFixed(1)).join(" ");
@@ -64,13 +68,15 @@ export function AreaChart({ enviados, conseguidos, labels, height = 210 }: AreaC
         </text>
       ))}
       <path d={area(conseguidos)} fill="url(#g-cons)" />
-      <path
-        d={path(enviados)}
-        fill="none"
-        stroke="#AEAEB2"
-        strokeWidth="1.3"
-        strokeDasharray="3 3"
-      />
+      {enviadosSafe.length > 0 && (
+        <path
+          d={path(enviadosSafe)}
+          fill="none"
+          stroke="#AEAEB2"
+          strokeWidth="1.3"
+          strokeDasharray="3 3"
+        />
+      )}
       <path d={path(conseguidos)} fill="none" stroke="#1D1D1F" strokeWidth="1.6" />
       {conseguidos.map((v, i) => (
         <circle key={i} cx={xOf(i)} cy={yOf(v)} r="2.5" fill="#1D1D1F" />

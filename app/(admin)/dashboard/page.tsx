@@ -443,9 +443,14 @@ export default async function DashboardPage({
           }}
         >
           <Stat
-            label="Visitas a enlaces"
-            value={visitsInRange.toString()}
-            sub={rangeLabel}
+            label="Reseñas ≤2★ en el periodo"
+            value={lowRatingTotal.toString()}
+            sub={
+              lowRatingTotal === 0
+                ? "Sin alertas en este rango"
+                : `Revisa el banner arriba`
+            }
+            deltaTone={lowRatingTotal === 0 ? "ok" : "warn"}
           />
           <Stat
             label="Comerciales activos"
@@ -513,43 +518,12 @@ export default async function DashboardPage({
                     letterSpacing: "-0.02em",
                   }}
                 >
-                  Visitas a enlaces vs. reseñas verificadas
+                  Reseñas atribuidas · últimos 6 meses
                 </div>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 14,
-                  fontSize: 12,
-                  color: "var(--ink-3)",
-                  alignItems: "center",
-                }}
-              >
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <span
-                    style={{
-                      width: 14,
-                      height: 0,
-                      borderTop: "1.5px dashed #AEAEB2",
-                    }}
-                  />
-                  Visitas
-                </span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <span
-                    style={{
-                      width: 14,
-                      height: 0,
-                      borderTop: "1.5px solid #1D1D1F",
-                    }}
-                  />
-                  Reseñas
-                </span>
               </div>
             </div>
             <div style={{ marginTop: 12 }}>
               <AreaChart
-                enviados={sharesByMonth}
                 conseguidos={reviewsByMonth}
                 labels={monthLabels}
                 height={230}
@@ -617,18 +591,6 @@ export default async function DashboardPage({
               tone={teamProgress >= 100 ? "ok" : "ink"}
             />
             <GoalRow
-              label="Visitas registradas"
-              value={`${visitsInRange}`}
-              hint={
-                visitsInRange === 0
-                  ? "Aún sin actividad"
-                  : `${totalClients} cliente${totalClients === 1 ? "" : "s"} en el sistema`
-              }
-              current={Math.min(visitsInRange, 100)}
-              max={100}
-              tone="ink"
-            />
-            <GoalRow
               label="Fichas sincronizando"
               value={`${syncingLocations} / ${locations.length}`}
               hint={
@@ -649,12 +611,15 @@ export default async function DashboardPage({
           </Card>
         </div>
 
-        {/* Leaderboard + Recent visits */}
+        {/* Leaderboard del mes — full width. La card "Visitas recientes a
+            enlaces" se eliminó tras decisión de producto (las visitas
+            como KPI no aportan valor accionable; solo siguen vivas
+            internamente para que el matcher atribuya reseñas vía
+            share_links). */}
         <div
-          className="m-grid-hero"
           style={{
             display: "grid",
-            gridTemplateColumns: "1.4fr 1fr",
+            gridTemplateColumns: "1fr",
             gap: 16,
             marginTop: 16,
           }}
@@ -729,111 +694,6 @@ export default async function DashboardPage({
             )}
           </Card>
 
-          <Card padding={0}>
-            <div
-              style={{
-                padding: "18px 22px 12px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
-                  Actividad
-                </div>
-                <div
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 600,
-                    marginTop: 4,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  Visitas recientes a enlaces
-                </div>
-              </div>
-              <Pill withDot>en vivo</Pill>
-            </div>
-            <div style={{ padding: "0 22px 12px" }}>
-              {recentShares.length === 0 ? (
-                <p
-                  style={{
-                    margin: "12px 0",
-                    fontSize: 13,
-                    color: "var(--ink-3)",
-                    lineHeight: 1.55,
-                  }}
-                >
-                  Aún no se ha registrado ninguna visita a un enlace de comercial.
-                  Cuando un cliente abra una URL{" "}
-                  <code
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 12,
-                      color: "var(--ink-2)",
-                    }}
-                  >
-                    /c/[comercial]/[cliente]
-                  </code>{" "}
-                  aparecerá aquí.
-                </p>
-              ) : (
-                recentShares.map((s) => (
-                  <div
-                    key={s.id}
-                    style={{
-                      padding: "14px 0",
-                      borderTop: "1px solid var(--line)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <Avatar
-                        name={s.client?.full_name ?? s.sales?.full_name ?? "?"}
-                        size={26}
-                      />
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          minWidth: 0,
-                          flex: 1,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "baseline",
-                            justifyContent: "space-between",
-                            gap: 8,
-                          }}
-                        >
-                          <span style={{ fontSize: 13.5, fontWeight: 600 }}>
-                            {s.client?.full_name ?? "Cliente sin registrar"}
-                          </span>
-                          <span style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
-                            {fmtDateTime(s.opened_at)}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 11.5,
-                            color: "var(--ink-4)",
-                            marginTop: 2,
-                          }}
-                        >
-                          {s.sales?.full_name ? `Comercial · ${s.sales.full_name}` : "Sin comercial"}
-                          {s.location?.name ? ` · ${s.location.name}` : ""}
-                          {" · "}
-                          <span style={{ textTransform: "capitalize" }}>{s.source}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
         </div>
 
         {/* Branches breakdown */}
@@ -961,25 +821,20 @@ export default async function DashboardPage({
                           fontVariantNumeric: "tabular-nums",
                         }}
                       >
-                        {b.visits}
+                        {b.reviews}
                       </span>
-                      <span style={{ fontSize: 12, color: "var(--ink-4)" }}>visitas</span>
+                      <span style={{ fontSize: 12, color: "var(--ink-4)" }}>
+                        reseña{b.reviews === 1 ? "" : "s"}
+                      </span>
                     </div>
                     <div
                       style={{
                         marginTop: 8,
-                        display: "flex",
-                        justifyContent: "space-between",
                         fontSize: 11.5,
                         color: "var(--ink-4)",
                       }}
                     >
-                      <span>
-                        {b.salesAssigned} comercial{b.salesAssigned === 1 ? "" : "es"}
-                      </span>
-                      <span>
-                        {b.reviews} reseña{b.reviews === 1 ? "" : "s"}
-                      </span>
+                      {b.salesAssigned} comercial{b.salesAssigned === 1 ? "" : "es"} asignado{b.salesAssigned === 1 ? "" : "s"}
                     </div>
                   </div>
                 ))}
