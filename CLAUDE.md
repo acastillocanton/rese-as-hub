@@ -550,7 +550,7 @@ Hasta v2 había un item "Exportar Excel" en el sidebar (admin + manager + direct
 **Reorganización (2026-05-26)**:
 
 - **Item del sidebar eliminado** de los 3 sidebars. La ruta `/manager/export` sigue existiendo (acceso por URL directa para filtros avanzados: ficha, match_state, etc.). El icono `Download` ya no se importa en `Sidebar.tsx`.
-- **Card "Exportar resultados" en `/comerciales`** (entre stats y `SalesFilters`, oculta con `?archived=1`). Tres atajos rápidos: Mes actual / Mes pasado / Último trimestre. Apuntan al endpoint global `/api/export/reviews` (sin cambios). Link discreto a "exportación personalizada" → `/manager/export` para filtros avanzados. Calculados con `defaultShortcuts()` de [lib/date-range.ts](lib/date-range.ts).
+- **Card "Exportar resultados" en `/comerciales`** (entre stats y `SalesFilters`, oculta con `?archived=1`). Contiene un **`<RangePicker>`** (con los 3 atajos mes actual / mes pasado / último trimestre embebidos en el dropdown + form de rango libre) y un único botón "Descargar Excel" que usa el rango seleccionado. La URL acepta `?from=Y&to=Z`. Apunta al endpoint global `/api/export/reviews` (sin cambios). Link discreto a "exportación personalizada" → `/manager/export` para filtros avanzados (ficha, match_state).
 - **Botón "Descargar Excel" en `/comerciales/[slug]`** ahora apunta al **endpoint nuevo** `/api/export/sales/[id]?from=Y&to=Z` que devuelve un Excel propio del comercial.
 
 **Excel individual** ([lib/reports/sales-report.ts](lib/reports/sales-report.ts), endpoint en [app/api/export/sales/[id]/route.ts](app/api/export/sales/[id]/route.ts)):
@@ -591,9 +591,10 @@ Es un patrón legítimo: a veces el cliente deja la reseña **antes** de que el 
 - Server actions `findOrphanReviewsForClient` + `linkOrphanReviewToClient` en [app/(sales)/clientes/actions.ts](app/(sales)/clientes/actions.ts). Auth: dueño del cliente (sales), director con scope al equipo del dueño, o admin/manager. `linkOrphanReviewToClient` aplica anti-fraude (mig 015) y deja audit log con `action='link_orphan'`. Race-safe: `.is("client_id", null)` en el WHERE del UPDATE → si otro lo vinculó entre lectura y escritura, matchea 0 filas → error UX.
 - Componente [components/clients/OrphanReviewsModal.tsx](components/clients/OrphanReviewsModal.tsx): modal con backdrop + lista de candidatas (autor + estrellas + similarity badge + fecha) + botón "Vincular" individual. Footer "Cerrar/Saltar". Tras vincular, refresh.
 
-**Integración en 2 flujos**:
+**Integración en 3 flujos**:
 1. `NewClientButton` (en `/clientes`): tras `createClientRecord` exitoso, llama a `findOrphanReviewsForClient(client.id)`. Si hay candidatas, abre `OrphanReviewsModal` **antes** del `ClientLinkDialog` — primero vincular reseñas pasadas, después compartir el enlace.
 2. `claimReview` (en `/resenas/verificacion`): cuando un sales reclama una huérfana CON `newClientName` (crea cliente inline), el return de `claimReview` ahora incluye `{ clientId, wasNewClient }`. Si `wasNewClient=true`, el row busca OTRAS huérfanas con autor similar y abre el mismo modal antes del refresh.
+3. **Botón "Buscar reseñas" en cada fila de `/clientes`** ([ClientRowItem.tsx](app/(sales)/clientes/ClientRowItem.tsx)): vía a posteriori para vincular reseñas ya existentes en BD que no se detectaron al crear el cliente (porque entonces no había candidatas, o porque el cliente se creó antes del despliegue de esta feature). Click → llama al mismo helper. Si no hay candidatas, alert "No hay reseñas sin vincular que se parezcan a {nombre}". Si hay ≥ 1 → abre el modal.
 
 ⚠️ **Threshold conservador**: `ORPHAN_SUGGEST_THRESHOLD=50` para minimizar falsos positivos. Casos como "Salvador Sanchis" vs "Salvador Sanchis Plaus" puntúan 90 (tokens del cliente contenidos en autor). Casos como "S. Sanchis" vs "Salvador Sanchis" puntúan 30 (sólo apellido coincide) y NO se sugieren — el sales debe asignarlos manualmente desde la verificación.
 
