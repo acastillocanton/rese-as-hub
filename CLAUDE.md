@@ -434,9 +434,11 @@ La pantalla `/resenas/verificacion` vivía en `app/(admin)/resenas/verificacion/
 
 ### 4.25 Link a ficha pública de Google en cada reseña
 
-Cada listado de reseñas tiene un mini-link "Ver en Google" (icono `ExternalLink` con borde) que abre en nueva pestaña la **ficha del establecimiento en Google Maps** (`https://www.google.com/maps/place/?q=place_id:XXX`). El panel lateral de Maps muestra la ficha con foto, info y la lista de reseñas accesible con un scroll/tap. Útil para verificar contexto, ver si tiene respuesta del propietario, o leer el texto en formato Maps.
+Cada listado de reseñas tiene un mini-link "Ver en Google" (icono `ExternalLink` con borde) que abre en nueva pestaña el **panel de reseñas de la ficha en Google** (`https://search.google.com/local/reviews?placeid=XXX`). Útil para verificar contexto, ver si tiene respuesta del propietario, o leer el texto en formato Google.
 
-**Limitación actual conocida**: con Places API no podemos hacer deep-link a la reseña concreta (no devuelve `reviewId` raw — lo sintetizamos con prefijo `places:`, ver §4.17). El usuario ve la ficha en Maps y localiza la reseña visualmente por autor + fecha en el panel de reseñas. Cuando Google apruebe Business Profile API (caso 5-5855000041022, ETA junio 2026) el `reviewId` raw permitirá deep-link exacto.
+**Por qué este endpoint y no Google Maps**: Probamos también `https://www.google.com/maps/place/?q=place_id:XXX` (el patrón canónico documentado de Google), pero ese URL abre la ficha en Maps **sin la pestaña reseñas activa** — el usuario tiene que pulsar "Reseñas" manualmente. El URL ideal (Maps con reseñas ya abiertas) requiere el formato propietario `/data=...!9m1!1b1...` con el **FID interno de Google** (`0xd4229bf...`), NO el `place_id` estándar (`ChIJ...`) que guardamos en BD. Por eso usamos `search.google.com/local/reviews` que abre directamente el panel de reseñas — aunque sea en formato Google Search (no Maps), el usuario llega de un click a las reseñas.
+
+**Limitación actual conocida**: con Places API no podemos hacer deep-link a la reseña concreta (no devuelve `reviewId` raw — lo sintetizamos con prefijo `places:`, ver §4.17). El usuario ve la lista completa de reseñas de la ficha y localiza la suya visualmente por autor + fecha. Cuando Google apruebe Business Profile API (caso 5-5855000041022, ETA junio 2026) el `reviewId` raw permitirá deep-link exacto.
 
 **Pantallas con el link** (las 5 que muestran reseñas):
 - `/manager/resenas` — columna nueva "Google" entre "Autor/valoración" y "Comercial/cliente" (grid 5→6 cols).
