@@ -55,7 +55,7 @@ const STATUS_OPTIONS: { value: Exclude<ProfileStatus, "archived">; label: string
 export function SalesEditCard({
   id,
   email,
-  phone,
+  phone: initialPhone,
   slug,
   joinedAt,
   locations,
@@ -67,6 +67,7 @@ export function SalesEditCard({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const [phone, setPhone] = useState<string>(initialPhone ?? "");
   const [locationId, setLocationId] = useState(
     initial.locationId ?? locations[0]?.id ?? "",
   );
@@ -102,6 +103,7 @@ export function SalesEditCard({
     });
 
   function onCancel() {
+    setPhone(initialPhone ?? "");
     setLocationId(initial.locationId ?? locations[0]?.id ?? "");
     setDirectorId(initial.directorId ?? "");
     setMonthlyGoal(initial.monthlyGoal);
@@ -137,6 +139,7 @@ export function SalesEditCard({
     }
     const payload: UpdateSalesInput = {
       id,
+      phone: phone.trim() ? phone.trim() : null,
       locationId,
       directorId: directorId || null,
       monthlyGoal,
@@ -183,7 +186,32 @@ export function SalesEditCard({
 
       <dl style={{ margin: 0, display: "grid", rowGap: 12 }}>
         <DataRow label="Email" value={email ?? "—"} />
-        <DataRow label="Teléfono" value={phone ?? "—"} />
+
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Teléfono</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                type="tel"
+                maxLength={40}
+                placeholder="+34 …"
+                style={inputStyle}
+              />
+            ) : (
+              <span
+                style={{
+                  fontSize: 13.5,
+                  color: initialPhone ? "var(--ink)" : "var(--ink-4)",
+                }}
+              >
+                {initialPhone ?? "—"}
+              </span>
+            )}
+          </dd>
+        </div>
+
         <DataRow label="Slug" mono value={`/c/${slug}`} />
 
         {/* Alta */}

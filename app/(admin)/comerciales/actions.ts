@@ -230,6 +230,12 @@ export async function inviteSales(input: InviteSalesInput): Promise<
 const updateSchema = z
   .object({
     id: z.string().uuid(),
+    phone: z
+      .string()
+      .max(40)
+      .optional()
+      .nullable()
+      .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
     locationId: z.string().uuid("Selecciona una ficha."),
     directorId: z
@@ -305,6 +311,7 @@ export async function updateSales(input: UpdateSalesInput) {
   // de la migración 005) son los únicos que pueden hacer UPDATE en filas con
   // role='sales'. Middleware también gatea esta ruta.
   const payload = {
+    phone: parsed.data.phone,
     monthly_goal: parsed.data.monthlyGoal,
     location_id: parsed.data.locationId,
     director_id: parsed.data.directorId,
