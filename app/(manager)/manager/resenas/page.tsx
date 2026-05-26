@@ -3,6 +3,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Stars } from "@/components/ui/Stars";
 import { Pill } from "@/components/ui/Pill";
+import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { parseRange, defaultShortcuts } from "@/lib/date-range";
@@ -16,6 +17,7 @@ type SearchParams = Promise<{
   sales_id?: string;
   location_id?: string;
   match_state?: string;
+  duplicates?: string;
   from?: string;
   to?: string;
 }>;
@@ -32,6 +34,7 @@ type ReviewRow = {
   match_state: string;
   match_confidence: number;
   removed_at: string | null;
+  is_duplicate: boolean;
   sales: { full_name: string; slug: string } | null;
   client: { full_name: string } | null;
   location: { name: string } | null;
@@ -77,7 +80,7 @@ export default async function ManagerResenasPage({
   let query = supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, match_state, match_confidence, removed_at, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
+      "id, author_name, rating, text, google_created_at, match_state, match_confidence, removed_at, is_duplicate, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
     )
     .gte("google_created_at", range.startIso)
     .lt("google_created_at", range.endIso)
@@ -92,6 +95,12 @@ export default async function ManagerResenasPage({
 
   if (params.sales_id) query = query.eq("sales_id", params.sales_id);
   if (params.location_id) query = query.eq("location_id", params.location_id);
+  // Filtro duplicadas (mig 015):
+  //   - "yes" → solo is_duplicate=true
+  //   - "no"  → solo is_duplicate=false (principales)
+  //   - sin valor → sin filtro (mezcla)
+  if (params.duplicates === "yes") query = query.eq("is_duplicate", true);
+  else if (params.duplicates === "no") query = query.eq("is_duplicate", false);
 
   const [reviewsRes, salesRes, locationsRes] = await Promise.all([
     query.returns<ReviewRow[]>(),
@@ -112,9 +121,17 @@ export default async function ManagerResenasPage({
   const sales = salesRes.data ?? [];
   const locations = locationsRes.data ?? [];
 
-  const counted = reviews.filter((r) => r.match_state === "counted").length;
-  const pending = reviews.filter((r) => r.match_state === "pending").length;
+  // Atribuidas / pendientes / sin atribuir cuentan SOLO principales (anti-fraude
+  // mig 015) para coherencia con el resto de KPIs. Las duplicadas se reportan
+  // en su contador propio.
+  const counted = reviews.filter(
+    (r) => r.match_state === "counted" && !r.is_duplicate,
+  ).length;
+  const pending = reviews.filter(
+    (r) => r.match_state === "pending" && !r.is_duplicate,
+  ).length;
   const unmatched = reviews.filter((r) => r.match_state === "unmatched").length;
+  const duplicates = reviews.filter((r) => r.is_duplicate).length;
   const avg =
     reviews.length > 0
       ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(2).replace(".", ",")
@@ -126,6 +143,7 @@ export default async function ManagerResenasPage({
   if (params.sales_id) exportHref.set("sales_id", params.sales_id);
   if (params.location_id) exportHref.set("location_id", params.location_id);
   if (params.match_state) exportHref.set("match_state", params.match_state);
+  if (params.duplicates) exportHref.set("duplicates", params.duplicates);
 
   const shortcuts = defaultShortcuts();
 
@@ -239,6 +257,17 @@ export default async function ManagerResenasPage({
                 <option value="removed">Eliminadas en Google</option>
               </select>
             </FilterField>
+            <FilterField label="Duplicadas">
+              <select
+                name="duplicates"
+                defaultValue={params.duplicates ?? ""}
+                style={inputStyle}
+              >
+                <option value="">Mezcla (todas)</option>
+                <option value="no">Solo principales</option>
+                <option value="yes">Solo duplicadas</option>
+              </select>
+            </FilterField>
             <button
               type="submit"
               style={{
@@ -269,7 +298,11 @@ export default async function ManagerResenasPage({
           <MiniStat
             label="Atribuidas"
             value={counted.toString()}
-            sub={`${pending} pendientes · ${unmatched} sin atribuir`}
+            sub={
+              duplicates > 0
+                ? `${pending} pendientes · ${unmatched} sin atribuir · ${duplicates} duplicadas`
+                : `${pending} pendientes · ${unmatched} sin atribuir`
+            }
           />
           <MiniStat label="Valoración media" value={avg} sub={reviews.length === 0 ? "—" : "sobre 5"} />
           {params.location_id ? (
@@ -424,6 +457,11 @@ export default async function ManagerResenasPage({
                           ? "Pendiente"
                           : "Sin atribuir"}
                   </Pill>
+                  {r.is_duplicate && (
+                    <div style={{ marginTop: 4 }}>
+                      <DuplicateBadge />
+                    </div>
+                  )}
                   <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 4 }}>
                     Conf. {r.match_confidence}%
                   </div>

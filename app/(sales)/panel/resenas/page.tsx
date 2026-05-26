@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Stat } from "@/components/ui/Stat";
 import { Stars } from "@/components/ui/Stars";
 import { Pill } from "@/components/ui/Pill";
+import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
@@ -32,6 +33,7 @@ type ReviewRow = {
   google_created_at: string;
   match_state: string;
   match_confidence: number;
+  is_duplicate: boolean;
   client: { full_name: string; slug: string } | null;
   location: { name: string } | null;
 };
@@ -87,7 +89,7 @@ export default async function MisResenasPage({
   const reviewsRes = await supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, match_state, match_confidence, client:clients(full_name, slug), location:locations(name)",
+      "id, author_name, rating, text, google_created_at, match_state, match_confidence, is_duplicate, client:clients(full_name, slug), location:locations(name)",
     )
     .eq("sales_id", user.id)
     .is("removed_at", null)
@@ -98,10 +100,16 @@ export default async function MisResenasPage({
 
   const reviews = reviewsRes.data ?? [];
 
-  // KPIs del rango
+  // KPIs del rango — anti-fraude (mig 015): contamos sólo las NO duplicadas.
+  // Las duplicadas siguen apareciendo en el listado con badge "Duplicada".
   const total = reviews.length;
-  const counted = reviews.filter((r) => r.match_state === "counted").length;
-  const pending = reviews.filter((r) => r.match_state === "pending").length;
+  const counted = reviews.filter(
+    (r) => r.match_state === "counted" && !r.is_duplicate,
+  ).length;
+  const pending = reviews.filter(
+    (r) => r.match_state === "pending" && !r.is_duplicate,
+  ).length;
+  const duplicates = reviews.filter((r) => r.is_duplicate).length;
   const avgRating =
     reviews.length > 0
       ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
@@ -179,7 +187,9 @@ export default async function MisResenasPage({
             sub={
               total === 0
                 ? "Pendiente sincronización"
-                : `${counted} contadas · ${pending} por verificar`
+                : duplicates > 0
+                  ? `${counted} contadas · ${pending} por verificar · ${duplicates} duplicadas`
+                  : `${counted} contadas · ${pending} por verificar`
             }
           />
           <Stat
@@ -325,10 +335,14 @@ function ReviewItem({
           </span>
         </div>
       </div>
-      <div className="m-review-pill" style={{ display: "flex", alignItems: "center" }}>
+      <div
+        className="m-review-pill"
+        style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}
+      >
         <Pill withDot tone={matchStateTone(review.match_state)}>
           {matchStateLabel(review.match_state)}
         </Pill>
+        {review.is_duplicate && <DuplicateBadge />}
       </div>
     </div>
   );

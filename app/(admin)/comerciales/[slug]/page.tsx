@@ -4,6 +4,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Stat } from "@/components/ui/Stat";
 import { Stars } from "@/components/ui/Stars";
+import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
@@ -573,6 +574,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
             <div style={sectionLabel}>Reseñas en {range.label}</div>
             <span style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
               {reviews.length} total · {reviewsCounted} atribuidas · {reviewsPending} pendientes
+              {reviewsDuplicates > 0 && ` · ${reviewsDuplicates} duplicadas`}
             </span>
           </div>
           {reviews.length === 0 ? (
@@ -673,8 +675,10 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                       marginTop: 10,
                       display: "flex",
                       gap: 12,
+                      alignItems: "center",
                       fontSize: 11.5,
                       color: "var(--ink-4)",
+                      flexWrap: "wrap",
                     }}
                   >
                     <span>{fmtDate(r.google_created_at)}</span>
@@ -682,6 +686,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                     <span>
                       Match {r.match_state} · confianza {r.match_confidence}%
                     </span>
+                    {r.is_duplicate && <DuplicateBadge />}
                   </div>
                 </div>
               ))}

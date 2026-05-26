@@ -601,6 +601,7 @@ function renderDetailSheet(workbook: ExcelJS.Workbook, reviews: ReviewDetailRow[
     { header: "Comercial", key: "comercial", width: 22 },
     { header: "Cliente atribuido", key: "cliente", width: 22 },
     { header: "Estado matching", key: "match", width: 22 },
+    { header: "Duplicada", key: "duplicada", width: 12 },
     { header: "Confianza", key: "confianza", width: 12 },
     { header: "Google Review ID", key: "google_id", width: 36 },
   ];
@@ -622,6 +623,7 @@ function renderDetailSheet(workbook: ExcelJS.Workbook, reviews: ReviewDetailRow[
       comercial: r.sales?.full_name ?? "Sin atribuir",
       cliente: r.client?.full_name ?? "",
       match: MATCH_LABEL[r.match_state] ?? r.match_state,
+      duplicada: r.is_duplicate ? "Sí" : "",
       confianza: r.match_confidence,
       google_id: r.google_review_id,
     });
@@ -630,7 +632,30 @@ function renderDetailSheet(workbook: ExcelJS.Workbook, reviews: ReviewDetailRow[
   sheet.getColumn("fecha").numFmt = "dd/mm/yyyy hh:mm";
   sheet.getColumn("comentario").alignment = { wrapText: true, vertical: "top" };
   sheet.getColumn("estrellas").alignment = { horizontal: "center" };
+  sheet.getColumn("duplicada").alignment = { horizontal: "center" };
   sheet.getColumn("confianza").alignment = { horizontal: "right" };
+
+  // Total al pie: total de reseñas vs. computables (sin duplicadas — las que
+  // cuentan en KPIs anti-fraude mig 015).
+  const totalRow = reviews.length;
+  const computables = reviews.filter((r) => !r.is_duplicate).length;
+  const duplicadas = totalRow - computables;
+  const summaryRow = sheet.addRow({
+    fecha: "",
+    autor: "",
+    estrellas: "",
+    comentario: `Total filas: ${totalRow} · Computables (sin duplicadas): ${computables} · Duplicadas: ${duplicadas}`,
+    ficha: "",
+    comercial: "",
+    cliente: "",
+    match: "",
+    duplicada: "",
+    confianza: "",
+    google_id: "",
+  });
+  summaryRow.font = { bold: true };
+  summaryRow.alignment = { vertical: "middle" };
+
   sheet.views = [{ state: "frozen", ySplit: 1 }];
 }
 

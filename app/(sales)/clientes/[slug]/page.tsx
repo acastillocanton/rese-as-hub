@@ -4,6 +4,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Stat } from "@/components/ui/Stat";
 import { Stars } from "@/components/ui/Stars";
+import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { ShareBlock } from "../ShareBlock";
@@ -36,6 +37,7 @@ type ReviewRow = {
   google_created_at: string;
   match_state: string;
   match_confidence: number;
+  is_duplicate: boolean;
 };
 
 export default async function ClienteDetallePage({ params }: PageProps) {
@@ -94,7 +96,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       .returns<{ opened_at: string; source: string }[]>(),
     supabase
       .from("reviews")
-      .select("id, author_name, rating, text, google_created_at, match_state, match_confidence")
+      .select("id, author_name, rating, text, google_created_at, match_state, match_confidence, is_duplicate")
       .eq("client_id", client.id)
       .is("removed_at", null)
       .order("google_created_at", { ascending: false })
@@ -315,8 +317,10 @@ export default async function ClienteDetallePage({ params }: PageProps) {
                       marginTop: 10,
                       display: "flex",
                       gap: 12,
+                      alignItems: "center",
                       fontSize: 11.5,
                       color: "var(--ink-4)",
+                      flexWrap: "wrap",
                     }}
                   >
                     <span>{fmtDate(r.google_created_at)}</span>
@@ -324,6 +328,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
                     <span>
                       Match {r.match_state} · confianza {r.match_confidence}%
                     </span>
+                    {r.is_duplicate && <DuplicateBadge />}
                   </div>
                 </div>
               ))}

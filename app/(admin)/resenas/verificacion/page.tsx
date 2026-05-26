@@ -19,6 +19,7 @@ type ReviewRow = {
   match_confidence: number;
   match_evidence: Record<string, unknown> | null;
   removed_at: string | null;
+  is_duplicate: boolean;
   sales: { id: string; full_name: string; slug: string } | null;
   client: { id: string; full_name: string } | null;
   location: { id: string; name: string } | null;
@@ -70,7 +71,7 @@ export default async function ResenasVerificacionPage({
   const reviewsQueryBase = supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, match_state, match_confidence, match_evidence, removed_at, sales:profiles!reviews_sales_id_fkey(id, full_name, slug), client:clients(id, full_name), location:locations(id, name)",
+      "id, author_name, rating, text, google_created_at, match_state, match_confidence, match_evidence, removed_at, is_duplicate, sales:profiles!reviews_sales_id_fkey(id, full_name, slug), client:clients(id, full_name), location:locations(id, name)",
     )
     .order("google_created_at", { ascending: false });
 

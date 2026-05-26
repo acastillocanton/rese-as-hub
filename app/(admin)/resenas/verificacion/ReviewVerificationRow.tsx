@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Stars } from "@/components/ui/Stars";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { Pill } from "@/components/ui/Pill";
+import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
 import {
   confirmReview,
   rejectReview,
@@ -23,6 +24,7 @@ type Review = {
   match_confidence: number;
   match_evidence: Record<string, unknown> | null;
   removed_at: string | null;
+  is_duplicate: boolean;
   sales: { id: string; full_name: string; slug: string } | null;
   client: { id: string; full_name: string } | null;
   location: { id: string; name: string } | null;
@@ -183,6 +185,7 @@ export function ReviewVerificationRow({
                 ? "Atribuida"
                 : "Sin atribuir"}
           </Pill>
+          {review.is_duplicate && <DuplicateBadge />}
           <span
             style={{
               fontSize: 11.5,
