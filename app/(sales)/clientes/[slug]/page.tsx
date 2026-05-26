@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Stat } from "@/components/ui/Stat";
 import { Stars } from "@/components/ui/Stars";
 import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
+import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { ShareBlock } from "../ShareBlock";
@@ -38,6 +39,7 @@ type ReviewRow = {
   match_state: string;
   match_confidence: number;
   is_duplicate: boolean;
+  location: { id: string; name: string; google_place_id: string | null } | null;
 };
 
 export default async function ClienteDetallePage({ params }: PageProps) {
@@ -96,7 +98,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       .returns<{ opened_at: string; source: string }[]>(),
     supabase
       .from("reviews")
-      .select("id, author_name, rating, text, google_created_at, match_state, match_confidence, is_duplicate")
+      .select("id, author_name, rating, text, google_created_at, match_state, match_confidence, is_duplicate, location:locations(id, name, google_place_id)")
       .eq("client_id", client.id)
       .is("removed_at", null)
       .order("google_created_at", { ascending: false })
@@ -329,6 +331,10 @@ export default async function ClienteDetallePage({ params }: PageProps) {
                       Match {r.match_state} · confianza {r.match_confidence}%
                     </span>
                     {r.is_duplicate && <DuplicateBadge />}
+                    <GoogleReviewLink
+                      placeId={r.location?.google_place_id}
+                      variant="compact"
+                    />
                   </div>
                 </div>
               ))}

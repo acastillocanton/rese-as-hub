@@ -7,6 +7,7 @@ import { Stars } from "@/components/ui/Stars";
 import { Pill } from "@/components/ui/Pill";
 import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
 import { Avatar } from "@/components/ui/Avatar";
+import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -35,7 +36,7 @@ type ReviewRow = {
   match_confidence: number;
   is_duplicate: boolean;
   client: { full_name: string; slug: string } | null;
-  location: { name: string } | null;
+  location: { name: string; google_place_id: string | null } | null;
 };
 
 type ResenasSearchParams = Promise<{ from?: string; to?: string }>;
@@ -89,7 +90,7 @@ export default async function MisResenasPage({
   const reviewsRes = await supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, match_state, match_confidence, is_duplicate, client:clients(full_name, slug), location:locations(name)",
+      "id, author_name, rating, text, google_created_at, match_state, match_confidence, is_duplicate, client:clients(full_name, slug), location:locations(name, google_place_id)",
     )
     .eq("sales_id", user.id)
     .is("removed_at", null)
@@ -343,6 +344,10 @@ function ReviewItem({
           {matchStateLabel(review.match_state)}
         </Pill>
         {review.is_duplicate && <DuplicateBadge />}
+        <GoogleReviewLink
+          placeId={review.location?.google_place_id}
+          variant="compact"
+        />
       </div>
     </div>
   );

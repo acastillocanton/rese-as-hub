@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Stat } from "@/components/ui/Stat";
 import { Stars } from "@/components/ui/Stars";
 import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
+import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
 import { Avatar } from "@/components/ui/Avatar";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
@@ -74,6 +75,7 @@ type ReviewRow = {
   match_confidence: number;
   client_id: string | null;
   is_duplicate: boolean;
+  location: { id: string; name: string; google_place_id: string | null } | null;
 };
 
 export default async function ComercialDetallePage({ params, searchParams }: PageProps) {
@@ -173,7 +175,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("reviews")
       .select(
-        "id, author_name, rating, text, google_created_at, match_state, match_confidence, client_id, is_duplicate",
+        "id, author_name, rating, text, google_created_at, match_state, match_confidence, client_id, is_duplicate, location:locations(id, name, google_place_id)",
       )
       .eq("sales_id", sales.id)
       .is("removed_at", null)
@@ -687,6 +689,10 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                       Match {r.match_state} · confianza {r.match_confidence}%
                     </span>
                     {r.is_duplicate && <DuplicateBadge />}
+                    <GoogleReviewLink
+                      placeId={r.location?.google_place_id}
+                      variant="compact"
+                    />
                   </div>
                 </div>
               ))}

@@ -14,6 +14,7 @@ import {
   claimReview,
 } from "./actions";
 import { RemovalControls } from "@/components/ui/RemovalControls";
+import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
 import type { Role } from "@/lib/supabase/types";
 
 type Review = {
@@ -29,7 +30,7 @@ type Review = {
   is_duplicate: boolean;
   sales: { id: string; full_name: string; slug: string } | null;
   client: { id: string; full_name: string } | null;
-  location: { id: string; name: string } | null;
+  location: { id: string; name: string; google_place_id: string | null } | null;
 };
 
 type SalesOption = {
@@ -576,6 +577,10 @@ function ReviewHeader({ review }: { review: Review }) {
         >
           Confianza {review.match_confidence}%
         </span>
+        <GoogleReviewLink
+          placeId={review.location?.google_place_id}
+          variant="compact"
+        />
       </div>
     </div>
   );

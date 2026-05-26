@@ -10,6 +10,7 @@ import { parseRange, defaultShortcuts } from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { SyncNowButton } from "@/components/ui/SyncNowButton";
 import { RemovalControls } from "@/components/ui/RemovalControls";
+import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
 
@@ -37,7 +38,7 @@ type ReviewRow = {
   is_duplicate: boolean;
   sales: { full_name: string; slug: string } | null;
   client: { full_name: string } | null;
-  location: { name: string } | null;
+  location: { name: string; google_place_id: string | null } | null;
 };
 
 export default async function ManagerResenasPage({
@@ -80,7 +81,7 @@ export default async function ManagerResenasPage({
   let query = supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, match_state, match_confidence, removed_at, is_duplicate, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
+      "id, author_name, rating, text, google_created_at, match_state, match_confidence, removed_at, is_duplicate, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name, google_place_id)",
     )
     .gte("google_created_at", range.startIso)
     .lt("google_created_at", range.endIso)
@@ -366,7 +367,7 @@ export default async function ManagerResenasPage({
                 padding: "12px 22px",
                 borderBottom: "1px solid var(--line)",
                 display: "grid",
-                gridTemplateColumns: "1.4fr 1.4fr 1fr 1fr 1fr",
+                gridTemplateColumns: "1.4fr 0.5fr 1.4fr 1fr 1fr 1fr",
                 gap: 14,
                 fontSize: 11,
                 color: "var(--ink-4)",
@@ -375,6 +376,7 @@ export default async function ManagerResenasPage({
               }}
             >
               <span>Autor / valoración</span>
+              <span>Google</span>
               <span>Comercial / cliente</span>
               <span>Ficha</span>
               <span>Fecha</span>
@@ -387,7 +389,7 @@ export default async function ManagerResenasPage({
                   padding: "14px 22px",
                   borderBottom: i === reviews.length - 1 ? "none" : "1px solid var(--line)",
                   display: "grid",
-                  gridTemplateColumns: "1.4fr 1.4fr 1fr 1fr 1fr",
+                  gridTemplateColumns: "1.4fr 0.5fr 1.4fr 1fr 1fr 1fr",
                   gap: 14,
                   alignItems: "start",
                   fontSize: 13,
@@ -412,6 +414,9 @@ export default async function ManagerResenasPage({
                       {r.text.length > 220 ? `${r.text.slice(0, 220)}…` : r.text}
                     </p>
                   )}
+                </div>
+                <div>
+                  <GoogleReviewLink placeId={r.location?.google_place_id} variant="compact" />
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
                   {r.sales ? (

@@ -32,7 +32,7 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test               # Vitest unit tests (121 tests: matcher + date-range + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating)
+npm test               # Vitest unit tests (126 tests: matcher + date-range + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright happy paths (login + admin nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo
@@ -75,6 +75,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | **🏁 V1 cerrada** | **2026-05-26** |
 | Anti-fraude: marcado de reseñas duplicadas por client_id (mig 015) | ✅ (2026-05-26) |
 | v2 · Verificación abierta a todos los roles (mig 016) | ✅ (2026-05-26) |
+| v2 · Link a ficha de Google en cada listado de reseñas | ✅ (2026-05-26) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -430,6 +431,27 @@ La pantalla `/resenas/verificacion` vivía en `app/(admin)/resenas/verificacion/
 - **office_director** → service-client (`createServiceClient`) porque mig 013 limita su RLS UPDATE a `sales_id IN team` y no cubre los movimientos sobre unmatched (mig 016 abre solo SELECT para director, no UPDATE). El gating en código (`canPerformAction` + `assertReviewInScope`) es la autoridad para director.
 
 ⚠️ **No pasar todas las acciones a service-client** "por simplicidad" — perderíamos la red de seguridad RLS para sales. El WITH CHECK de `reviews_sales_claim_update` es lo único que impide que un sales con código malicioso/bug se atribuya reseñas que no son suyas. Si en el futuro hace falta uniformar, primero diseñar policies UPDATE permissivas para director sobre unmatched y luego sí.
+
+### 4.25 Link a ficha pública de Google en cada reseña
+
+Cada listado de reseñas tiene un mini-link "Ver en Google" (icono `ExternalLink` con borde) que abre en nueva pestaña la **ficha pública de Google con el panel de reseñas desplegado** (`https://search.google.com/local/reviews?placeid=XXX`). Útil para verificar contexto, ver si tiene respuesta del propietario, o leer el texto en formato Google.
+
+**Limitación actual conocida**: con Places API no podemos hacer deep-link a la reseña concreta (no devuelve `reviewId` raw — lo sintetizamos con prefijo `places:`, ver §4.17). El usuario ve la lista completa de reseñas de la ficha y localiza la suya visualmente por autor + fecha. Cuando Google apruebe Business Profile API (caso 5-5855000041022, ETA junio 2026) el `reviewId` raw permitirá deep-link exacto.
+
+**Pantallas con el link** (las 5 que muestran reseñas):
+- `/manager/resenas` — columna nueva "Google" entre "Autor/valoración" y "Comercial/cliente" (grid 5→6 cols).
+- `/resenas/verificacion` — junto al pill de estado en cada card (ReviewVerificationRow).
+- `/panel/resenas` — junto al pill de match en cada card del sales.
+- `/comerciales/[slug]` — en el footer de cada review card.
+- `/clientes/[slug]` — en el footer de cada review card.
+
+**Helper puro** [lib/google/review-url.ts](lib/google/review-url.ts): `buildGoogleReviewListUrl(placeId)` devuelve la URL o `null` si no hay place_id. Tests en [lib/google/__tests__/review-url.test.ts](lib/google/__tests__/review-url.test.ts) (5 tests).
+
+**Componente compartido** [components/ui/GoogleReviewLink.tsx](components/ui/GoogleReviewLink.tsx): server-component-safe (no hooks), 2 variantes `compact` (solo icono) y `default` (icono + texto). Devuelve `null` si no hay placeId — caso defensivo, las 7 fichas de prod lo tienen.
+
+⚠️ **NO confundir con** `buildGoogleReviewUrl` de [lib/landing.ts](lib/landing.ts) — ese construye URL para **escribir reseña** (`/local/writereview`), distinta de la URL para **verlas** (`/local/reviews`).
+
+**Pendiente cuando llegue Business Profile**: ampliar el helper a `buildGoogleReviewUrl(placeId, googleReviewId, source)` y switchear entre URL a lista (Places) y URL a reseña concreta (Business Profile). El call site no cambia — se sigue pasando `placeId` desde el componente, simplemente añadimos `googleReviewId` y `source` desde la review.
 
 ---
 
