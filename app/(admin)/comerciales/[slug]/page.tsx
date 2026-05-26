@@ -72,6 +72,7 @@ type ReviewRow = {
   match_state: string;
   match_confidence: number;
   client_id: string | null;
+  is_duplicate: boolean;
 };
 
 export default async function ComercialDetallePage({ params, searchParams }: PageProps) {
@@ -171,7 +172,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("reviews")
       .select(
-        "id, author_name, rating, text, google_created_at, match_state, match_confidence, client_id",
+        "id, author_name, rating, text, google_created_at, match_state, match_confidence, client_id, is_duplicate",
       )
       .eq("sales_id", sales.id)
       .is("removed_at", null)
@@ -211,14 +212,24 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
   // ─── KPIs del rango ────────────────────────────────────────────────────
   // shares y reviews ya vienen filtrados por SQL al rango activo.
   const visitsInRange = shares.length;
-  const reviewsCounted = reviews.filter((r) => r.match_state === "counted").length;
-  const reviewsPending = reviews.filter((r) => r.match_state === "pending").length;
+  // KPIs anti-fraude (migración 015): solo cuentan reseñas NO duplicadas.
+  // Los duplicados siguen apareciendo en el listado abajo con badge "Duplicada".
+  const reviewsCounted = reviews.filter(
+    (r) => r.match_state === "counted" && !r.is_duplicate,
+  ).length;
+  const reviewsPending = reviews.filter(
+    (r) => r.match_state === "pending" && !r.is_duplicate,
+  ).length;
   const reviewsUnmatched = reviews.filter((r) => r.match_state === "unmatched").length;
+  const reviewsDuplicates = reviews.filter((r) => r.is_duplicate).length;
   const conversion =
     visitsInRange > 0 ? Math.round((reviewsCounted / visitsInRange) * 100) : null;
+  // Avg rating sin contar duplicadas (las duplicadas no son del comercial en
+  // términos de producción).
+  const ratingReviews = reviews.filter((r) => !r.is_duplicate);
   const avgRating =
-    reviews.length > 0
-      ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+    ratingReviews.length > 0
+      ? ratingReviews.reduce((s, r) => s + r.rating, 0) / ratingReviews.length
       : null;
   const firstShare = shares[0];
   const lastVisitISO = firstShare

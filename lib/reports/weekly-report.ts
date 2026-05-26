@@ -59,6 +59,9 @@ export type ReviewForReport = {
   location_id: string;
   match_state: "counted" | "pending" | "unmatched";
   google_created_at: string;
+  /** Anti-fraude (migración 015). Las reseñas marcadas duplicadas
+   *  NO cuentan en el parte ni en el agregado de archivados. */
+  is_duplicate: boolean;
 };
 
 /**
@@ -102,11 +105,12 @@ export function zoneFor(s: SalesForReport): string {
   return s.location_name ?? "—";
 }
 
-/** Cuenta reseñas counted atribuidas a un comercial concreto. */
+/** Cuenta reseñas counted atribuidas a un comercial concreto. Excluye
+ *  duplicadas (anti-fraude mig 015). */
 export function countedFor(reviews: ReviewForReport[], salesId: string): number {
   let n = 0;
   for (const r of reviews) {
-    if (r.match_state === "counted" && r.sales_id === salesId) n++;
+    if (r.match_state === "counted" && r.sales_id === salesId && !r.is_duplicate) n++;
   }
   return n;
 }
@@ -131,7 +135,7 @@ export function archivedTotals(
     valencia: 0,
   };
   for (const r of reviews) {
-    if (r.match_state !== "counted" || !r.sales_id) continue;
+    if (r.match_state !== "counted" || !r.sales_id || r.is_duplicate) continue;
     const owner = archivedById.get(r.sales_id);
     if (!owner || !owner.department) continue;
     totals[owner.department]++;

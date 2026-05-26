@@ -158,6 +158,7 @@ export default async function DashboardPage({
       .from("reviews")
       .select("rating, match_state, sales_id, location_id, google_created_at")
       .is("removed_at", null)
+      .eq("is_duplicate", false)
       .gte("google_created_at", range.startIso)
       .lt("google_created_at", range.endIso)
       .returns<ReviewLite[]>(),
@@ -165,6 +166,7 @@ export default async function DashboardPage({
       .from("reviews")
       .select("google_created_at")
       .is("removed_at", null)
+      .eq("is_duplicate", false)
       .gte("google_created_at", start6Months)
       .returns<{ google_created_at: string }[]>(),
   ]);

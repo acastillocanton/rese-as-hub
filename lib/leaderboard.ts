@@ -166,6 +166,7 @@ export async function getLeaderboard(opts: {
         .from("reviews")
         .select("sales_id, match_state")
         .is("removed_at", null)
+        .eq("is_duplicate", false)
         .gte("google_created_at", opts.startIso)
         .lt("google_created_at", opts.endIso)
         .returns<LeaderboardReview[]>(),
@@ -203,6 +204,7 @@ export async function getLeaderboard(opts: {
       .from("reviews")
       .select("sales_id, match_state")
       .is("removed_at", null)
+      .eq("is_duplicate", false)
       .gte("google_created_at", opts.startIso)
       .lt("google_created_at", opts.endIso)
       .returns<LeaderboardReview[]>(),

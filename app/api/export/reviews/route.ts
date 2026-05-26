@@ -59,6 +59,7 @@ type ReviewDetailRow = {
   match_confidence: number;
   sales_id: string | null;
   location_id: string;
+  is_duplicate: boolean;
   sales: { full_name: string; slug: string } | null;
   client: { full_name: string } | null;
   location: { name: string } | null;
@@ -94,6 +95,7 @@ type ReviewRangeRow = {
   location_id: string;
   match_state: "counted" | "pending" | "unmatched";
   google_created_at: string;
+  is_duplicate: boolean;
 };
 
 const MATCH_LABEL: Record<string, string> = {
@@ -180,7 +182,7 @@ export async function GET(request: NextRequest) {
   //     joins para autor, ficha, comercial, cliente).
   const reviewsCurrentQ = supabase
     .from("reviews")
-    .select("id, sales_id, location_id, match_state, google_created_at")
+    .select("id, sales_id, location_id, match_state, google_created_at, is_duplicate")
     .is("removed_at", null)
     .gte("google_created_at", range.startIso)
     .lt("google_created_at", range.endIso)
@@ -188,7 +190,7 @@ export async function GET(request: NextRequest) {
     .returns<ReviewRangeRow[]>();
   const reviewsPreviousQ = supabase
     .from("reviews")
-    .select("id, sales_id, location_id, match_state, google_created_at")
+    .select("id, sales_id, location_id, match_state, google_created_at, is_duplicate")
     .is("removed_at", null)
     .gte("google_created_at", previous.startIso)
     .lt("google_created_at", previous.endIso)
@@ -212,7 +214,7 @@ export async function GET(request: NextRequest) {
   let detailQ = supabase
     .from("reviews")
     .select(
-      "id, google_review_id, author_name, rating, text, google_created_at, match_state, match_confidence, sales_id, location_id, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
+      "id, google_review_id, author_name, rating, text, google_created_at, match_state, match_confidence, sales_id, location_id, is_duplicate, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name)",
     )
     .is("removed_at", null)
     .gte("google_created_at", range.startIso)
@@ -687,6 +689,7 @@ function toReportReview(r: ReviewRangeRow): ReviewForReport {
     location_id: r.location_id,
     match_state: r.match_state,
     google_created_at: r.google_created_at,
+    is_duplicate: r.is_duplicate,
   };
 }
 
