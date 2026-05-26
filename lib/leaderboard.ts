@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 /**
  * Helper compartido del leaderboard de productores (sales + office_director).
@@ -52,6 +53,10 @@ export type LeaderboardRow = {
   conv: number;
   goal: number;
   isDirector: boolean;
+  /** Marca la fila correspondiente al usuario actual (rol sales viendo
+   *  /panel/ranking). Lo usa LeaderboardCardList para destacar visualmente
+   *  la card del propio comercial. */
+  isSelf: boolean;
 };
 
 export function computeLeaderboard(args: {
@@ -59,8 +64,10 @@ export function computeLeaderboard(args: {
   locations: LeaderboardLocation[];
   shares: LeaderboardShare[];
   reviews: LeaderboardReview[];
+  /** Si se pasa, la fila con `id === currentUserId` se marca con `isSelf: true`. */
+  currentUserId?: string;
 }): LeaderboardRow[] {
-  const { sales, locations, shares, reviews } = args;
+  const { sales, locations, shares, reviews, currentUserId } = args;
 
   const sharesBySales = new Map<string, number>();
   for (const s of shares) {
@@ -99,6 +106,7 @@ export function computeLeaderboard(args: {
         conv,
         goal: s.monthly_goal,
         isDirector: s.role === "office_director",
+        isSelf: currentUserId !== undefined && s.id === currentUserId,
       };
     })
     .sort(
@@ -111,16 +119,70 @@ export function computeLeaderboard(args: {
 
 /**
  * Versión server-only que hace la query mínima y devuelve el leaderboard
- * para un rango temporal dado (ISO inclusivo-exclusivo). Respeta RLS: si el
- * caller es office_director, Supabase filtra automáticamente sales/reviews
- * a su equipo (migración 013).
+ * para un rango temporal dado (ISO inclusivo-exclusivo).
+ *
+ * Por defecto respeta RLS del caller (admin/manager ven todos;
+ * office_director ve su equipo automáticamente por migración 013).
+ *
+ * `teamFilter` activa el modo "ranking del propio equipo del rol sales":
+ *   - Usa service-role (porque RLS de profiles bloquea a sales leer otros perfiles).
+ *   - Filtra `profiles` por `director_id` (o `is null` si el sales es huérfano).
+ *   - El filtro lo decide el server desde la sesión, no es un query-param
+ *     del usuario, así que no hay vector de escalada.
+ *
+ * `currentUserId` se propaga a `computeLeaderboard` para marcar la fila
+ * propia con `isSelf=true` (highlight visual).
  */
 export async function getLeaderboard(opts: {
   startIso: string;
   endIso: string;
+  teamFilter?: { directorId: string | null };
+  currentUserId?: string;
 }): Promise<LeaderboardRow[]> {
-  const supabase = await createClient();
+  // Path "ranking del propio equipo del rol sales": usa service-role porque
+  // RLS de profiles bloquea a un sales leer otros perfiles. Filtro server-side
+  // por `director_id` desde la sesión — no es un query-param del usuario.
+  if (opts.teamFilter) {
+    const svc = createServiceClient();
+    const salesQuery = svc
+      .from("profiles")
+      .select("id, full_name, slug, status, monthly_goal, location_id, role")
+      .in("role", ["sales", "office_director"]);
+    const filteredSales =
+      opts.teamFilter.directorId === null
+        ? salesQuery.is("director_id", null)
+        : salesQuery.eq("director_id", opts.teamFilter.directorId);
 
+    const [salesRes, locationsRes, sharesRes, reviewsRes] = await Promise.all([
+      filteredSales.returns<LeaderboardSales[]>(),
+      svc.from("locations").select("id, name").returns<LeaderboardLocation[]>(),
+      svc
+        .from("share_links")
+        .select("sales_id")
+        .gte("opened_at", opts.startIso)
+        .lt("opened_at", opts.endIso)
+        .returns<LeaderboardShare[]>(),
+      svc
+        .from("reviews")
+        .select("sales_id, match_state")
+        .is("removed_at", null)
+        .gte("google_created_at", opts.startIso)
+        .lt("google_created_at", opts.endIso)
+        .returns<LeaderboardReview[]>(),
+    ]);
+
+    return computeLeaderboard({
+      sales: salesRes.data ?? [],
+      locations: locationsRes.data ?? [],
+      shares: sharesRes.data ?? [],
+      reviews: reviewsRes.data ?? [],
+      currentUserId: opts.currentUserId,
+    });
+  }
+
+  // Path por defecto: RLS-driven (admin/manager ven todo, director ve su
+  // equipo por migración 013).
+  const supabase = await createClient();
   const [salesRes, locationsRes, sharesRes, reviewsRes] = await Promise.all([
     supabase
       .from("profiles")
@@ -151,5 +213,6 @@ export async function getLeaderboard(opts: {
     locations: locationsRes.data ?? [],
     shares: sharesRes.data ?? [],
     reviews: reviewsRes.data ?? [],
+    currentUserId: opts.currentUserId,
   });
 }

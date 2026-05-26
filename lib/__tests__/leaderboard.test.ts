@@ -154,4 +154,32 @@ describe("computeLeaderboard", () => {
     const rows = computeLeaderboard({ sales, locations: LOC, shares: [], reviews: [] });
     expect(rows.map((r) => r.id)).toEqual(["a", "m", "z"]);
   });
+
+  it("marks isSelf=true only on the row whose id matches currentUserId", () => {
+    const sales: LeaderboardSales[] = [
+      baseSale({ id: "a", full_name: "Ana", slug: "ana" }),
+      baseSale({ id: "b", full_name: "Bea", slug: "bea" }),
+      baseSale({ id: "c", full_name: "Cris", slug: "cris" }),
+    ];
+    const rows = computeLeaderboard({
+      sales,
+      locations: LOC,
+      shares: [],
+      reviews: [],
+      currentUserId: "b",
+    });
+    const byId = new Map(rows.map((r) => [r.id, r] as const));
+    expect(byId.get("a")!.isSelf).toBe(false);
+    expect(byId.get("b")!.isSelf).toBe(true);
+    expect(byId.get("c")!.isSelf).toBe(false);
+  });
+
+  it("marks isSelf=false on every row when currentUserId is undefined", () => {
+    const sales = [
+      baseSale({ id: "a", full_name: "Ana", slug: "ana" }),
+      baseSale({ id: "b", full_name: "Bea", slug: "bea" }),
+    ];
+    const rows = computeLeaderboard({ sales, locations: LOC, shares: [], reviews: [] });
+    expect(rows.every((r) => r.isSelf === false)).toBe(true);
+  });
 });
