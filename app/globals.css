@@ -105,6 +105,23 @@ button {
   border-radius: 4px;
 }
 
+/* Skeleton shimmer — consumido por components/ui/Skeleton.tsx en los
+   loading.tsx por route group. */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [style*="skeleton-shimmer"] {
+    animation: none !important;
+  }
+}
+
 /* ──────────────────────────────────────────────────────────────────────
  * Mobile (≤767px) — helpers responsive role-agnósticos.
  *
