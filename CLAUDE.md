@@ -32,7 +32,7 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test               # Vitest unit tests (154 tests: matcher + date-range + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews)
+npm test               # Vitest unit tests (172 tests: matcher + date-range + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright happy paths (login + admin nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo
@@ -79,6 +79,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | v2 · Reformar exportación Excel (sidebar → /comerciales, + Excel individual) | ✅ (2026-05-26) |
 | v2 · Auto-sugerir vinculación de reseñas huérfanas al crear cliente | ✅ (2026-05-26) |
 | v2 · Sales descarga su propio Excel desde /panel/resenas | ✅ (2026-05-26) |
+| v2 · Alertas tempranas por reseñas ≤2★ (mig 017) | ✅ (2026-05-26) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -601,6 +602,50 @@ Es un patrón legítimo: a veces el cliente deja la reseña **antes** de que el 
 
 ⚠️ **No auto-vincular sin confirmación humana** (incluso con similarity > 90). Mantener el botón "Vincular" por fila preserva trazabilidad y evita catástrofes. Si alguien quiere auto-vincular > 90 en el futuro, hacerlo opt-in.
 
+### 4.29 Alertas tempranas por reseñas ≤2★ (mig 017)
+
+Cierra la open question #7 de [`spec.md`](spec.md). Cuando entra una reseña con `rating ≤ LOW_RATING_THRESHOLD` (=2 en producción: 1★ y 2★), el cron envía un email de alerta inmediata a múltiples stakeholders y se muestra un banner en `/dashboard`.
+
+**Destinatarios** (función pura `resolveLowRatingRecipients` en [lib/cron/low-rating-alerts.ts](lib/cron/low-rating-alerts.ts), 18 tests):
+- **Siempre**: admin + reviews_manager activos.
+- **Si match_state ∈ {counted, pending}**: añadir sales atribuido (si email + status='active') y director responsable (si `sales.director_id` + status='active').
+- **Si match_state = unmatched**: solo admin + manager (no hay sales identificable).
+- Dedupe case-insensitive. El caso "director productor dual" cae natural (mismo email).
+- Sales/director paused o archived → excluidos. Admins/managers paused → excluidos.
+
+**Email** [lib/email/notify-low-rating.ts](lib/email/notify-low-rating.ts):
+- Subject `⚠️ Reseña ${rating}★ recibida — ${locationName}`.
+- Template HTML con borde naranja (`#f0d4a8`) y header destacado, escapeHtml aplicado.
+- BCC para no exponer destinatarios entre sí (`sendEmail` de [lib/email/brevo.ts](lib/email/brevo.ts) ampliado con campo `bcc`).
+- 2 CTAs: "Ir a verificación" (`/resenas/verificacion`) y "Ver en Google" (si hay place_id, vía `buildGoogleReviewListUrl`).
+
+**Migración 017** [supabase/migrations/017_low_rating_alerts.sql](supabase/migrations/017_low_rating_alerts.sql):
+- Añade `reviews.low_rating_alerted_at timestamptz` para idempotencia.
+- Índice parcial `reviews_low_rating_pending_alert_idx` sólo sobre `rating <= 2 AND low_rating_alerted_at IS NULL` (subconjunto pequeño; la mayoría de reseñas son 4★/5★).
+- Sin RLS adicional: solo el cron y service-client tocan esta columna.
+
+**Idempotencia**: el cron solo procesa "fresh" (reseñas no insertadas previamente — `unique (location_id, google_review_id)`). Adicionalmente, `low_rating_alerted_at` se setea tras envío exitoso para evitar dobles alertas en casos extraños (p. ej. una reseña que pasa de unmatched → counted en una sincronización posterior; el INSERT no se repite y el campo timestamptz indica "ya alertada").
+
+**Integración cron** ([lib/cron/process-reviews.ts](lib/cron/process-reviews.ts)):
+- `processFreshReviews` ahora devuelve `{ notifications, lowRatingAlerts }` (cambio aditivo del shape de retorno).
+- En el loop, tras insertar la review fresca, si `isLowRating(fr.rating)`, encola un `LowRatingAlert` con `reviewId`, `rating`, `matchState`, `placeId`, etc.
+- `LocationCtx` ampliado con `place_id: string | null` (para el CTA del email).
+- Nueva función `flushLowRatingAlerts` con patrón `Promise.allSettled` + audit_log. 3 acciones de audit: `low_rating_alerted` (ok), `low_rating_alert_failed`, `low_rating_alert_skipped` (no recipients o no brand).
+
+**Crons que la disparan** (ambos):
+- Cron Places API ([lib/google/sync-places.ts](lib/google/sync-places.ts)) — el activo hoy.
+- Cron Business Profile ([app/api/cron/sync-google-reviews/route.ts](app/api/cron/sync-google-reviews/route.ts)) — cuando llegue cuota Google.
+- Ampliamos ambos: cargan admins/managers/directors al inicio + flushean alertas al final.
+
+**Banner en `/dashboard`** ([app/(admin)/dashboard/page.tsx](app/(admin)/dashboard/page.tsx)):
+- Encima de la fila de KPIs. Solo se muestra si hay reseñas `rating <= 2` en el periodo activo.
+- Cap a 5 entradas con autor + estrellas + ficha + fecha. Si hay más, "+ N más" + CTA "Ver todas →".
+- Link CTA: `/manager/resenas?rating_lte=2`. Filtro añadido en `/manager/resenas`: `?rating_lte=N` con N ∈ {1..5} → `query.lte("rating", N)`.
+
+**Open question #7 de spec.md cerrada** con esta implementación.
+
+⚠️ **No confundir con `notifyNewReview`** (email transaccional al comercial atribuido, indep. del rating). Ambos pueden disparar a la vez: si entra una 1★ counted, el comercial recibe el email normal de "tienes nueva reseña" + el email de alerta ≤2★.
+
 ---
 
 ## 5. Setup en otro Mac
@@ -653,7 +698,7 @@ Es un patrón legítimo: a veces el cliente deja la reseña **antes** de que el 
 
 ## 7. Estado real de Supabase
 
-- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones **001-016 aplicadas**. **016 = verificación abierta a todos los roles**: helper `current_user_location()` + policy SELECT permissive `reviews_unmatched_location_select` para que sales/director vean unmatched de su `profiles.location_id` + policy UPDATE estricta `reviews_sales_claim_update` con WITH CHECK que solo deja al sales pasar unmatched → counted con `sales_id = auth.uid()` (ver §4.24). **015 = anti-fraude**: añade `reviews.is_duplicate boolean` + backfill histórico marcando como duplicadas todas menos la primera por `google_created_at` dentro de cada `client_id` + índice parcial `reviews_active_principal_idx`. Las queries de KPI/Excel filtran `is_duplicate=false`; los listados muestran todas con badge "Duplicada" (ver §4.23). **014 = multi-marca**: enum `brand_enum` + columna `locations.brand` con default `'inseryal'` + backfill por `name ilike 'Marina d''Or Construcciones%'` (ver §4.22). 007 = índices compuestos en `reviews`. 008 = `actor_id` + policy `audit_log_self_insert`. 009 = enum `review_source_enum` (`business_profile`/`places_api`/`manual`) + columna `source` en `reviews`. 010 = columna `removed_at` + índice parcial + view `reviews_active`. **011 = añade valor `'office_director'` al enum `role_enum`** (aislado por la limitación 55P04 de Postgres: un nuevo valor de enum no puede usarse como literal en la misma transacción en que se añadió). **012 = resto del rol `office_director`**: constraint `role_requires_location`, helper `current_office_location()` y policies RLS para director sobre `locations`, `profiles` `role='sales'`, `reviews`, `clients`, `share_links`. **013 = el office_director pasa de scope por location a scope por equipo** (`profiles.director_id`): nueva columna auto-referencial + reescritura de policies de profiles/reviews/clients/share_links a `director_id = auth.uid()`. La policy de `locations` se mantiene por `location_id` (acceso a su ficha sigue por oficina). Permite varios directores en la misma ficha, cada uno con su equipo (p.ej. uno por idioma en Internacional).
+- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones **001-017 aplicadas**. **017 = alertas tempranas ≤2★**: añade `reviews.low_rating_alerted_at timestamptz` + índice parcial `reviews_low_rating_pending_alert_idx` (ver §4.29). **016 = verificación abierta a todos los roles**: helper `current_user_location()` + policy SELECT permissive `reviews_unmatched_location_select` para que sales/director vean unmatched de su `profiles.location_id` + policy UPDATE estricta `reviews_sales_claim_update` con WITH CHECK que solo deja al sales pasar unmatched → counted con `sales_id = auth.uid()` (ver §4.24). **015 = anti-fraude**: añade `reviews.is_duplicate boolean` + backfill histórico marcando como duplicadas todas menos la primera por `google_created_at` dentro de cada `client_id` + índice parcial `reviews_active_principal_idx`. Las queries de KPI/Excel filtran `is_duplicate=false`; los listados muestran todas con badge "Duplicada" (ver §4.23). **014 = multi-marca**: enum `brand_enum` + columna `locations.brand` con default `'inseryal'` + backfill por `name ilike 'Marina d''Or Construcciones%'` (ver §4.22). 007 = índices compuestos en `reviews`. 008 = `actor_id` + policy `audit_log_self_insert`. 009 = enum `review_source_enum` (`business_profile`/`places_api`/`manual`) + columna `source` en `reviews`. 010 = columna `removed_at` + índice parcial + view `reviews_active`. **011 = añade valor `'office_director'` al enum `role_enum`** (aislado por la limitación 55P04 de Postgres: un nuevo valor de enum no puede usarse como literal en la misma transacción en que se añadió). **012 = resto del rol `office_director`**: constraint `role_requires_location`, helper `current_office_location()` y policies RLS para director sobre `locations`, `profiles` `role='sales'`, `reviews`, `clients`, `share_links`. **013 = el office_director pasa de scope por location a scope por equipo** (`profiles.director_id`): nueva columna auto-referencial + reescritura de policies de profiles/reviews/clients/share_links a `director_id = auth.uid()`. La policy de `locations` se mantiene por `location_id` (acceso a su ficha sigue por oficina). Permite varios directores en la misma ficha, cada uno con su equipo (p.ej. uno por idioma en Internacional).
 - **URL Configuration**: Site URL = `https://resenas.marinadorconstrucciones.com`; Redirect URLs incluyen `http://localhost:3000/**` + URL prod con `/**`.
 - **Email Templates**: Magic Link con `type=email`, Invite con `type=invite` (ver §4.1).
 - **Storage**: bucket público `avatars` con 3 policies (insert/update/delete propio en `{user_id}/`). Avatar upload vía server action con service-role en [`(profile)/perfil/actions.ts`](app/(profile)/perfil/actions.ts) (bypasea RLS por simplicidad).

@@ -63,11 +63,13 @@ type RecentShareLinkRow = {
 };
 
 type ReviewLite = {
+  id: string;
   rating: number;
   match_state: string;
   sales_id: string | null;
   location_id: string;
   google_created_at: string;
+  author_name: string;
 };
 
 function startOfMonthsAgoIso(n: number, d = new Date()) {
@@ -156,7 +158,7 @@ export default async function DashboardPage({
     supabase.from("clients").select("id", { count: "planned", head: true }),
     supabase
       .from("reviews")
-      .select("rating, match_state, sales_id, location_id, google_created_at")
+      .select("id, rating, match_state, sales_id, location_id, google_created_at, author_name")
       .is("removed_at", null)
       .eq("is_duplicate", false)
       .gte("google_created_at", range.startIso)
@@ -198,6 +200,15 @@ export default async function DashboardPage({
   ).length;
   const reviewsCount = reviewsMonth.length;
   const pendingReviews = reviewsMonth.filter((r) => r.match_state === "pending").length;
+
+  // Alertas ≤2★ del periodo: cap a 5 entradas en el banner, contador total
+  // para el CTA. Se ordenan por google_created_at desc (más reciente arriba).
+  const locationsById = new Map(locations.map((l) => [l.id, l]));
+  const lowRatingReviewsAll = reviewsMonth
+    .filter((r) => r.rating <= 2)
+    .sort((a, b) => b.google_created_at.localeCompare(a.google_created_at));
+  const lowRatingReviews = lowRatingReviewsAll.slice(0, 5);
+  const lowRatingTotal = lowRatingReviewsAll.length;
   const avgRating =
     reviewsMonth.length > 0
       ? reviewsMonth.reduce((sum, r) => sum + r.rating, 0) / reviewsMonth.length
@@ -308,6 +319,120 @@ export default async function DashboardPage({
       />
 
       <div className="m-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
+        {/* Banner ≤2★ del periodo (mig 017 + cron alerts). Solo se muestra
+            si hay alguna; cap a 5 entradas; CTA al manager con filtro. */}
+        {lowRatingTotal > 0 && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "14px 18px",
+              background: "var(--warn-bg, #fdf6ec)",
+              border: "1px solid #f0d4a8",
+              borderRadius: 12,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                gap: 16,
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "#b35900",
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  ⚠️ Atención · Rating bajo
+                </div>
+                <div
+                  style={{
+                    marginTop: 2,
+                    fontFamily: "var(--font-display)",
+                    fontSize: 18,
+                    fontWeight: 600,
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  {lowRatingTotal === 1
+                    ? "1 reseña con rating bajo en este periodo"
+                    : `${lowRatingTotal} reseñas con rating bajo en este periodo`}
+                </div>
+              </div>
+              <Link
+                href="/manager/resenas?rating_lte=2"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "var(--ink)",
+                  textDecoration: "underline",
+                }}
+              >
+                Ver todas →
+              </Link>
+            </div>
+            <ul
+              style={{
+                margin: "10px 0 0",
+                padding: 0,
+                listStyle: "none",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+              }}
+            >
+              {lowRatingReviews.map((r) => {
+                const loc = locationsById.get(r.location_id);
+                const date = new Date(r.google_created_at).toLocaleDateString(
+                  "es-ES",
+                  { day: "2-digit", month: "short", year: "numeric" },
+                );
+                const stars = "★".repeat(r.rating) + "☆".repeat(5 - r.rating);
+                return (
+                  <li
+                    key={r.id}
+                    style={{
+                      fontSize: 13,
+                      color: "var(--ink-2)",
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "baseline",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={{ color: "#b35900", letterSpacing: 1 }}>{stars}</span>
+                    <span style={{ fontWeight: 500 }}>{r.author_name}</span>
+                    <span style={{ color: "var(--ink-4)" }}>·</span>
+                    <span style={{ color: "var(--ink-3)" }}>
+                      {loc?.name ?? "Sin ficha"}
+                    </span>
+                    <span style={{ color: "var(--ink-4)" }}>·</span>
+                    <span style={{ color: "var(--ink-4)", fontSize: 12 }}>{date}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            {lowRatingTotal > lowRatingReviews.length && (
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  color: "var(--ink-4)",
+                }}
+              >
+                + {lowRatingTotal - lowRatingReviews.length} más
+              </div>
+            )}
+          </div>
+        )}
+
         {/* KPI row */}
         <div
           className="m-stats-4"

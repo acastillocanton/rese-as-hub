@@ -19,6 +19,10 @@ type SearchParams = Promise<{
   location_id?: string;
   match_state?: string;
   duplicates?: string;
+  /** Filtro "rating bajo": entero 1-5. Si vale 2, devuelve sólo reseñas
+   *  con rating <= 2. Usado por el banner ≤2★ del dashboard que enlaza
+   *  aquí con `?rating_lte=2`. */
+  rating_lte?: string;
   from?: string;
   to?: string;
 }>;
@@ -102,6 +106,14 @@ export default async function ManagerResenasPage({
   //   - sin valor → sin filtro (mezcla)
   if (params.duplicates === "yes") query = query.eq("is_duplicate", true);
   else if (params.duplicates === "no") query = query.eq("is_duplicate", false);
+  // Filtro rating bajo (banner ≤2★ del dashboard):
+  //   - rating_lte=N (1-5) → reseñas con rating <= N.
+  //   - Si N inválido, ignoramos (no rompemos la query).
+  const ratingLteNum =
+    params.rating_lte && /^[1-5]$/.test(params.rating_lte)
+      ? parseInt(params.rating_lte, 10)
+      : null;
+  if (ratingLteNum !== null) query = query.lte("rating", ratingLteNum);
 
   const [reviewsRes, salesRes, locationsRes] = await Promise.all([
     query.returns<ReviewRow[]>(),

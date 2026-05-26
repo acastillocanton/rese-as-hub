@@ -10,13 +10,20 @@ import {
 import {
   processFreshReviews,
   flushNotifications,
+  flushLowRatingAlerts,
   type LocationSummary,
   type SalesInfo,
   type FreshReview,
   type PendingNotification,
+  type LowRatingAlertContext,
 } from "@/lib/cron/process-reviews";
+import {
+  resolveLowRatingRecipients,
+  type LowRatingAlert,
+} from "@/lib/cron/low-rating-alerts";
 import { notifyNewReview } from "@/lib/email/notify-new-review";
-import type { Brand } from "@/lib/supabase/types";
+import { notifyLowRating } from "@/lib/email/notify-low-rating";
+import type { Brand, ProfileStatus } from "@/lib/supabase/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -48,26 +55,73 @@ export async function GET(request: NextRequest) {
 
   const admin = createServiceClient();
 
-  // Cargamos en paralelo: locations conectadas + mapa de comerciales para
-  // notificar por email cuando entre una reseña con match='counted'.
-  const [locationsRes, salesRes] = await Promise.all([
+  // Cargamos en paralelo: locations conectadas + sales + admins + managers
+  // (los dos últimos para alertas ≤2★ multi-stakeholder).
+  const [locationsRes, salesRes, adminsRes, managersRes] = await Promise.all([
     admin
       .from("locations")
-      .select("id, name, google_location_resource, brand")
+      .select("id, name, google_location_resource, google_place_id, brand")
       .eq("oauth_status", "connected")
       .not("google_location_resource", "is", null)
-      .returns<{ id: string; name: string; google_location_resource: string; brand: Brand }[]>(),
+      .returns<{
+        id: string;
+        name: string;
+        google_location_resource: string;
+        google_place_id: string | null;
+        brand: Brand;
+      }[]>(),
     admin
       .from("profiles")
-      .select("id, full_name, email, status")
+      .select("id, full_name, email, status, director_id")
       .in("role", ["sales", "office_director"])
-      .returns<{ id: string; full_name: string; email: string | null; status: string }[]>(),
+      .returns<{
+        id: string;
+        full_name: string;
+        email: string | null;
+        status: string;
+        director_id: string | null;
+      }[]>(),
+    admin
+      .from("profiles")
+      .select("id, email, status")
+      .eq("role", "admin")
+      .returns<{ id: string; email: string | null; status: string }[]>(),
+    admin
+      .from("profiles")
+      .select("id, email, status")
+      .eq("role", "reviews_manager")
+      .returns<{ id: string; email: string | null; status: string }[]>(),
   ]);
   const connectedLocations = locationsRes.data ?? null;
   const locsErr = locationsRes.error;
-  const salesById = new Map<string, SalesInfo>();
+  const salesById = new Map<
+    string,
+    SalesInfo & { director_id: string | null }
+  >();
   for (const s of salesRes.data ?? []) {
-    salesById.set(s.id, { full_name: s.full_name, email: s.email, status: s.status });
+    salesById.set(s.id, {
+      full_name: s.full_name,
+      email: s.email,
+      status: s.status,
+      director_id: s.director_id,
+    });
+  }
+  // directorBySalesId[sales_id] → profile del director responsable.
+  const directorBySalesId = new Map<
+    string,
+    { id: string; email: string | null; status: ProfileStatus }
+  >();
+  for (const s of salesRes.data ?? []) {
+    if (s.director_id) {
+      const dir = salesById.get(s.director_id);
+      if (dir) {
+        directorBySalesId.set(s.id, {
+          id: s.director_id,
+          email: dir.email,
+          status: dir.status as ProfileStatus,
+        });
+      }
+    }
   }
   const appBase =
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
@@ -83,11 +137,19 @@ export async function GET(request: NextRequest) {
 
   const summary: LocationSummary[] = [];
 
+  // Mapa brand por location para el flush de alertas ≤2★.
+  const brandByLocationId = new Map<string, Brand>();
+  for (const l of connectedLocations) {
+    brandByLocationId.set(l.id, l.brand);
+  }
+
   // Acumulamos las notificaciones de TODAS las locations y las enviamos en
   // paralelo al final (Promise.allSettled). Antes hacíamos await dentro del
   // loop por cada reseña → si entraban 50, eran 50 envíos SMTP secuenciales
   // y el cron podía exceder los 60s de Vercel.
   const pendingNotifications: PendingNotification[] = [];
+  const lowRatingAlerts: LowRatingAlert[] = [];
+  const clientIdsSeen = new Set<string>();
 
   for (const loc of connectedLocations) {
     const entry: LocationSummary = {
@@ -200,17 +262,27 @@ export async function GET(request: NextRequest) {
         };
       });
 
-      const notifs = await processFreshReviews(
-        {
-          admin,
-          location: { id: loc.id, name: loc.name, brand: loc.brand },
-          fresh: freshNormalized,
-          salesById,
-          source: "business_profile",
-        },
-        entry,
-      );
-      pendingNotifications.push(...notifs);
+      const { notifications, lowRatingAlerts: locLowRating } =
+        await processFreshReviews(
+          {
+            admin,
+            location: {
+              id: loc.id,
+              name: loc.name,
+              brand: loc.brand,
+              place_id: loc.google_place_id,
+            },
+            fresh: freshNormalized,
+            salesById,
+            source: "business_profile",
+          },
+          entry,
+        );
+      pendingNotifications.push(...notifications);
+      lowRatingAlerts.push(...locLowRating);
+      for (const a of locLowRating) {
+        if (a.clientId) clientIdsSeen.add(a.clientId);
+      }
 
       await markSyncOk(admin, loc.id);
     } catch (err) {
@@ -230,11 +302,52 @@ export async function GET(request: NextRequest) {
     appBase,
   );
 
+  // Nombres de cliente para el email de alerta ≤2★ (cuando hay client_id).
+  const clientNameById = new Map<string, string>();
+  if (clientIdsSeen.size > 0) {
+    const { data: clientsRes } = await admin
+      .from("clients")
+      .select("id, full_name")
+      .in("id", [...clientIdsSeen])
+      .returns<{ id: string; full_name: string }[]>();
+    for (const c of clientsRes ?? []) {
+      clientNameById.set(c.id, c.full_name);
+    }
+  }
+
+  const lowRatingCtx: LowRatingAlertContext = {
+    admins: (adminsRes.data ?? []).map((a) => ({
+      id: a.id,
+      email: a.email,
+      status: a.status as ProfileStatus,
+    })),
+    managers: (managersRes.data ?? []).map((m) => ({
+      id: m.id,
+      email: m.email,
+      status: m.status as ProfileStatus,
+    })),
+    directorBySalesId,
+    salesById,
+    brandByLocationId,
+    clientNameById,
+    appBase,
+  };
+  const lowRatingResult = await flushLowRatingAlerts(
+    admin,
+    lowRatingAlerts,
+    lowRatingCtx,
+    notifyLowRating,
+    resolveLowRatingRecipients,
+  );
+
   return NextResponse.json({
     ok: true,
     locations_processed: summary.length,
     notify_attempted: notifResult.attempted,
     notify_failed: notifResult.failed,
+    low_rating_alerts_attempted: lowRatingResult.attempted,
+    low_rating_alerts_failed: lowRatingResult.failed,
+    low_rating_alerts_skipped: lowRatingResult.skipped,
     summary,
   });
 }

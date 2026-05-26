@@ -4,13 +4,20 @@ import { listPlaceReviews, PlacesApiError, type PlacesReview } from "@/lib/googl
 import {
   processFreshReviews,
   flushNotifications,
+  flushLowRatingAlerts,
   type LocationSummary,
   type SalesInfo,
   type FreshReview,
   type PendingNotification,
+  type LowRatingAlertContext,
 } from "@/lib/cron/process-reviews";
 import { notifyNewReview } from "@/lib/email/notify-new-review";
-import type { Brand } from "@/lib/supabase/types";
+import { notifyLowRating } from "@/lib/email/notify-low-rating";
+import {
+  resolveLowRatingRecipients,
+  type LowRatingAlert,
+} from "@/lib/cron/low-rating-alerts";
+import type { Brand, ProfileStatus } from "@/lib/supabase/types";
 
 /**
  * Orquestador del sync de reseñas vía Google Places API.
@@ -40,6 +47,9 @@ export type SyncPlacesResult = {
   locations_processed: number;
   notify_attempted: number;
   notify_failed: number;
+  low_rating_alerts_attempted: number;
+  low_rating_alerts_failed: number;
+  low_rating_alerts_skipped: number;
   removed: number;
   restored: number;
   summary: LocationSummary[];
@@ -140,48 +150,87 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
     locationsQuery = locationsQuery.in("id", filter);
   }
 
-  const [locationsRes, salesRes] = await Promise.all([
+  // Ampliamos la query de sales para incluir `director_id` — necesario para
+  // resolver el director responsable en las alertas ≤2★ sin un query extra
+  // por reseña.
+  const [locationsRes, salesRes, adminsRes, managersRes] = await Promise.all([
     locationsQuery.returns<{ id: string; name: string; google_place_id: string; brand: Brand }[]>(),
     admin
       .from("profiles")
-      .select("id, full_name, email, status")
+      .select("id, full_name, email, status, director_id")
       .in("role", ["sales", "office_director"])
-      .returns<{ id: string; full_name: string; email: string | null; status: string }[]>(),
+      .returns<{
+        id: string;
+        full_name: string;
+        email: string | null;
+        status: string;
+        director_id: string | null;
+      }[]>(),
+    admin
+      .from("profiles")
+      .select("id, email, status")
+      .eq("role", "admin")
+      .returns<{ id: string; email: string | null; status: string }[]>(),
+    admin
+      .from("profiles")
+      .select("id, email, status")
+      .eq("role", "reviews_manager")
+      .returns<{ id: string; email: string | null; status: string }[]>(),
   ]);
 
   if (locationsRes.error) {
     console.error("[sync-places] failed listing locations:", locationsRes.error);
-    return {
-      locations_processed: 0,
-      notify_attempted: 0,
-      notify_failed: 0,
-      removed: 0,
-      restored: 0,
-      summary: [],
-    };
+    return emptyResult();
   }
 
   const locations = locationsRes.data ?? [];
-  const salesById = new Map<string, SalesInfo>();
+  const salesById = new Map<
+    string,
+    SalesInfo & { director_id: string | null }
+  >();
   for (const s of salesRes.data ?? []) {
-    salesById.set(s.id, { full_name: s.full_name, email: s.email, status: s.status });
+    salesById.set(s.id, {
+      full_name: s.full_name,
+      email: s.email,
+      status: s.status,
+      director_id: s.director_id,
+    });
+  }
+  // Resolver el director del sales sin query extra por reseña.
+  // directorBySalesId[sales_id] → profile del director (o null si no tiene).
+  const directorBySalesId = new Map<
+    string,
+    { id: string; email: string | null; status: string }
+  >();
+  for (const s of salesRes.data ?? []) {
+    if (s.director_id) {
+      const dir = salesById.get(s.director_id);
+      if (dir) {
+        directorBySalesId.set(s.id, {
+          id: s.director_id,
+          email: dir.email,
+          status: dir.status,
+        });
+      }
+    }
+  }
+  // Mapa brand por location para que flushLowRatingAlerts resuelva sin
+  // queries adicionales.
+  const brandByLocationId = new Map<string, Brand>();
+  for (const l of locations) {
+    brandByLocationId.set(l.id, l.brand);
   }
   const appBase =
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
 
   if (locations.length === 0) {
-    return {
-      locations_processed: 0,
-      notify_attempted: 0,
-      notify_failed: 0,
-      removed: 0,
-      restored: 0,
-      summary: [],
-    };
+    return emptyResult();
   }
 
   const summary: LocationSummary[] = [];
   const allPending: PendingNotification[] = [];
+  const allLowRatingAlerts: LowRatingAlert[] = [];
+  const clientIdsSeen = new Set<string>();
   let totalRemoved = 0;
   let totalRestored = 0;
 
@@ -265,17 +314,26 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
         continue;
       }
 
-      const notifs = await processFreshReviews(
+      const { notifications, lowRatingAlerts } = await processFreshReviews(
         {
           admin,
-          location: { id: loc.id, name: loc.name, brand: loc.brand },
+          location: {
+            id: loc.id,
+            name: loc.name,
+            brand: loc.brand,
+            place_id: loc.google_place_id,
+          },
           fresh,
           salesById,
           source: "places_api",
         },
         entry,
       );
-      allPending.push(...notifs);
+      allPending.push(...notifications);
+      allLowRatingAlerts.push(...lowRatingAlerts);
+      for (const a of lowRatingAlerts) {
+        if (a.clientId) clientIdsSeen.add(a.clientId);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const code = err instanceof PlacesApiError ? err.code : undefined;
@@ -288,12 +346,72 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
 
   const notifResult = await flushNotifications(admin, allPending, notifyNewReview, appBase);
 
+  // Cargar nombres de clientes que aparecen en las alertas (para el email).
+  const clientNameById = new Map<string, string>();
+  if (clientIdsSeen.size > 0) {
+    const { data: clientsRes } = await admin
+      .from("clients")
+      .select("id, full_name")
+      .in("id", [...clientIdsSeen])
+      .returns<{ id: string; full_name: string }[]>();
+    for (const c of clientsRes ?? []) {
+      clientNameById.set(c.id, c.full_name);
+    }
+  }
+
+  const lowRatingCtx: LowRatingAlertContext = {
+    admins: (adminsRes.data ?? []).map((a) => ({
+      id: a.id,
+      email: a.email,
+      status: a.status as ProfileStatus,
+    })),
+    managers: (managersRes.data ?? []).map((m) => ({
+      id: m.id,
+      email: m.email,
+      status: m.status as ProfileStatus,
+    })),
+    directorBySalesId: new Map(
+      [...directorBySalesId.entries()].map(([k, v]) => [
+        k,
+        { id: v.id, email: v.email, status: v.status as ProfileStatus },
+      ]),
+    ),
+    salesById,
+    brandByLocationId,
+    clientNameById,
+    appBase,
+  };
+  const lowRatingResult = await flushLowRatingAlerts(
+    admin,
+    allLowRatingAlerts,
+    lowRatingCtx,
+    notifyLowRating,
+    resolveLowRatingRecipients,
+  );
+
   return {
     locations_processed: summary.length,
     notify_attempted: notifResult.attempted,
     notify_failed: notifResult.failed,
+    low_rating_alerts_attempted: lowRatingResult.attempted,
+    low_rating_alerts_failed: lowRatingResult.failed,
+    low_rating_alerts_skipped: lowRatingResult.skipped,
     removed: totalRemoved,
     restored: totalRestored,
     summary,
+  };
+}
+
+function emptyResult(): SyncPlacesResult {
+  return {
+    locations_processed: 0,
+    notify_attempted: 0,
+    notify_failed: 0,
+    low_rating_alerts_attempted: 0,
+    low_rating_alerts_failed: 0,
+    low_rating_alerts_skipped: 0,
+    removed: 0,
+    restored: 0,
+    summary: [],
   };
 }

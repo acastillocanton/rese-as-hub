@@ -6,6 +6,7 @@ import {
   type ShareLinkCandidate,
 } from "@/lib/matching/attribute-review";
 import { decideDuplicateForClient } from "@/lib/cron/duplicate-detection";
+import { isLowRating, type LowRatingAlert } from "@/lib/cron/low-rating-alerts";
 import type { Brand } from "@/lib/supabase/types";
 
 /**
@@ -34,6 +35,9 @@ export type LocationCtx = {
   id: string;
   name: string;
   brand: Brand;
+  /** Para el CTA "Ver en Google" del email de alerta ≤2★. Si la ficha
+   *  no lo tiene configurado, el CTA se omite. */
+  place_id: string | null;
 };
 
 export type LocationSummary = {
@@ -122,17 +126,22 @@ async function loadCandidates(
 
 /**
  * Inserta cada reseña fresca pasando por el matcher. Acumula notificaciones
+ * (al sales atribuido) Y alertas ≤2★ (admin + manager + director + sales)
  * para envío en batch al final. Mutará `summary` con los contadores.
  */
 export async function processFreshReviews(
   args: ProcessReviewsArgs,
   summary: LocationSummary,
-): Promise<PendingNotification[]> {
+): Promise<{
+  notifications: PendingNotification[];
+  lowRatingAlerts: LowRatingAlert[];
+}> {
   const { admin, location, fresh, salesById, source } = args;
-  if (fresh.length === 0) return [];
+  if (fresh.length === 0) return { notifications: [], lowRatingAlerts: [] };
 
   const candidates = await loadCandidates(admin, location.id, fresh);
   const notifications: PendingNotification[] = [];
+  const lowRatingAlerts: LowRatingAlert[] = [];
 
   for (const fr of fresh) {
     const result = attributeReview(
@@ -239,9 +248,28 @@ export async function processFreshReviews(
     } else {
       summary.unmatched++;
     }
+
+    // Alerta ≤2★: independiente del match_state. La idempotencia la
+    // garantiza el INSERT inicial (sólo procesamos reseñas frescas; un
+    // re-run no las re-inserta). Adicionalmente el flush marca
+    // `low_rating_alerted_at` tras envío exitoso como defensa.
+    if (isLowRating(fr.rating)) {
+      lowRatingAlerts.push({
+        reviewId: inserted.id,
+        rating: fr.rating,
+        authorName: fr.author_name,
+        reviewText: fr.text,
+        locationId: location.id,
+        locationName: location.name,
+        placeId: location.place_id,
+        matchState: result.match_state,
+        salesId: result.sales_id ?? null,
+        clientId: result.client_id ?? null,
+      });
+    }
   }
 
-  return notifications;
+  return { notifications, lowRatingAlerts };
 }
 
 /**
@@ -330,4 +358,199 @@ export async function flushNotifications(
   }
 
   return { attempted: pending.length, failed };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alertas ≤2★ — flush.
+//
+// Sigue el mismo patrón que flushNotifications: Promise.allSettled +
+// audit_log de fallos. Además marca reviews.low_rating_alerted_at en cada
+// envío exitoso para garantizar idempotencia ante re-runs del cron.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { ProfileLite, SalesLite } from "@/lib/cron/low-rating-alerts";
+
+export type LowRatingAlertContext = {
+  admins: ProfileLite[];
+  managers: ProfileLite[];
+  /** Mapa para resolver el director responsable cuando matchState es
+   *  counted/pending. Indexado por sales_id (no por director_id). */
+  directorBySalesId: Map<string, ProfileLite>;
+  /** Mapa de sales por id — para nombre y email. Indexado por sales_id. */
+  salesById: Map<string, SalesInfo & { director_id: string | null }>;
+  /** Marca por location_id — para construir el email con el branding. */
+  brandByLocationId: Map<string, Brand>;
+  /** Nombres de cliente por client_id — para mostrar en el email. */
+  clientNameById: Map<string, string>;
+  appBase: string;
+};
+
+type LowRatingNotifyInput = {
+  rating: number;
+  authorName: string;
+  reviewText: string | null;
+  locationName: string;
+  matchState: "counted" | "pending" | "unmatched";
+  salesName: string | null;
+  clientName: string | null;
+  reviewId: string;
+  placeId: string | null;
+  appBase: string;
+  brand: Brand;
+  to: string[];
+};
+
+type LowRatingNotifyResult =
+  | { ok: true }
+  | { ok: false; status?: number; error?: string }
+  | { ok: false; skipped: true; reason: string };
+
+type ResolveRecipients = (params: {
+  matchState: "counted" | "pending" | "unmatched";
+  sales: SalesLite | null;
+  director: ProfileLite | null;
+  admins: ProfileLite[];
+  managers: ProfileLite[];
+}) => string[];
+
+export async function flushLowRatingAlerts(
+  admin: ProcessReviewsArgs["admin"],
+  alerts: LowRatingAlert[],
+  ctx: LowRatingAlertContext,
+  notifyFn: (input: LowRatingNotifyInput) => Promise<LowRatingNotifyResult>,
+  resolveRecipients: ResolveRecipients,
+): Promise<{ attempted: number; failed: number; skipped: number }> {
+  if (alerts.length === 0) return { attempted: 0, failed: 0, skipped: 0 };
+
+  let attempted = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  const results = await Promise.allSettled(
+    alerts.map(async (a) => {
+      const sales = a.salesId ? (ctx.salesById.get(a.salesId) ?? null) : null;
+      const salesLite: SalesLite | null = sales
+        ? {
+            id: a.salesId!,
+            email: sales.email,
+            status: sales.status as ProfileLite["status"],
+            director_id: sales.director_id ?? null,
+          }
+        : null;
+      const director = a.salesId ? (ctx.directorBySalesId.get(a.salesId) ?? null) : null;
+
+      const recipients = resolveRecipients({
+        matchState: a.matchState,
+        sales: salesLite,
+        director,
+        admins: ctx.admins,
+        managers: ctx.managers,
+      });
+
+      if (recipients.length === 0) {
+        return { reviewId: a.reviewId, status: "no_recipients" as const };
+      }
+
+      const brand = ctx.brandByLocationId.get(a.locationId);
+      if (!brand) {
+        return { reviewId: a.reviewId, status: "no_brand" as const };
+      }
+
+      attempted++;
+      const sendRes = await notifyFn({
+        rating: a.rating,
+        authorName: a.authorName,
+        reviewText: a.reviewText,
+        locationName: a.locationName,
+        matchState: a.matchState,
+        salesName: sales?.full_name ?? null,
+        clientName: a.clientId ? (ctx.clientNameById.get(a.clientId) ?? null) : null,
+        reviewId: a.reviewId,
+        placeId: a.placeId,
+        appBase: ctx.appBase,
+        brand,
+        to: recipients,
+      });
+
+      if (!sendRes.ok) {
+        return {
+          reviewId: a.reviewId,
+          status: "send_failed" as const,
+          info: sendRes,
+        };
+      }
+
+      // Marca idempotencia. Si esto falla no es crítico (el INSERT ya
+      // garantiza que el cron no re-procesará la review), pero loggea.
+      const { error: markErr } = await admin
+        .from("reviews")
+        .update({ low_rating_alerted_at: new Date().toISOString() } as never)
+        .eq("id", a.reviewId);
+      if (markErr) {
+        console.error("[cron] failed to mark low_rating_alerted_at:", markErr);
+      }
+
+      return { reviewId: a.reviewId, status: "ok" as const };
+    }),
+  );
+
+  const auditRows: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const a = alerts[i];
+    if (!r || !a) continue;
+    if (r.status === "rejected") {
+      failed++;
+      auditRows.push({
+        entity_type: "review",
+        entity_id: a.reviewId,
+        action: "low_rating_alert_failed",
+        payload: {
+          rating: a.rating,
+          error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+        },
+      });
+      continue;
+    }
+    if (r.value.status === "no_recipients" || r.value.status === "no_brand") {
+      skipped++;
+      auditRows.push({
+        entity_type: "review",
+        entity_id: a.reviewId,
+        action: "low_rating_alert_skipped",
+        payload: { rating: a.rating, reason: r.value.status },
+      });
+    } else if (r.value.status === "send_failed") {
+      failed++;
+      const info = r.value.info;
+      auditRows.push({
+        entity_type: "review",
+        entity_id: a.reviewId,
+        action: "low_rating_alert_failed",
+        payload: {
+          rating: a.rating,
+          error:
+            "error" in info ? info.error : "reason" in info ? info.reason : "unknown",
+        },
+      });
+    } else {
+      auditRows.push({
+        entity_type: "review",
+        entity_id: a.reviewId,
+        action: "low_rating_alerted",
+        payload: { rating: a.rating, match_state: a.matchState },
+      });
+    }
+  }
+
+  if (auditRows.length > 0) {
+    const { error: auditErr } = await admin
+      .from("audit_log")
+      .insert(auditRows as never);
+    if (auditErr) {
+      console.error("[cron] failed to write low_rating_alert audit rows:", auditErr);
+    }
+  }
+
+  return { attempted, failed, skipped };
 }
