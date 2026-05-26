@@ -453,11 +453,93 @@ Cada listado de reseñas tiene un mini-link "Ver en Google" (icono `ExternalLink
 
 ⚠️ **NO confundir con** `buildGoogleReviewUrl` de [lib/landing.ts](lib/landing.ts) — ese construye URL para **escribir reseña** (`/local/writereview`), distinta de la URL para **verlas** (`/local/reviews`).
 
-**Pendiente cuando llegue Business Profile**: ampliar el helper a `buildGoogleReviewUrl(placeId, googleReviewId, source)` y switchear entre URL a lista (Places) y URL a reseña concreta (Business Profile). El call site no cambia — se sigue pasando `placeId` desde el componente, simplemente añadimos `googleReviewId` y `source` desde la review.
+**Pendiente cuando llegue Business Profile**: ampliar el helper a `buildGoogleReviewUrl(placeId, googleReviewId, source)` y switchear entre URL a lista (Places) y URL a reseña concreta (Business Profile). El call site no cambia — se sigue pasando `placeId` desde el componente, simplemente añadimos `googleReviewId` y `source` desde la review. Ver §4.26.
 
----
+### 4.26 Checklist completo "Cuando llegue Business Profile API"
 
-## 5. Setup en otro Mac
+> **Caso en Google**: `5-5855000041022`. ETA original ~2026-06-04. Si no llega antes de fin de mes, abrir ticket de seguimiento.
+>
+> Esta sección es el **índice central** de todo lo que hay que tocar cuando Google apruebe la cuota. El resto del CLAUDE.md y la spec referencian aquí. Los archivos de código tienen comentarios locales que apuntan a esta sección.
+
+**Estado de partida**: las 7 fichas tienen `google_place_id` configurado y sincronizan vía Places API (legacy + `reviews_sort=newest`, top-5 más recientes por ficha, cron horario GitHub Action). `oauth_status='disconnected'` en todas. El código del cron Business Profile y el OAuth flow están listos y testeados — solo esperan que la API devuelva 200 en lugar de 429 RESOURCE_EXHAUSTED.
+
+#### Bloque A — Activación (orden estricto)
+
+1. **Probar OAuth E2E primero** (1 ficha). Conectar desde `/fichas/[id]/conectar`. Verificar que `listAccounts` → `listLocations` → `listReviews` devuelven 200. Si Google sigue rechazando, abrir caso de seguimiento (no activar producción aún).
+2. **Conectar las 7 fichas vía OAuth desde `/fichas`** en prod. El redirect URI de prod (`https://resenas.marinadorconstrucciones.com/api/google/oauth/callback`) ya está añadido en Google Cloud Console.
+3. **Verificar que el cron Business Profile** (`/api/cron/sync-google-reviews`, schedule `5 5 * * *` UTC en vercel.json) corre la noche siguiente y mete filas con `source='business_profile'`. Mirar `audit_log` para entries del cron + revisar en `/manager/resenas` filtro `Estado matching: Atribuidas`.
+4. **Pill "Business Profile" en dashboard y `/fichas`** cambia sola sin tocar código (lógica en §4.21). Confirmar visualmente.
+
+#### Bloque B — Limpieza de duplicados (one-shot)
+
+Cuando Business Profile traiga la primera reseña que también vino por Places, tendremos clones (mismos `author_name + rating + google_created_at±1h`, distintos `google_review_id` porque Places usa prefijo `places:...` sintético y Business Profile el `reviewId` raw). El `unique (location_id, google_review_id)` no detecta esto porque los IDs son distintos.
+
+5. **Script SQL de dedup one-shot**. Validar antes de correr (ver count primero). El borrado prioriza `business_profile` como autoritativo:
+   ```sql
+   -- COUNT primero para verificar
+   select count(*)
+   from reviews places, reviews biz
+   where places.source = 'places_api'
+     and biz.source = 'business_profile'
+     and places.location_id = biz.location_id
+     and places.author_name = biz.author_name
+     and places.rating = biz.rating
+     and abs(extract(epoch from (places.google_created_at - biz.google_created_at))) < 3600;
+
+   -- Si el count cuadra con lo esperado, borrar
+   delete from reviews places
+   using reviews biz
+   where places.source = 'places_api'
+     and biz.source = 'business_profile'
+     and places.location_id = biz.location_id
+     and places.author_name = biz.author_name
+     and places.rating = biz.rating
+     and abs(extract(epoch from (places.google_created_at - biz.google_created_at))) < 3600;
+   ```
+   ⚠️ Importante: este script borra `places_api` y deja `business_profile`. Si `business_profile` tiene `match_state='counted'` y la versión `places_api` tenía `match_state='unmatched'`, perdemos la atribución manual que se hizo sobre la `places_api`. Antes de borrar, considerar **migrar `sales_id`, `client_id`, `match_state`** desde el clone `places_api` a la versión `business_profile` cuando este último esté unmatched.
+
+#### Bloque C — Reactivar features desactivadas por limitaciones de Places API
+
+6. **Detección automática de soft-delete** (§4.20). Hoy desactivada porque Places API no es consistente entre llamadas (mismo place_id devuelve sets ligeramente distintos por turno de frontal Google). Business Profile sí pagina y es autoritativo. Reactivar la llamada a `reconcileRemoved` en [lib/google/sync-places.ts](lib/google/sync-places.ts) (función ya existe, exportada como `__test_reconcileRemoved`) — pero **solo desde el cron Business Profile**, no el de Places. Considerar capa `last_seen_at` con threshold de N runs antes de marcar como `removed_at`.
+7. **Deep-link a reseña concreta** en [lib/google/review-url.ts](lib/google/review-url.ts) (§4.25). Ampliar firma:
+   ```ts
+   export function buildGoogleReviewUrl(
+     placeId: string | null | undefined,
+     googleReviewId: string | null | undefined,
+     source: "business_profile" | "places_api" | "manual",
+   ): string | null
+   ```
+   Lógica: si `source === 'business_profile'` y ambos IDs están, devolver deep-link `https://www.google.com/maps/reviews?placeid=PLACEID&review_id=REVIEWID` (probar formato exacto — Google a veces usa `?reviewid=` con diferente casing). Si `source === 'places_api'`, devolver la URL actual (lista de reseñas, sin deep-link). Las 5 pantallas que usan `<GoogleReviewLink>` (§4.25) seguirán llamando al mismo helper pero ahora pasando también `googleReviewId` y `source` desde la review.
+8. **Modo `anonymous_author` del matcher** (fase 4): Business Profile devuelve displayName real, el modo anonymous deja de aplicarse automáticamente. **No es trabajo a hacer** — solo observación: revisar `audit_log` action='anonymous_match_pending' a las 2 semanas y comprobar que ya no entran nuevos.
+
+#### Bloque D — Estrategia de los dos crons
+
+Hoy corren ambos crons en paralelo (`0 5 * * *` Places + `5 5 * * *` Business Profile, 5 min margen, lock optimista compartido). Cuando Business Profile esté activo y trayendo todo:
+
+9. **Decisión a tomar**: ¿desactivar el cron Places API o dejarlo como redundancia?
+   - **Desactivarlo** (recomendado a medio plazo): un solo cron, ahorra el GitHub Action horario, simplifica. La paginación de Business Profile cubre todo el histórico.
+   - **Dejarlo como fallback** (recomendado al principio): si Business Profile vuelve a quedarse sin cuota, Places sigue trayendo top-5 recientes. Dos crons activos no se pisan (lock optimista de 60s).
+   - Decisión: dejarlo activo el primer mes; tras 30 días sin incidencias, considerar desactivar Places. NO borrar el código de Places — solo borrar el cron de `vercel.json` y el workflow `.github/workflows/sync-places-hourly.yml`.
+
+#### Bloque E — Cosas a actualizar en UI/docs
+
+10. **Comentario empty state de `/manager/resenas`** (línea 355 aprox): "Cuando Google apruebe el acceso a la Business Profile API y el cron sincronice..." → actualizar a "Cuando entren reseñas nuevas..." (genérico).
+11. **Comentario en `/comerciales/[slug]`** (línea ~612 aprox): "Cuando se conecte Google Business Profile (Fase 4 pendiente)..." → actualizar también.
+12. **CLAUDE.md §3 (tabla de fases)**: marcar Fase 4 como ✅ (hoy está ⚠️).
+13. **CLAUDE.md §7 (estado real Supabase)**: actualizar la línea "Todas tienen `google_place_id` y están sincronizando vía Places API. `oauth_status: disconnected` para Business Profile (esperando cuota Google)" — pasar a "Las 7 fichas conectadas vía OAuth Business Profile (mig N/A, OAuth en `location_secrets`). Pill 'Business Profile' (verde) en dashboard y `/fichas`."
+14. **CLAUDE.md §8 Backlog v2**: marcar puntos 1, 2 y 3 como ✅ (estaban como pendientes para la activación).
+15. **spec.md §3 (tech stack)**: "Google Places API (New) v1 + Business Profile API v1 + OAuth 2.0 (pendiente de cuota)" → quitar "pendiente de cuota".
+
+#### Bloque F — Verificación del Verification de Google
+
+16. **Consent screen en Testing → Production** en Google Cloud Console (§8 punto 3). Solo si hay testers externos al equipo actual. Si todo el equipo es `@inseryal.es` o `@marinadorconstrucciones.com`, mantener Testing está bien.
+
+#### Cómo coordinar el rollout
+
+- Crear branch `feat/business-profile-activation` ANTES de tocar producción.
+- Hacer el bloque A en orden: si la primera ficha falla OAuth, no continuar con las otras 6.
+- Bloque B (dedup) ejecutar **manualmente** vía Supabase Dashboard → SQL Editor. NO meterlo como migración (es one-shot, no idempotente).
+- Bloque C-E pueden hacerse en commits separados después.
 
 `.env.local` está en `.gitignore` — no viaja. En cada Mac:
 
@@ -530,29 +612,13 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
 
 > V1 cerrada (ver §3). Lo siguiente. Features concretas de v2 se irán definiendo conforme el negocio las pida; por ahora aquí quedan los pendientes técnicos y las open questions de spec.md que no se cerraron en v1.
 
-1. **Esperar aprobación Google Business Profile** (caso `5-5855000041022`, ETA ~2026-06-04). Mientras tanto el cron de Places API (§4.b) ya está trayendo reseñas reales diariamente a las 5:00 UTC.
-2. **Cuando Google apruebe Business Profile**:
-   - Probar OAuth E2E (`listAccounts` / `listLocations` / `listReviews`).
-   - Conectar las 7 fichas desde `/fichas` en prod (el redirect URI de prod ya está añadido en Google Cloud Console).
-   - Tras el primer run exitoso del cron Business Profile, ejecutar **script de dedup one-shot** (§4.17) para limpiar los clones `places_api` ↔ `business_profile` de la misma reseña. Script SQL aproximado (validar antes de correr):
-     ```sql
-     -- borra clones places_api cuando hay una versión business_profile equivalente
-     delete from reviews places
-     using reviews biz
-     where places.source = 'places_api'
-       and biz.source = 'business_profile'
-       and places.location_id = biz.location_id
-       and places.author_name = biz.author_name
-       and places.rating = biz.rating
-       and abs(extract(epoch from (places.google_created_at - biz.google_created_at))) < 3600;
-     ```
-3. **Publicar consent screen fuera de Testing** (Verification de Google) si en el futuro hay testers externos al equipo interno actual.
-4. **Polish técnico restante**:
+1. **Cuando llegue Google Business Profile API** (caso `5-5855000041022`, ETA ~2026-06-04): ver el **checklist completo consolidado en §4.26** (16 items, bloques A-F: activación OAuth, dedup one-shot, reactivar soft-delete automático, deep-link a reseña concreta, estrategia de los dos crons, actualizaciones de docs/UI, verification de Google). Mientras tanto el cron de Places API (§4.b) sigue trayendo reseñas reales.
+2. **Polish técnico restante**:
    - Seed más realista para dev (los E2E specs usan datos de prueba reales contra Supabase; cuando crezca el cubrimiento, considerar un proyecto Supabase de pruebas).
    - Ampliar E2E: sales-flow (crear cliente, compartir enlace) cuando haya un comercial fijo de pruebas en BD; cron con fixture del Google API.
    - Refactor de modal backdrops a componente Dialog compartido con focus trap + Escape handler (hoy lint warnings, no errors).
-5. **Ajustes globales** (`/ajustes`): la ruta existe pero está **oculta del sidebar admin** hasta tener contenido (era un stub `ComingSoon` que confundía). Cuando se implemente alguna de las funcionalidades planeadas (reglas de matching configurables, plantilla del email de invitación, schedule del cron, plantilla del mensaje de WhatsApp), añadir de vuelta el item `{ id: "settings", label: "Ajustes", href: "/ajustes", icon: Settings }` en `ADMIN_SIDEBAR_GROUPS` de [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) (junto a "Fichas Google"). Sigue siendo solo-admin por middleware.
-6. **Open questions abiertas en `spec.md` §9** (decisiones de producto pendientes):
+3. **Ajustes globales** (`/ajustes`): la ruta existe pero está **oculta del sidebar admin** hasta tener contenido (era un stub `ComingSoon` que confundía). Cuando se implemente alguna de las funcionalidades planeadas (reglas de matching configurables, plantilla del email de invitación, schedule del cron, plantilla del mensaje de WhatsApp), añadir de vuelta el item `{ id: "settings", label: "Ajustes", href: "/ajustes", icon: Settings }` en `ADMIN_SIDEBAR_GROUPS` de [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) (junto a "Fichas Google"). Sigue siendo solo-admin por middleware.
+4. **Open questions abiertas en `spec.md` §9** (decisiones de producto pendientes):
    - #1 Dominio definitivo (`reseñahub.es` vs `resenas.inseryal.es`).
    - #2 Branding final (logo, paleta exacta, tipografía).
    - #3 Integración CRM externo para alta de clientes (hoy manual).
