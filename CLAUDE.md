@@ -434,9 +434,9 @@ La pantalla `/resenas/verificacion` vivía en `app/(admin)/resenas/verificacion/
 
 ### 4.25 Link a ficha pública de Google en cada reseña
 
-Cada listado de reseñas tiene un mini-link "Ver en Google" (icono `ExternalLink` con borde) que abre en nueva pestaña la **ficha pública de Google con el panel de reseñas desplegado** (`https://search.google.com/local/reviews?placeid=XXX`). Útil para verificar contexto, ver si tiene respuesta del propietario, o leer el texto en formato Google.
+Cada listado de reseñas tiene un mini-link "Ver en Google" (icono `ExternalLink` con borde) que abre en nueva pestaña la **ficha del establecimiento en Google Maps** (`https://www.google.com/maps/place/?q=place_id:XXX`). El panel lateral de Maps muestra la ficha con foto, info y la lista de reseñas accesible con un scroll/tap. Útil para verificar contexto, ver si tiene respuesta del propietario, o leer el texto en formato Maps.
 
-**Limitación actual conocida**: con Places API no podemos hacer deep-link a la reseña concreta (no devuelve `reviewId` raw — lo sintetizamos con prefijo `places:`, ver §4.17). El usuario ve la lista completa de reseñas de la ficha y localiza la suya visualmente por autor + fecha. Cuando Google apruebe Business Profile API (caso 5-5855000041022, ETA junio 2026) el `reviewId` raw permitirá deep-link exacto.
+**Limitación actual conocida**: con Places API no podemos hacer deep-link a la reseña concreta (no devuelve `reviewId` raw — lo sintetizamos con prefijo `places:`, ver §4.17). El usuario ve la ficha en Maps y localiza la reseña visualmente por autor + fecha en el panel de reseñas. Cuando Google apruebe Business Profile API (caso 5-5855000041022, ETA junio 2026) el `reviewId` raw permitirá deep-link exacto.
 
 **Pantallas con el link** (las 5 que muestran reseñas):
 - `/manager/resenas` — columna nueva "Google" entre "Autor/valoración" y "Comercial/cliente" (grid 5→6 cols).

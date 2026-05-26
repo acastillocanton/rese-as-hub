@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
 
 describe("buildGoogleReviewListUrl", () => {
-  it("devuelve la URL pública de Google con el placeId codificado", () => {
+  it("devuelve la URL de Google Maps con el placeId codificado", () => {
     expect(buildGoogleReviewListUrl("ChIJN1t_tDeuEmsRUsoyG83frY4")).toBe(
-      "https://search.google.com/local/reviews?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4",
+      "https://www.google.com/maps/place/?q=place_id:ChIJN1t_tDeuEmsRUsoyG83frY4",
     );
   });
 
@@ -12,7 +12,7 @@ describe("buildGoogleReviewListUrl", () => {
     // Google place_ids no contienen caracteres especiales en la práctica,
     // pero el helper debe sanear igual por defensa.
     expect(buildGoogleReviewListUrl("abc/def&ghi=jkl")).toBe(
-      "https://search.google.com/local/reviews?placeid=abc%2Fdef%26ghi%3Djkl",
+      "https://www.google.com/maps/place/?q=place_id:abc%2Fdef%26ghi%3Djkl",
     );
   });
 
