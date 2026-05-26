@@ -81,6 +81,7 @@ export default async function ConectarFichaPage({ params }: PageProps) {
             : "Selecciona la ficha de Google Business Profile"
         }
         breadcrumb="Fichas"
+        breadcrumbHref="/fichas"
         range=""
         right={
           <Link

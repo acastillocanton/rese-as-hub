@@ -48,6 +48,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
           title="Detalle"
           subtitle="Modo demo — sin base de datos"
           breadcrumb="Mis clientes"
+          breadcrumbHref="/clientes"
         />
         <div style={{ padding: "24px 32px" }}>
           <Card>
@@ -129,6 +130,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
         title={client.full_name}
         subtitle={`Cliente · Alta ${fmtDate(client.created_at)}`}
         breadcrumb="Mis clientes"
+        breadcrumbHref="/clientes"
         range=""
         compact
         right={

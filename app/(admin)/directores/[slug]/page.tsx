@@ -62,7 +62,12 @@ export default async function DirectorDetailPage({ params }: PageProps) {
   if (!isSupabaseConfigured()) {
     return (
       <>
-        <Topbar title="Director" subtitle="Modo demo — sin base de datos" breadcrumb="Directores" />
+        <Topbar
+          title="Director"
+          subtitle="Modo demo — sin base de datos"
+          breadcrumb="Directores"
+          breadcrumbHref="/directores"
+        />
         <div style={{ padding: "24px 32px" }}>
           <Card>
             <div style={{ fontSize: 13, color: "var(--ink-3)" }}>
@@ -130,6 +135,7 @@ export default async function DirectorDetailPage({ params }: PageProps) {
         title={director.full_name}
         subtitle={`Director · ${director.location?.name ?? "sin ficha"} · ${statusLabel(director.status)}`}
         breadcrumb="Directores"
+        breadcrumbHref="/directores"
         range={null}
         right={
           <div style={{ display: "flex", gap: 8 }}>

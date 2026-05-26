@@ -50,6 +50,7 @@ export default async function MisResenasPage({
           title="Mis reseñas"
           subtitle="Modo demo — sin base de datos"
           breadcrumb="Mi panel"
+          breadcrumbHref="/panel"
           range={null}
         />
         <div style={{ padding: "24px 32px" }}>
@@ -122,6 +123,7 @@ export default async function MisResenasPage({
         title="Mis reseñas"
         subtitle={`Reseñas atribuidas a ${profile.full_name.split(" ")[0]}`}
         breadcrumb="Mi panel"
+        breadcrumbHref="/panel"
         range={null}
         compact
         right={

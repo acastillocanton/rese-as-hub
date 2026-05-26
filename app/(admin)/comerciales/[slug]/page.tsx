@@ -89,6 +89,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
           title="Detalle"
           subtitle="Modo demo — sin base de datos"
           breadcrumb="Comerciales"
+          breadcrumbHref="/comerciales"
         />
         <div style={{ padding: "24px 32px" }}>
           <Card>
@@ -259,6 +260,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
           (sales.department ? ` · ${DEPARTMENT_LABELS[sales.department]}` : "")
         }
         breadcrumb="Comerciales"
+        breadcrumbHref="/comerciales"
         range={null}
         compact
         right={

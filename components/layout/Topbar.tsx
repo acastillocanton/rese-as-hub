@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { DateRange } from "@/components/ui/DateRange";
 
 type TopbarProps = {
@@ -9,6 +10,10 @@ type TopbarProps = {
   range?: string | null;
   right?: ReactNode;
   breadcrumb?: string;
+  /** Si está, el breadcrumb se renderiza como `<Link>` (vuelve a la sección
+   *  padre). Solo lo pasan sub-páginas: /comerciales/[slug], /directores/[slug],
+   *  /clientes/[slug], /panel/enlace, /panel/ranking, /panel/resenas, etc. */
+  breadcrumbHref?: string;
   /** Cuando es `true`, aplica la clase `m-topbar-compact` que en
    *  mobile (≤767px) reduce paddings, achica el título y oculta el
    *  breadcrumb. Lo usan páginas con vista mobile (rol sales y
@@ -22,6 +27,7 @@ export function Topbar({
   range = "Este mes",
   right,
   breadcrumb = "Grupo",
+  breadcrumbHref,
   compact = false,
 }: TopbarProps) {
   return (
@@ -50,7 +56,21 @@ export function Topbar({
             letterSpacing: "-0.005em",
           }}
         >
-          <span>{breadcrumb}</span>
+          {breadcrumbHref ? (
+            <Link
+              href={breadcrumbHref}
+              style={{
+                color: "inherit",
+                textDecoration: "none",
+                borderRadius: 2,
+              }}
+              className="topbar-breadcrumb-link"
+            >
+              {breadcrumb}
+            </Link>
+          ) : (
+            <span>{breadcrumb}</span>
+          )}
           <span style={{ opacity: 0.5 }}>›</span>
           <span>{title}</span>
         </div>

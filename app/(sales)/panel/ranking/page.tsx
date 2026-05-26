@@ -30,6 +30,7 @@ export default async function SalesRankingPage({
           title="Ranking"
           subtitle="Tu posición en el equipo"
           breadcrumb="Mi panel"
+          breadcrumbHref="/panel"
           range={null}
           compact
         />
@@ -81,6 +82,7 @@ export default async function SalesRankingPage({
         title="Ranking"
         subtitle="Tu posición en el equipo"
         breadcrumb="Mi panel"
+        breadcrumbHref="/panel"
         range={null}
         compact
         right={

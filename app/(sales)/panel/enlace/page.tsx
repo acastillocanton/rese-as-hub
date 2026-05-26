@@ -29,6 +29,7 @@ export default async function EnlacePage() {
           title="Mi enlace"
           subtitle="Modo demo — sin base de datos"
           breadcrumb="Mi panel"
+          breadcrumbHref="/panel"
           range={null}
         />
         <div style={{ padding: "24px 32px" }}>
@@ -123,6 +124,7 @@ export default async function EnlacePage() {
         title="Mi enlace"
         subtitle="Tu enlace personal y herramientas para compartirlo"
         breadcrumb="Mi panel"
+        breadcrumbHref="/panel"
         range={null}
         compact
         right={

@@ -105,6 +105,14 @@ button {
   border-radius: 4px;
 }
 
+/* Topbar breadcrumb cuando es un Link (sub-páginas): hover lo subraya
+   para indicar interactividad. Color inherit del padre (--ink-4). */
+.topbar-breadcrumb-link:hover {
+  color: var(--ink) !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+
 /* Skeleton shimmer — consumido por components/ui/Skeleton.tsx en los
    loading.tsx por route group. */
 @keyframes skeleton-shimmer {
