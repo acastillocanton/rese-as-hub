@@ -78,6 +78,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | v2 · Link a ficha de Google en cada listado de reseñas | ✅ (2026-05-26) |
 | v2 · Reformar exportación Excel (sidebar → /comerciales, + Excel individual) | ✅ (2026-05-26) |
 | v2 · Auto-sugerir vinculación de reseñas huérfanas al crear cliente | ✅ (2026-05-26) |
+| v2 · Sales descarga su propio Excel desde /panel/resenas | ✅ (2026-05-26) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -564,7 +565,7 @@ Hasta v2 había un item "Exportar Excel" en el sidebar (admin + manager + direct
 **Auth del nuevo endpoint** (defensa en profundidad además del middleware):
 - admin / reviews_manager → cualquier `sales_id`.
 - office_director → solo `self` o un sales con `director_id = self`. Si intenta exportar a alguien fuera de equipo: `403 forbidden_scope`.
-- sales → `403 forbidden` (out-of-scope ahora; futuro: dejarles desde `/panel/resenas` con el mismo endpoint).
+- sales → solo `self` (autoservicio desde `/panel/resenas`, botón "Descargar Excel" en el Topbar). Si intenta exportar otro id: `403 forbidden_scope`. Middleware permite `/api/export/sales/*` para sales; el gating estricto vive en el endpoint.
 
 **Reutilización**: ExcelJS dynamic import (igual que `/api/export/reviews`); `buildGoogleReviewListUrl` (§4.25); `parseRange` ([lib/date-range.ts](lib/date-range.ts)); `createServiceClient` para leer las reseñas (gating en código ya cubierto).
 
