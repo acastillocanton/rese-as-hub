@@ -5,6 +5,10 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { recordAudit } from "@/lib/audit";
+import {
+  decideDuplicateForClient,
+  promoteNextPrincipal,
+} from "@/lib/cron/duplicate-detection";
 import type { Role } from "@/lib/supabase/types";
 
 const reviewIdSchema = z.string().uuid();
@@ -112,17 +116,57 @@ export async function confirmReview(reviewId: string) {
   const inScope = await assertReviewInScope(actor, parsed.data);
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
 
+  // Si la reseña confirmada tiene client_id, aplicar la regla anti-fraude
+  // (migración 015): comprobar si ya hay otra principal del mismo cliente.
+  const adminSrv = createServiceClient();
+  const { data: current } = await adminSrv
+    .from("reviews")
+    .select("client_id, google_created_at, is_duplicate")
+    .eq("id", parsed.data)
+    .maybeSingle<{
+      client_id: string | null;
+      google_created_at: string;
+      is_duplicate: boolean;
+    }>();
+
+  let dup: { newIsDuplicate: boolean; demotedReviewId: string | null } = {
+    newIsDuplicate: current?.is_duplicate ?? false,
+    demotedReviewId: null,
+  };
+  if (current?.client_id) {
+    dup = await decideDuplicateForClient(adminSrv, {
+      clientId: current.client_id,
+      incomingGoogleCreatedAt: current.google_created_at,
+      excludeReviewId: parsed.data,
+    });
+  }
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("reviews")
-    .update({ match_state: "counted" } as never)
+    .update({
+      match_state: "counted",
+      is_duplicate: dup.newIsDuplicate,
+    } as never)
     .eq("id", parsed.data);
   if (error) {
     console.error("[verificacion] confirmReview failed:", error);
     return { ok: false as const, error: error.message };
   }
 
-  await audit(parsed.data, "confirm", { confirmed_by: actor.userId, actor_role: actor.role });
+  if (dup.demotedReviewId) {
+    await adminSrv
+      .from("reviews")
+      .update({ is_duplicate: true } as never)
+      .eq("id", dup.demotedReviewId);
+  }
+
+  await audit(parsed.data, "confirm", {
+    confirmed_by: actor.userId,
+    actor_role: actor.role,
+    is_duplicate: dup.newIsDuplicate,
+    demoted_review_id: dup.demotedReviewId,
+  });
   revalidatePath("/resenas/verificacion");
   return { ok: true as const };
 }
@@ -141,6 +185,17 @@ export async function rejectReview(reviewId: string) {
   const inScope = await assertReviewInScope(actor, parsed.data);
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
 
+  // Si la reseña a rechazar era PRINCIPAL de un client_id que tiene
+  // duplicadas activas, debemos promover la siguiente más antigua tras
+  // limpiar la atribución para que no queden todas como duplicadas.
+  const adminSrv = createServiceClient();
+  const { data: current } = await adminSrv
+    .from("reviews")
+    .select("client_id, is_duplicate")
+    .eq("id", parsed.data)
+    .maybeSingle<{ client_id: string | null; is_duplicate: boolean }>();
+  const wasPrincipalOf = current && !current.is_duplicate ? current.client_id : null;
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("reviews")
@@ -149,6 +204,8 @@ export async function rejectReview(reviewId: string) {
       sales_id: null,
       client_id: null,
       share_link_id: null,
+      // Al desatribuir, ya no tiene cliente, no aplica la marca duplicada.
+      is_duplicate: false,
     } as never)
     .eq("id", parsed.data);
   if (error) {
@@ -156,7 +213,17 @@ export async function rejectReview(reviewId: string) {
     return { ok: false as const, error: error.message };
   }
 
-  await audit(parsed.data, "reject", { rejected_by: actor.userId, actor_role: actor.role });
+  let promotedId: string | null = null;
+  if (wasPrincipalOf) {
+    promotedId = await promoteNextPrincipal(adminSrv, wasPrincipalOf);
+  }
+
+  await audit(parsed.data, "reject", {
+    rejected_by: actor.userId,
+    actor_role: actor.role,
+    was_principal_of_client: wasPrincipalOf,
+    promoted_review_id: promotedId,
+  });
   revalidatePath("/resenas/verificacion");
   return { ok: true as const };
 }
@@ -206,13 +273,44 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
     }
   }
 
+  // Anti-fraude: si la reseña pasa a tener un client_id que ya tiene
+  // principal, marcarla como duplicada. Si la entrante es MÁS antigua,
+  // demotamos la principal previa.
+  const adminSrv = createServiceClient();
+  const { data: current } = await adminSrv
+    .from("reviews")
+    .select("client_id, google_created_at, is_duplicate")
+    .eq("id", parsed.data.reviewId)
+    .maybeSingle<{
+      client_id: string | null;
+      google_created_at: string;
+      is_duplicate: boolean;
+    }>();
+  const previousClientId = current?.client_id ?? null;
+  const wasPrincipalOf =
+    current && !current.is_duplicate ? previousClientId : null;
+
+  let dup: { newIsDuplicate: boolean; demotedReviewId: string | null } = {
+    newIsDuplicate: false,
+    demotedReviewId: null,
+  };
+  const newClientId = parsed.data.clientId ?? null;
+  if (newClientId && current) {
+    dup = await decideDuplicateForClient(adminSrv, {
+      clientId: newClientId,
+      incomingGoogleCreatedAt: current.google_created_at,
+      excludeReviewId: parsed.data.reviewId,
+    });
+  }
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("reviews")
     .update({
       match_state: "counted",
       sales_id: parsed.data.salesId,
-      client_id: parsed.data.clientId ?? null,
+      client_id: newClientId,
+      is_duplicate: dup.newIsDuplicate,
     } as never)
     .eq("id", parsed.data.reviewId);
   if (error) {
@@ -220,11 +318,34 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
     return { ok: false as const, error: error.message };
   }
 
+  if (dup.demotedReviewId) {
+    await adminSrv
+      .from("reviews")
+      .update({ is_duplicate: true } as never)
+      .eq("id", dup.demotedReviewId);
+  }
+
+  // Si la reasignación dejó "huérfano" a un client_id que perdía su principal
+  // (porque el reviewId movió a otro cliente o se quedó sin cliente), promover
+  // la siguiente duplicada activa para que el comercial original no pierda la
+  // cuenta arbitrariamente.
+  let promotedOrphanId: string | null = null;
+  if (
+    wasPrincipalOf &&
+    wasPrincipalOf !== newClientId
+  ) {
+    promotedOrphanId = await promoteNextPrincipal(adminSrv, wasPrincipalOf);
+  }
+
   await audit(parsed.data.reviewId, "reassign", {
     reassigned_by: actor.userId,
     actor_role: actor.role,
     new_sales_id: parsed.data.salesId,
-    new_client_id: parsed.data.clientId ?? null,
+    new_client_id: newClientId,
+    previous_client_id: previousClientId,
+    is_duplicate: dup.newIsDuplicate,
+    demoted_review_id: dup.demotedReviewId,
+    promoted_orphan_review_id: promotedOrphanId,
   });
   revalidatePath("/resenas/verificacion");
   return { ok: true as const };

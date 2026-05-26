@@ -221,6 +221,11 @@ export type Database = {
           match_confidence: number;
           match_state: MatchState;
           match_evidence: Record<string, unknown> | null;
+          /** Migración 015. Marca anti-fraude: cuando varias reseñas llegan al
+           *  mismo client_id (cliente reenvía el enlace a otros), la primera
+           *  por google_created_at queda principal (is_duplicate=false) y el
+           *  resto se marca true para no contar en KPIs/Excel/ranking. */
+          is_duplicate: boolean;
         };
         Insert: {
           id?: string;
@@ -237,6 +242,7 @@ export type Database = {
           match_confidence?: number;
           match_state?: MatchState;
           match_evidence?: Record<string, unknown> | null;
+          is_duplicate?: boolean;
         };
         Update: Partial<Database["public"]["Tables"]["reviews"]["Insert"]>;
         Relationships: [];

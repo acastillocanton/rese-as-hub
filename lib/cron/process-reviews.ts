@@ -5,6 +5,7 @@ import {
   TEMPORAL_WINDOW_HOURS,
   type ShareLinkCandidate,
 } from "@/lib/matching/attribute-review";
+import { decideDuplicateForClient } from "@/lib/cron/duplicate-detection";
 import type { Brand } from "@/lib/supabase/types";
 
 /**
@@ -144,6 +145,17 @@ export async function processFreshReviews(
       candidates,
     );
 
+    // Anti-fraude (migración 015): si esta reseña va a un client_id que ya
+    // tiene una principal, marcarla como duplicada. Si la entrante es MÁS
+    // antigua que la principal existente, invertimos (la nueva pasa a
+    // principal y demotamos la vieja).
+    const dup = result.client_id
+      ? await decideDuplicateForClient(admin, {
+          clientId: result.client_id,
+          incomingGoogleCreatedAt: fr.google_created_at,
+        })
+      : { newIsDuplicate: false, demotedReviewId: null };
+
     const row = {
       location_id: location.id,
       google_review_id: fr.google_review_id,
@@ -159,6 +171,7 @@ export async function processFreshReviews(
       match_state: result.match_state,
       match_evidence: result.match_evidence,
       source,
+      is_duplicate: dup.newIsDuplicate,
     };
 
     const { data: inserted, error: insErr } = await admin
@@ -170,6 +183,31 @@ export async function processFreshReviews(
     if (insErr || !inserted) {
       console.error("[cron] insert review failed:", insErr, fr.google_review_id);
       continue;
+    }
+
+    if (dup.demotedReviewId) {
+      const { error: demoteErr } = await admin
+        .from("reviews")
+        .update({ is_duplicate: true } as never)
+        .eq("id", dup.demotedReviewId);
+      if (demoteErr) {
+        console.error(
+          "[cron] demote principal failed:",
+          demoteErr,
+          dup.demotedReviewId,
+        );
+      } else {
+        await admin.from("audit_log").insert({
+          entity_type: "review",
+          entity_id: dup.demotedReviewId,
+          action: "demoted_by_older_duplicate",
+          payload: {
+            promoted_review_id: inserted.id,
+            promoted_google_review_id: fr.google_review_id,
+            source,
+          },
+        } as never);
+      }
     }
 
     summary.new_reviews++;
