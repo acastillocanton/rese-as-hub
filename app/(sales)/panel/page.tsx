@@ -317,9 +317,12 @@ export default async function PanelPage({
               </div>
             </div>
 
-            <div className="m-ring-row" style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            <div
+              className="m-ring-row"
+              style={{ display: "flex", alignItems: "center", gap: 24, minWidth: 0 }}
+            >
               <Ring value={data.reviews} max={data.goal} size={140} />
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Objetivo mensual</div>
                 <div
                   style={{
