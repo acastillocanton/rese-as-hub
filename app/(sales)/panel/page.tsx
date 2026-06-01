@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { Users, Trophy, TrendingUp, Zap } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
 
 
@@ -332,43 +332,53 @@ export default async function PanelPage({
                 >
                   {data.reviews} / {data.goal}
                 </div>
-                <div
-                  style={{
-                    marginTop: 6,
-                    fontSize: 12.5,
-                    color: "var(--ink-4)",
-                    lineHeight: 1.5,
-                    maxWidth: 240,
-                  }}
-                >
+                <div style={{ marginTop: 8, maxWidth: 240 }}>
                   {!isCurrentPeriod ? (
-                    <>
+                    <span style={{ fontSize: 12.5, color: "var(--ink-4)", lineHeight: 1.5 }}>
                       Vista del rango {range.label}. La proyección al objetivo solo se calcula sobre el periodo en curso.
-                    </>
-                  ) : remaining === 0 ? (
-                    <>
-                      <strong style={{ color: "var(--ok)" }}>Objetivo conseguido.</strong>{" "}
-                      {getMotivationSuffix(dayOfWeek, "done", { daysLeft })}
-                    </>
-                  ) : etaLabel ? (
-                    <>
-                      Faltan{" "}
-                      <strong style={{ color: "var(--ink)" }}>
-                        {remaining} reseñas
-                      </strong>{" "}
-                      en {daysLeft} días.{" "}
-                      {getMotivationSuffix(dayOfWeek, "on_track", { daysLeft })} Con tu ritmo actual cierras objetivo el{" "}
-                      <strong style={{ color: "var(--ink)" }}>{etaLabel}</strong>.
-                    </>
+                    </span>
                   ) : (
-                    <>
-                      Faltan{" "}
-                      <strong style={{ color: "var(--ink)" }}>
-                        {remaining} reseñas
-                      </strong>{" "}
-                      en {daysLeft} días.{" "}
-                      {getMotivationSuffix(dayOfWeek, "behind", { daysLeft })}
-                    </>
+                    <div
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 6,
+                        borderLeft: `3px solid ${remaining === 0 || etaLabel ? "var(--ok)" : "var(--warn)"}`,
+                        background: remaining === 0 || etaLabel ? "var(--ok-bg)" : "var(--warn-bg)",
+                        display: "flex",
+                        gap: 7,
+                        alignItems: "flex-start",
+                        fontSize: 12.5,
+                        lineHeight: 1.5,
+                        color: remaining === 0 || etaLabel ? "var(--ok)" : "var(--warn)",
+                      }}
+                    >
+                      {remaining === 0 ? (
+                        <Trophy size={13} style={{ marginTop: 2, flexShrink: 0 }} />
+                      ) : etaLabel ? (
+                        <TrendingUp size={13} style={{ marginTop: 2, flexShrink: 0 }} />
+                      ) : (
+                        <Zap size={13} style={{ marginTop: 2, flexShrink: 0 }} />
+                      )}
+                      <div>
+                        {remaining === 0 ? (
+                          <>
+                            <strong>Objetivo conseguido.</strong>{" "}
+                            {getMotivationSuffix(dayOfWeek, "done", { daysLeft })}
+                          </>
+                        ) : etaLabel ? (
+                          <>
+                            Faltan <strong>{remaining} reseñas</strong> en {daysLeft} días.{" "}
+                            {getMotivationSuffix(dayOfWeek, "on_track", { daysLeft })} Con tu ritmo actual cierras objetivo el{" "}
+                            <strong>{etaLabel}</strong>.
+                          </>
+                        ) : (
+                          <>
+                            Faltan <strong>{remaining} reseñas</strong> en {daysLeft} días.{" "}
+                            {getMotivationSuffix(dayOfWeek, "behind", { daysLeft })}
+                          </>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
