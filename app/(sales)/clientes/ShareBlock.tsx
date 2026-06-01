@@ -228,8 +228,10 @@ export function ShareBlock({
                 contacto.{" "}
               </>
             )}
+            {/* Editar plantillas solo desde desktop. */}
             <Link
               href="/panel/plantillas"
+              className="m-hide-mobile"
               style={{ color: "var(--ink-3)", textDecoration: "underline" }}
             >
               Editar mis plantillas →

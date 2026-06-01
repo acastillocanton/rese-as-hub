@@ -18,7 +18,7 @@ Feature completa. El comercial ahora, al compartir el enlace de un cliente, elig
 - **Persistencia**: `profiles.message_templates jsonb`, shape `{ [id]: { label?, body? } }`. Escritura server-only con service-client filtrando por `id = auth.uid()` (sin RLS nueva).
 - **UI**:
   - Selector de 3 pestañas en `ShareBlock` (diálogo al crear cliente, "Ver enlace", detalle del cliente). Las pestañas muestran el nombre personalizado. Retoque del textarea efímero por envío.
-  - Editor en **`/panel/plantillas`** (`MyTemplatesEditor.tsx` + `actions.ts::saveMessageTemplates`). Accesible desde card en `/panel/enlace` y link "Editar mis plantillas →" en el diálogo.
+  - Editor en **`/panel/plantillas`** (`MyTemplatesEditor.tsx` + `actions.ts::saveMessageTemplates`). Accesible desde card en `/panel/enlace` y link "Editar mis plantillas →" en el diálogo — **ambos solo desktop** (`m-hide-mobile`): en mobile el comercial solo elige pestaña al compartir, no edita.
 - **Alcance**: solo enlace por cliente. El enlace genérico (`/panel/enlace` → `LinkArsenalBlock`) mantiene su plantilla única (decisión de producto).
 - Detalle completo: **CLAUDE.md §4.31**. Memoria: `v2-message-templates-status`.
 

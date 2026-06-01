@@ -202,9 +202,11 @@ export default async function EnlacePage() {
           />
         </Card>
 
-        {/* Acceso al editor de plantillas por cliente (3 perfiles de mensaje). */}
+        {/* Acceso al editor de plantillas por cliente (3 perfiles de mensaje).
+            Solo desktop: en mobile la edición de plantillas no se ofrece. */}
         <Link
           href="/panel/plantillas"
+          className="m-hide-mobile"
           style={{
             display: "flex",
             alignItems: "center",
