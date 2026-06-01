@@ -151,10 +151,58 @@ export function lastQuarterRange(now = new Date()): DateRange {
   return buildRange(from, to);
 }
 
+// ─── Periodo de comisión (20 → 20) ──────────────────────────────────────────
+// A los comerciales se les liquida la comisión por periodos que van del día 20
+// de un mes al día 19 del mes siguiente (el día 20 abre periodo nuevo, sin
+// solapamientos). Es el rango protagonista en las pantallas del comercial.
+
+/** Límites (Date) del periodo de comisión vigente en `now`. */
+function commissionPeriodBounds(now: Date): { from: Date; to: Date } {
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const from = now.getDate() >= 20 ? new Date(y, m, 20) : new Date(y, m - 1, 20);
+  const to = new Date(from.getFullYear(), from.getMonth() + 1, 19);
+  return { from, to };
+}
+
+/** Etiqueta compacta del periodo de comisión: "20 may – 19 jun" (con año solo si difiere). */
+function commissionLabel(from: Date, to: Date): string {
+  const mon = (d: Date) => (MONTH_LABELS[d.getMonth()] ?? "").slice(0, 3);
+  if (from.getFullYear() === to.getFullYear()) {
+    return `${from.getDate()} ${mon(from)} – ${to.getDate()} ${mon(to)}`;
+  }
+  return `${from.getDate()} ${mon(from)} ${from.getFullYear()} – ${to.getDate()} ${mon(to)} ${to.getFullYear()}`;
+}
+
+function commissionRange(from: Date, to: Date): DateRange {
+  return { ...buildRange(from, to), label: commissionLabel(from, to) };
+}
+
+/** Periodo de comisión vigente (20 → 19 del mes siguiente). */
+export function commissionPeriodRange(now = new Date()): DateRange {
+  const { from, to } = commissionPeriodBounds(now);
+  return commissionRange(from, to);
+}
+
+/** Periodo de comisión inmediatamente anterior al vigente. */
+export function previousCommissionPeriodRange(now = new Date()): DateRange {
+  const { from } = commissionPeriodBounds(now);
+  const prevFrom = new Date(from.getFullYear(), from.getMonth() - 1, 20);
+  const prevTo = new Date(from.getFullYear(), from.getMonth(), 19);
+  return commissionRange(prevFrom, prevTo);
+}
+
+/** True si `range` coincide exactamente con el periodo de comisión vigente en `now`. */
+export function isCommissionPeriod(range: DateRange, now = new Date()): boolean {
+  const cur = commissionPeriodRange(now);
+  return range.from === cur.from && range.to === cur.to;
+}
+
 /**
  * Parsea los query params `from` y `to` (yyyy-mm-dd). Si faltan, son
- * inválidos o vienen invertidos (`from > to`), cae al mes en curso. Sin
- * sorpresas: el manager siempre tiene un rango definido y bien orientado.
+ * inválidos o vienen invertidos (`from > to`), cae al `fallback` (por defecto
+ * el mes natural en curso). Las pantallas del comercial pasan
+ * `commissionPeriodRange` como fallback para arrancar en el periodo de comisión.
  *
  * La UI (`RangePicker`) nunca produce rangos invertidos — la validación
  * defensiva es solo para URLs escritas a mano o copy/paste.
@@ -163,6 +211,7 @@ export function parseRange(
   fromParam: string | null | undefined,
   toParam: string | null | undefined,
   now = new Date(),
+  fallback: (now: Date) => DateRange = thisMonthRange,
 ): DateRange {
   if (fromParam && toParam && isValidYmd(fromParam) && isValidYmd(toParam)) {
     const from = parseYmd(fromParam);
@@ -170,12 +219,12 @@ export function parseRange(
     if (from > to) {
       // Antes invertíamos silenciosamente en buildRange — confundía al
       // usuario porque la etiqueta no coincidía con lo que había escrito.
-      // Mejor caer al mes actual y que vuelva a elegir.
-      return thisMonthRange(now);
+      // Mejor caer al fallback y que vuelva a elegir.
+      return fallback(now);
     }
     return buildRange(from, to);
   }
-  return thisMonthRange(now);
+  return fallback(now);
 }
 
 /**
@@ -205,6 +254,24 @@ export function defaultShortcuts(now = new Date()): ShortcutDescriptor[] {
       to: lq.to,
       rangeLabel: lq.label,
     },
+  ];
+}
+
+/**
+ * Atajos para el `RangePicker` de las pantallas del comercial: el periodo de
+ * comisión vigente y el anterior van primero (son los relevantes para la
+ * liquidación), seguidos del mes natural por si lo necesita.
+ */
+export function commissionShortcuts(now = new Date()): ShortcutDescriptor[] {
+  const cur = commissionPeriodRange(now);
+  const prev = previousCommissionPeriodRange(now);
+  const m = thisMonthRange(now);
+  const lm = lastMonthRange(now);
+  return [
+    { key: "commission-current", label: "Periodo de comisión", from: cur.from, to: cur.to, rangeLabel: cur.label },
+    { key: "commission-prev", label: "Periodo anterior", from: prev.from, to: prev.to, rangeLabel: prev.label },
+    { key: "this-month", label: "Mes natural", from: m.from, to: m.to, rangeLabel: m.label },
+    { key: "last-month", label: "Mes pasado", from: lm.from, to: lm.to, rangeLabel: lm.label },
   ];
 }
 

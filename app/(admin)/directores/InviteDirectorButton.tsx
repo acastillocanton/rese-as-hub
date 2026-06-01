@@ -52,6 +52,7 @@ export function InviteDirectorButton({
         language:
           dept === "internacional" ? String(formData.get("language") ?? "") : null,
         monthlyGoal: String(formData.get("monthlyGoal") ?? "5"),
+        commissionRate: String(formData.get("commissionRate") ?? ""),
       };
       const result = await inviteOfficeDirector(input as never);
       if (!result.ok) {
@@ -287,6 +288,17 @@ export function InviteDirectorButton({
                       max={1000}
                       defaultValue={5}
                       required
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="Comisión por reseña (€)" hint="Importe por reseña verificada como productor. Vacío = sin tarifa.">
+                    <input
+                      name="commissionRate"
+                      type="number"
+                      min={0}
+                      max={9999}
+                      step="0.01"
+                      placeholder="p.ej. 2,50"
                       style={inputStyle}
                     />
                   </Field>

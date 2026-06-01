@@ -118,6 +118,24 @@ const departmentSchema = z.enum(["nacional", "internacional", "castellon", "vale
 
 const pauseReasonSchema = z.enum(["vacaciones", "baja_medica", "permiso_laboral"]);
 
+/**
+ * Tarifa de comisión por reseña en € (mig 020). Acepta string del form o
+ * number. Vacío → null (tarifa no configurada). Admite coma decimal. Se
+ * redondea a 2 decimales y se acota a [0, 9999].
+ */
+const commissionRateSchema = z
+  .union([z.string(), z.number()])
+  .optional()
+  .nullable()
+  .transform((v) => {
+    if (v === null || v === undefined) return null;
+    const s = typeof v === "number" ? String(v) : v.trim();
+    if (s === "") return null;
+    const n = Number(s.replace(",", "."));
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.round(Math.min(n, 9999) * 100) / 100;
+  });
+
 const inviteSchema = z
   .object({
     fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
@@ -140,6 +158,7 @@ const inviteSchema = z
       .nullable()
       .transform((v) => v || null),
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
+    commissionRate: commissionRateSchema,
     department: departmentSchema,
     language: z
       .string()
@@ -217,6 +236,7 @@ export async function inviteSales(input: InviteSalesInput): Promise<
       location_id: parsed.data.locationId,
       director_id: parsed.data.directorId,
       monthly_goal: parsed.data.monthlyGoal,
+      commission_rate: parsed.data.commissionRate,
       department: parsed.data.department,
       language: parsed.data.language,
       notes: parsed.data.notes,
@@ -237,6 +257,7 @@ const updateSchema = z
       .nullable()
       .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
+    commissionRate: commissionRateSchema,
     locationId: z.string().uuid("Selecciona una ficha."),
     directorId: z
       .string()
@@ -313,6 +334,7 @@ export async function updateSales(input: UpdateSalesInput) {
   const payload = {
     phone: parsed.data.phone,
     monthly_goal: parsed.data.monthlyGoal,
+    commission_rate: parsed.data.commissionRate,
     location_id: parsed.data.locationId,
     director_id: parsed.data.directorId,
     status: parsed.data.status,

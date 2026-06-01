@@ -84,6 +84,7 @@ export function InviteSalesButton({
         locationId: String(formData.get("locationId") ?? ""),
         directorId: String(formData.get("directorId") ?? "") || null,
         monthlyGoal: String(formData.get("monthlyGoal") ?? "5"),
+        commissionRate: String(formData.get("commissionRate") ?? ""),
         department: dept,
         language:
           dept === "internacional" ? String(formData.get("language") ?? "") : null,
@@ -337,6 +338,17 @@ export function InviteSalesButton({
                       max={1000}
                       defaultValue={5}
                       required
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="Comisión por reseña (€)" hint="Importe que se abona por cada reseña verificada. Vacío = sin tarifa configurada.">
+                    <input
+                      name="commissionRate"
+                      type="number"
+                      min={0}
+                      max={9999}
+                      step="0.01"
+                      placeholder="p.ej. 2,50"
                       style={inputStyle}
                     />
                   </Field>

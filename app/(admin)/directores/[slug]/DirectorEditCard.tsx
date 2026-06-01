@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { Pill } from "@/components/ui/Pill";
+import { formatEuro } from "@/lib/utils";
 import { updateDirector, type UpdateDirectorInput } from "../actions";
 import {
   SALES_LANGUAGES,
@@ -23,6 +24,7 @@ export type DirectorEditCardProps = {
     department: SalesDepartment | null;
     language: string | null;
     monthlyGoal: number;
+    commissionRate: number | null;
     status: ProfileStatus;
   };
 };
@@ -70,6 +72,9 @@ export function DirectorEditCard({
   );
   const [language, setLanguage] = useState<string>(initial.language ?? "");
   const [monthlyGoal, setMonthlyGoal] = useState<number>(initial.monthlyGoal);
+  const [commissionRate, setCommissionRate] = useState<string>(
+    initial.commissionRate === null ? "" : String(initial.commissionRate),
+  );
   const initialEditableStatus: Exclude<ProfileStatus, "archived"> =
     initial.status === "archived" ? "invited" : initial.status;
   const [status, setStatus] = useState<Exclude<ProfileStatus, "archived">>(
@@ -91,6 +96,7 @@ export function DirectorEditCard({
     setDepartment(initial.department ?? "");
     setLanguage(initial.language ?? "");
     setMonthlyGoal(initial.monthlyGoal);
+    setCommissionRate(initial.commissionRate === null ? "" : String(initial.commissionRate));
     setStatus(initialEditableStatus);
     setError(null);
     setEditing(false);
@@ -118,6 +124,7 @@ export function DirectorEditCard({
       department,
       language: department === "internacional" ? language : null,
       monthlyGoal,
+      commissionRate: commissionRate.trim() === "" ? null : commissionRate.trim(),
       status,
     };
     startTransition(async () => {
@@ -289,6 +296,35 @@ export function DirectorEditCard({
               />
             ) : (
               <span style={{ fontSize: 13.5 }}>{monthlyGoal} reseñas/mes</span>
+            )}
+          </dd>
+        </div>
+
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Comisión/reseña</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <input
+                type="number"
+                min={0}
+                max={9999}
+                step="0.01"
+                value={commissionRate}
+                onChange={(e) => setCommissionRate(e.target.value)}
+                placeholder="Sin tarifa"
+                style={{ ...inputStyle, width: 120 }}
+              />
+            ) : (
+              <span
+                style={{
+                  fontSize: 13.5,
+                  color: initial.commissionRate === null ? "var(--ink-4)" : "var(--ink)",
+                }}
+              >
+                {initial.commissionRate === null
+                  ? "Sin tarifa configurada"
+                  : `${formatEuro(initial.commissionRate)} / reseña`}
+              </span>
             )}
           </dd>
         </div>

@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/Card";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { LeaderboardCardList } from "@/components/ranking/LeaderboardCardList";
 import { getLeaderboard } from "@/lib/leaderboard";
-import { parseRange, defaultShortcuts } from "@/lib/date-range";
+import { parseRange, commissionPeriodRange, commissionShortcuts } from "@/lib/date-range";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -20,8 +20,10 @@ export default async function SalesRankingPage({
 }) {
   const params = await searchParams;
   const now = new Date();
-  const range = parseRange(params.from, params.to, now);
-  const shortcuts = defaultShortcuts(now);
+  // El ranking del comercial se alinea al periodo de comisión (20→19) por
+  // defecto, igual que el resto de su panel.
+  const range = parseRange(params.from, params.to, now, commissionPeriodRange);
+  const shortcuts = commissionShortcuts(now);
 
   if (!isSupabaseConfigured()) {
     return (

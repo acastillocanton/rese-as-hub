@@ -5,6 +5,9 @@ import {
   lastMonthRange,
   lastQuarterRange,
   isFullNaturalMonth,
+  commissionPeriodRange,
+  previousCommissionPeriodRange,
+  isCommissionPeriod,
 } from "../date-range";
 
 // Fecha de referencia fija para reproducibilidad: 15 mayo 2026 (mié).
@@ -81,6 +84,95 @@ describe("parseRange", () => {
     expect(r.label).toContain("mar");
     expect(r.label).toContain("abr");
     expect(r.label).toContain("–");
+  });
+});
+
+describe("commissionPeriodRange (20 → 19)", () => {
+  it("día 15 (antes del 20) → periodo del 20 del mes anterior al 19 del actual", () => {
+    const r = commissionPeriodRange(new Date(2026, 4, 15)); // 15 may
+    expect(r.from).toBe("2026-04-20");
+    expect(r.to).toBe("2026-05-19");
+  });
+
+  it("día 19 sigue en el periodo que cierra ese día", () => {
+    const r = commissionPeriodRange(new Date(2026, 4, 19)); // 19 may
+    expect(r.from).toBe("2026-04-20");
+    expect(r.to).toBe("2026-05-19");
+  });
+
+  it("día 20 abre periodo nuevo (20 actual → 19 siguiente)", () => {
+    const r = commissionPeriodRange(new Date(2026, 4, 20)); // 20 may
+    expect(r.from).toBe("2026-05-20");
+    expect(r.to).toBe("2026-06-19");
+  });
+
+  it("día 21 está en el periodo abierto el 20", () => {
+    const r = commissionPeriodRange(new Date(2026, 4, 21)); // 21 may
+    expect(r.from).toBe("2026-05-20");
+    expect(r.to).toBe("2026-06-19");
+  });
+
+  it("cruce de año: 25 dic → 20 dic a 19 ene del año siguiente", () => {
+    const r = commissionPeriodRange(new Date(2026, 11, 25)); // 25 dic 2026
+    expect(r.from).toBe("2026-12-20");
+    expect(r.to).toBe("2027-01-19");
+  });
+
+  it("cruce de año hacia atrás: 10 ene → 20 dic del año anterior a 19 ene", () => {
+    const r = commissionPeriodRange(new Date(2026, 0, 10)); // 10 ene 2026
+    expect(r.from).toBe("2025-12-20");
+    expect(r.to).toBe("2026-01-19");
+  });
+
+  it("label compacto con guion", () => {
+    const r = commissionPeriodRange(new Date(2026, 4, 15));
+    expect(r.label).toContain("abr");
+    expect(r.label).toContain("may");
+    expect(r.label).toContain("–");
+  });
+});
+
+describe("previousCommissionPeriodRange", () => {
+  it("periodo inmediatamente anterior al vigente", () => {
+    const r = previousCommissionPeriodRange(new Date(2026, 4, 25)); // periodo vigente 20 may–19 jun
+    expect(r.from).toBe("2026-04-20");
+    expect(r.to).toBe("2026-05-19");
+  });
+
+  it("es contiguo y sin solape con el vigente", () => {
+    const now = new Date(2026, 4, 25);
+    const cur = commissionPeriodRange(now);
+    const prev = previousCommissionPeriodRange(now);
+    // El día siguiente al `to` del anterior es el `from` del vigente.
+    expect(prev.to).toBe("2026-05-19");
+    expect(cur.from).toBe("2026-05-20");
+  });
+});
+
+describe("isCommissionPeriod", () => {
+  it("true para el rango devuelto por commissionPeriodRange(now)", () => {
+    const now = new Date(2026, 4, 15);
+    expect(isCommissionPeriod(commissionPeriodRange(now), now)).toBe(true);
+  });
+
+  it("false para un mes natural", () => {
+    const now = new Date(2026, 4, 15);
+    expect(isCommissionPeriod(thisMonthRange(now), now)).toBe(false);
+  });
+});
+
+describe("parseRange con fallback de comisión", () => {
+  it("sin params usa el fallback indicado (periodo de comisión)", () => {
+    const now = new Date(2026, 4, 15);
+    const r = parseRange(undefined, undefined, now, commissionPeriodRange);
+    expect(r.from).toBe("2026-04-20");
+    expect(r.to).toBe("2026-05-19");
+  });
+
+  it("from>to inválido cae al fallback de comisión", () => {
+    const now = new Date(2026, 4, 15);
+    const r = parseRange("2026-05-31", "2026-05-01", now, commissionPeriodRange);
+    expect(r.from).toBe("2026-04-20");
   });
 });
 

@@ -13,9 +13,12 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   parseRange,
-  defaultShortcuts,
+  commissionPeriodRange,
+  commissionShortcuts,
+  isCommissionPeriod,
   type DateRange,
 } from "@/lib/date-range";
+import { formatEuro } from "@/lib/utils";
 
 // `new Date()` + rango activo basado en "ahora" → forzamos dinámico.
 export const dynamic = "force-dynamic";
@@ -24,6 +27,7 @@ type SalesProfile = {
   id: string;
   full_name: string;
   slug: string;
+  commission_rate: number | null;
 };
 
 type ReviewRow = {
@@ -69,8 +73,10 @@ export default async function MisResenasPage({
 
   const params = await searchParams;
   const now = new Date();
-  const range = parseRange(params.from, params.to, now);
-  const shortcuts = defaultShortcuts(now);
+  // El comercial arranca en el periodo de comisión (20→19).
+  const range = parseRange(params.from, params.to, now, commissionPeriodRange);
+  const shortcuts = commissionShortcuts(now);
+  const isCommission = isCommissionPeriod(range, now);
 
   const supabase = await createClient();
   const {
@@ -80,7 +86,7 @@ export default async function MisResenasPage({
 
   const profileRes = await supabase
     .from("profiles")
-    .select("id, full_name, slug")
+    .select("id, full_name, slug, commission_rate")
     .eq("id", user.id)
     .maybeSingle<SalesProfile>();
 
@@ -118,6 +124,11 @@ export default async function MisResenasPage({
   const fiveStars = reviews.filter((r) => r.rating === 5).length;
   const fiveStarsPct =
     reviews.length > 0 ? Math.round((fiveStars / reviews.length) * 100) : null;
+
+  // Comisión estimada del periodo: solo las abonables (counted) × tarifa.
+  const rate = profile.commission_rate;
+  const earnedEuro = rate !== null ? rate * counted : null;
+  const pendingEuro = rate !== null ? rate * pending : null;
 
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString("es-ES", {
@@ -197,30 +208,40 @@ export default async function MisResenasPage({
           }}
         >
           <Stat
-            label="Reseñas atribuidas"
-            value={total.toString()}
+            label="Abonables (verificadas)"
+            value={counted.toString()}
             sub={
-              total === 0
-                ? "Pendiente sincronización"
-                : duplicates > 0
-                  ? `${counted} contadas · ${pending} por verificar · ${duplicates} duplicadas`
-                  : `${counted} contadas · ${pending} por verificar`
+              earnedEuro !== null
+                ? `≈ ${formatEuro(earnedEuro)} en comisión`
+                : "Solo las verificadas se abonan"
+            }
+          />
+          <Stat
+            label="Por verificar"
+            value={pending.toString()}
+            sub={
+              pending === 0
+                ? "Nada pendiente"
+                : pendingEuro !== null
+                  ? `+${formatEuro(pendingEuro)} si se confirman`
+                  : "Se abonarán al verificarse"
             }
           />
           <Stat
             label="Valoración media"
             value={avgRating === null ? "—" : avgRating.toFixed(2).replace(".", ",")}
-            sub={avgRating === null ? "Sin datos en el rango" : "Sobre 5 estrellas"}
+            sub={
+              avgRating === null
+                ? "Sin datos en el rango"
+                : duplicates > 0
+                  ? `${fiveStars} de 5★ · ${duplicates} duplicadas`
+                  : `${fiveStars} de 5★ (${fiveStarsPct ?? 0}%)`
+            }
           />
           <Stat
-            label="Excelentes (5★)"
-            value={fiveStars.toString()}
-            sub={fiveStarsPct === null ? "—" : `${fiveStarsPct}% del total`}
-          />
-          <Stat
-            label="Rango activo"
+            label={isCommission ? "Periodo de comisión" : "Rango activo"}
             value={range.label}
-            sub="Cambia con el selector"
+            sub={isCommission ? "Del 20 al 19 · cambia con el selector" : "Cambia con el selector"}
           />
         </div>
 

@@ -128,6 +128,9 @@ export type Database = {
           email: string | null;
           phone: string | null;
           monthly_goal: number;
+          /** Comisión por reseña en € (numeric). NULL = tarifa no configurada.
+           *  Migración 020. Aplica a productores (sales + office_director). */
+          commission_rate: number | null;
           status: ProfileStatus;
           avatar_url: string | null;
           joined_at: string;
@@ -151,6 +154,7 @@ export type Database = {
           email?: string | null;
           phone?: string | null;
           monthly_goal?: number;
+          commission_rate?: number | null;
           status?: ProfileStatus;
           avatar_url?: string | null;
           joined_at?: string;

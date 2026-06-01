@@ -43,6 +43,7 @@ type SalesDetail = {
   email: string | null;
   phone: string | null;
   monthly_goal: number;
+  commission_rate: number | null;
   status: ProfileStatus;
   joined_at: string;
   location_id: string | null;
@@ -129,7 +130,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, monthly_goal, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, role, location:locations(id, name)",
+        "id, full_name, slug, email, phone, monthly_goal, commission_rate, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, role, location:locations(id, name)",
       )
       .eq("slug", slug)
       .in("role", ["sales", "office_director"])
@@ -401,6 +402,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                 locationId: sales.location_id,
                 directorId: sales.director_id,
                 monthlyGoal: sales.monthly_goal,
+                commissionRate: sales.commission_rate,
                 status: sales.status,
                 department: sales.department,
                 language: sales.language,

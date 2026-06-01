@@ -15,13 +15,17 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   parseRange,
-  defaultShortcuts,
   isFullNaturalMonth,
   lastMonthRange,
   bucketByMonth,
+  commissionPeriodRange,
+  previousCommissionPeriodRange,
+  commissionShortcuts,
+  isCommissionPeriod,
   type DateRange,
 } from "@/lib/date-range";
 import { MONTHS } from "@/lib/demo-data";
+import { formatEuro } from "@/lib/utils";
 import { getLeaderboard } from "@/lib/leaderboard";
 import { computePanelBadges } from "@/lib/panel-badges";
 import type { SavedTemplates } from "@/lib/messaging";
@@ -41,13 +45,18 @@ import { BadgesCard } from "@/components/panel/BadgesCard";
 type PanelData = {
   name: string;
   slug: string;
-  reviews: number;
   goal: number;
-  /** Reseñas del periodo natural anterior. null si el rango actual no es un
-   *  mes natural completo y la comparativa pierde sentido. */
-  prevReviews: number | null;
+  /** Reseñas ABONABLES del periodo: counted, no-duplicadas, no-eliminadas. */
+  counted: number;
+  /** Reseñas POTENCIALES: pending (se abonan al verificarse). */
+  pending: number;
+  /** Abonables del periodo anterior (de comisión o mes natural). null si la
+   *  comparativa no aplica (rango libre) y la pill se oculta. */
+  prevCounted: number | null;
   links: number;
   avgRating: number | null;
+  /** Tarifa €/reseña del comercial (profiles.commission_rate). null = sin tarifa. */
+  commissionRate: number | null;
   insights: PanelInsights;
   /** Plantillas de mensaje personalizadas del comercial. */
   messageTemplates: SavedTemplates;
@@ -78,11 +87,13 @@ type PanelSearchParams = Promise<{ from?: string; to?: string }>;
 const DEMO_DATA: Omit<PanelData, "insights"> = {
   name: "Mateo Salgado",
   slug: "mateo-salgado",
-  reviews: 74,
   goal: 80,
-  prevReviews: 65,
+  counted: 68,
+  pending: 6,
+  prevCounted: 61,
   links: 96,
   avgRating: 4.8,
+  commissionRate: 2.5,
   messageTemplates: null,
 };
 
@@ -147,67 +158,68 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
 
   const profileRes = await supabase
     .from("profiles")
-    .select("id, full_name, slug, monthly_goal, director_id, message_templates")
+    .select("id, full_name, slug, monthly_goal, commission_rate, director_id, message_templates")
     .eq("id", user.id)
     .maybeSingle<{
       id: string;
       full_name: string;
       slug: string;
       monthly_goal: number;
+      commission_rate: number | null;
       director_id: string | null;
       message_templates: SavedTemplates;
     }>();
 
   if (!profileRes.data) return demo();
 
-  // La pill "vs. periodo anterior" solo aparece cuando el rango activo es un
-  // mes natural completo. Para custom queda como null y el render la oculta.
-  const isMonth = isFullNaturalMonth(range);
-  const prev = isMonth
-    ? lastMonthRange(parseFromIso(range.from))
-    : null;
+  // Comparativa "vs. periodo anterior": si el rango es el periodo de comisión
+  // vigente → el periodo de comisión anterior; si es un mes natural completo →
+  // el mes pasado; en cualquier otro rango libre no comparamos (null).
+  const prev = isCommissionPeriod(range, now)
+    ? previousCommissionPeriodRange(now)
+    : isFullNaturalMonth(range)
+      ? lastMonthRange(parseFromIso(range.from))
+      : null;
 
-  const baseQueries = [
+  // Reseñas del rango con su estado, para separar abonables (counted) de
+  // potenciales (pending). Solo no-duplicadas y no-eliminadas.
+  const [reviewsRange, links, prevCountedRes] = await Promise.all([
     supabase
       .from("reviews")
-      .select("rating", { count: "exact" })
+      .select("rating, match_state")
       .eq("sales_id", user.id)
       .is("removed_at", null)
       .eq("is_duplicate", false)
       .in("match_state", ["counted", "pending"])
       .gte("google_created_at", range.startIso)
-      .lt("google_created_at", range.endIso),
+      .lt("google_created_at", range.endIso)
+      .returns<{ rating: number; match_state: string }[]>(),
     supabase
       .from("share_links")
       .select("id", { count: "exact", head: true })
       .eq("sales_id", user.id)
       .gte("opened_at", range.startIso)
       .lt("opened_at", range.endIso),
-  ] as const;
-
-  const prevQuery = prev
-    ? supabase
-        .from("reviews")
-        .select("id", { count: "exact", head: true })
-        .eq("sales_id", user.id)
-        .is("removed_at", null)
-        .eq("is_duplicate", false)
-        .in("match_state", ["counted", "pending"])
-        .gte("google_created_at", prev.startIso)
-        .lt("google_created_at", prev.endIso)
-    : null;
-
-  const [reviewsRange, links, reviewsPrev] = await Promise.all([
-    baseQueries[0],
-    baseQueries[1],
-    prevQuery ?? Promise.resolve(null),
+    prev
+      ? supabase
+          .from("reviews")
+          .select("id", { count: "exact", head: true })
+          .eq("sales_id", user.id)
+          .is("removed_at", null)
+          .eq("is_duplicate", false)
+          .eq("match_state", "counted")
+          .gte("google_created_at", prev.startIso)
+          .lt("google_created_at", prev.endIso)
+      : Promise.resolve(null),
   ]);
 
-  const ratings = (reviewsRange.data ?? []) as { rating: number }[];
+  const rows = reviewsRange.data ?? [];
+  const counted = rows.filter((r) => r.match_state === "counted").length;
+  const pending = rows.filter((r) => r.match_state === "pending").length;
   const avgRating =
-    ratings.length === 0
+    rows.length === 0
       ? null
-      : ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length;
+      : rows.reduce((sum, r) => sum + r.rating, 0) / rows.length;
 
   const insights = await loadPanelInsights(
     supabase,
@@ -220,11 +232,13 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
   return {
     name: profileRes.data.full_name,
     slug: profileRes.data.slug,
-    reviews: reviewsRange.count ?? 0,
-    prevReviews: reviewsPrev ? reviewsPrev.count ?? 0 : null,
+    counted,
+    pending,
+    prevCounted: prevCountedRes ? prevCountedRes.count ?? 0 : null,
     links: links.count ?? 0,
     goal: profileRes.data.monthly_goal,
     avgRating,
+    commissionRate: profileRes.data.commission_rate,
     insights,
     messageTemplates: profileRes.data.message_templates,
   };
@@ -346,37 +360,46 @@ function formatRating(value: number | null): string {
   return value.toFixed(1).replace(".", ",");
 }
 
-function deltaPill(current: number, previous: number | null) {
+function deltaPill(current: number, previous: number | null, suffix = "vs. periodo anterior") {
   if (previous === null) return null;
   if (previous === 0 && current === 0) return null;
   const diff = current - previous;
-  if (diff === 0) return <Pill withDot>=0 vs. mes pasado</Pill>;
+  if (diff === 0) return <Pill withDot>=0 {suffix}</Pill>;
   const sign = diff > 0 ? "+" : "";
   return (
     <Pill tone={diff > 0 ? "ok" : "warn"} withDot>
       {sign}
-      {diff} vs. mes pasado
+      {diff} {suffix}
     </Pill>
   );
 }
 
+/**
+ * Proyección al objetivo del periodo activo (de comisión o mes natural).
+ * `periodStartIso`/`periodEndIso` son los límites del rango (endIso exclusivo,
+ * 00:00 del día siguiente al `to`). El ritmo se calcula sobre los días ya
+ * transcurridos del periodo, no sobre el día del mes.
+ */
 function projection({
-  reviews,
+  counted,
   goal,
   now,
+  periodStartIso,
+  periodEndIso,
 }: {
-  reviews: number;
+  counted: number;
   goal: number;
   now: Date;
+  periodStartIso: string;
+  periodEndIso: string;
 }): { remaining: number; daysLeft: number; etaLabel: string | null } {
-  const remaining = Math.max(goal - reviews, 0);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const daysLeft = Math.max(
-    Math.ceil((endOfMonth.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
-    0,
-  );
-  const daysSoFar = now.getDate();
-  const ratePerDay = daysSoFar > 0 ? reviews / daysSoFar : 0;
+  const day = 1000 * 60 * 60 * 24;
+  const periodStart = new Date(periodStartIso);
+  const periodEnd = new Date(periodEndIso);
+  const remaining = Math.max(goal - counted, 0);
+  const daysLeft = Math.max(Math.ceil((periodEnd.getTime() - now.getTime()) / day), 0);
+  const daysElapsed = Math.max(Math.ceil((now.getTime() - periodStart.getTime()) / day), 1);
+  const ratePerDay = counted / daysElapsed;
   if (remaining === 0) {
     return { remaining: 0, daysLeft, etaLabel: "Objetivo cumplido" };
   }
@@ -386,11 +409,18 @@ function projection({
   const daysToReach = Math.ceil(remaining / ratePerDay);
   const eta = new Date(now);
   eta.setDate(now.getDate() + daysToReach);
-  if (eta > endOfMonth) {
+  if (eta.getTime() >= periodEnd.getTime()) {
     return { remaining, daysLeft, etaLabel: null };
   }
   const label = eta.toLocaleDateString("es-ES", { day: "numeric", month: "long" });
   return { remaining, daysLeft, etaLabel: label };
+}
+
+/** "19 jun" — día de cierre del periodo (el `to`, último día incluido). */
+function formatCloseDate(toYmd: string): string {
+  const parts = toYmd.split("-").map(Number);
+  const d = new Date(parts[0] ?? 1970, (parts[1] ?? 1) - 1, parts[2] ?? 1);
+  return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 }
 
 export default async function PanelPage({
@@ -401,12 +431,13 @@ export default async function PanelPage({
   const params = await searchParams;
   const brand = await getCurrentUserBrand();
   const now = new Date();
-  const range = parseRange(params.from, params.to, now);
-  const shortcuts = defaultShortcuts(now);
-  const isMonth = isFullNaturalMonth(range);
+  // El comercial arranca en el PERIODO DE COMISIÓN (20→19), no en el mes
+  // natural. El selector permite cambiar a mes natural o rango libre.
+  const range = parseRange(params.from, params.to, now, commissionPeriodRange);
+  const shortcuts = commissionShortcuts(now);
+  const isCommission = isCommissionPeriod(range, now);
   // La proyección al objetivo solo tiene sentido cuando seguimos dentro del
-  // rango activo (es decir, el rango incluye hoy). Para meses pasados o
-  // futuros mostramos `reviews / goal` sin ETA.
+  // rango activo (es decir, el rango incluye hoy).
   const isCurrentPeriod =
     new Date(range.startIso).getTime() <= now.getTime() &&
     now.getTime() < new Date(range.endIso).getTime();
@@ -416,28 +447,31 @@ export default async function PanelPage({
   const link = `${appBase.replace(/^https?:\/\//, "")}/c/${data.slug}`;
   const fullUrl = `${appBase}/c/${data.slug}`;
 
-  const conversion = data.links > 0 ? Math.round((data.reviews / data.links) * 100) : null;
   const { remaining, daysLeft, etaLabel } = projection({
-    reviews: data.reviews,
+    counted: data.counted,
     goal: data.goal,
     now,
+    periodStartIso: range.startIso,
+    periodEndIso: range.endIso,
   });
   const dayOfWeek = now.getDay();
 
+  // Importe estimado de comisión: abonables × tarifa. null si el comercial no
+  // tiene tarifa configurada (la pone admin/gestor/director en su ficha).
+  const rate = data.commissionRate;
+  const earnedEuro = rate !== null ? rate * data.counted : null;
+  const pendingEuro = rate !== null ? rate * data.pending : null;
+  const closeDate = formatCloseDate(range.to);
+
   const badges = computePanelBadges({
     lifetimeCounted: data.insights.lifetimeCounted,
-    reviewsThisPeriod: data.reviews,
+    reviewsThisPeriod: data.counted,
     goal: data.goal,
     monthBuckets: data.insights.monthBuckets,
     fiveStarCount: data.insights.fiveStarCount,
     rankIndex: data.insights.rankIndex,
     teamSize: data.insights.teamSize,
   });
-
-  // Etiqueta corta para el lead-in: "Llevas en <rango>".
-  const periodLabel = isMonth
-    ? range.label.split(" ")[0] // "mayo 2026" → "mayo"
-    : range.label;
 
   return (
     <>
@@ -479,7 +513,8 @@ export default async function PanelPage({
           >
             <div>
               <div style={{ fontSize: 13, color: "var(--ink-3)" }}>
-                Llevas en {periodLabel}
+                {isCommission ? "Periodo de comisión" : "Periodo"} ·{" "}
+                <strong style={{ color: "var(--ink-2)", fontWeight: 600 }}>{range.label}</strong>
               </div>
               <div
                 style={{
@@ -500,13 +535,34 @@ export default async function PanelPage({
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  {data.reviews}
+                  {data.counted}
                 </span>
                 <span style={{ fontSize: 16, color: "var(--ink-3)" }}>
-                  reseñas verificadas
+                  reseñas abonables
                 </span>
-                {deltaPill(data.reviews, data.prevReviews)}
+                {deltaPill(data.counted, data.prevCounted)}
               </div>
+
+              {/* Importe estimado de comisión */}
+              {earnedEuro !== null ? (
+                <div style={{ marginTop: 10, fontSize: 14, color: "var(--ink-2)" }}>
+                  ≈{" "}
+                  <strong style={{ color: "var(--ink)", fontSize: 16 }}>
+                    {formatEuro(earnedEuro)}
+                  </strong>{" "}
+                  en comisión
+                  {data.pending > 0 && pendingEuro !== null && (
+                    <span style={{ color: "var(--ink-4)" }}>
+                      {" "}· +{formatEuro(pendingEuro)} si se verifican las {data.pending} pendientes
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--ink-4)" }}>
+                  Tu tarifa por reseña aún no está configurada — consúltala con tu responsable.
+                </div>
+              )}
+
               <div
                 style={{
                   marginTop: 18,
@@ -518,10 +574,8 @@ export default async function PanelPage({
                 }}
               >
                 <span>
-                  <span style={{ color: "var(--ink-4)" }}>Conversión</span>{" "}
-                  <strong style={{ color: "var(--ink)" }}>
-                    {conversion === null ? "—" : `${conversion}%`}
-                  </strong>
+                  <span style={{ color: "var(--ink-4)" }}>Por verificar</span>{" "}
+                  <strong style={{ color: "var(--ink)" }}>{data.pending}</strong>
                 </span>
                 <span>
                   <span style={{ color: "var(--ink-4)" }}>Estrellas</span>{" "}
@@ -529,17 +583,20 @@ export default async function PanelPage({
                     {formatRating(data.avgRating)}
                   </strong>
                 </span>
-                <span>
-                  <span style={{ color: "var(--ink-4)" }}>Enlaces enviados</span>{" "}
-                  <strong style={{ color: "var(--ink)" }}>{data.links}</strong>
-                </span>
+                {isCurrentPeriod && (
+                  <span>
+                    <span style={{ color: "var(--ink-4)" }}>Cierra el</span>{" "}
+                    <strong style={{ color: "var(--ink)" }}>{closeDate}</strong>
+                    <span style={{ color: "var(--ink-4)" }}> · faltan {daysLeft} días</span>
+                  </span>
+                )}
               </div>
             </div>
 
             <div className="m-ring-row" style={{ display: "flex", alignItems: "center", gap: 24 }}>
-              <Ring value={data.reviews} max={data.goal} size={140} />
+              <Ring value={data.counted} max={data.goal} size={140} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Objetivo mensual</div>
+                <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Objetivo del periodo</div>
                 <div
                   style={{
                     fontSize: 24,
@@ -549,7 +606,7 @@ export default async function PanelPage({
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  {data.reviews} / {data.goal}
+                  {data.counted} / {data.goal}
                 </div>
                 <div className="m-callout-wide" style={{ marginTop: 8 }}>
                   {!isCurrentPeriod ? (

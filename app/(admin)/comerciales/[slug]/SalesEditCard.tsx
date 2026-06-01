@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { Pill } from "@/components/ui/Pill";
+import { formatEuro } from "@/lib/utils";
 import { updateSales, type UpdateSalesInput } from "../actions";
 import {
   SALES_LANGUAGES,
@@ -24,6 +25,7 @@ export type SalesEditCardProps = {
     locationId: string | null;
     directorId: string | null;
     monthlyGoal: number;
+    commissionRate: number | null;
     status: ProfileStatus;
     department: SalesDepartment | null;
     language: string | null;
@@ -73,6 +75,9 @@ export function SalesEditCard({
   );
   const [directorId, setDirectorId] = useState<string>(initial.directorId ?? "");
   const [monthlyGoal, setMonthlyGoal] = useState(initial.monthlyGoal);
+  const [commissionRate, setCommissionRate] = useState<string>(
+    initial.commissionRate === null ? "" : String(initial.commissionRate),
+  );
   // initial.status puede ser 'archived' si llega aquí por error; en ese caso
   // colapsamos a 'invited' para que el select tenga un valor representable.
   // (La página de detalle muestra otro componente cuando el comercial está
@@ -107,6 +112,7 @@ export function SalesEditCard({
     setLocationId(initial.locationId ?? locations[0]?.id ?? "");
     setDirectorId(initial.directorId ?? "");
     setMonthlyGoal(initial.monthlyGoal);
+    setCommissionRate(initial.commissionRate === null ? "" : String(initial.commissionRate));
     setStatus(initialEditableStatus);
     setDepartment(initial.department ?? "");
     setLanguage(initial.language ?? "");
@@ -143,6 +149,7 @@ export function SalesEditCard({
       locationId,
       directorId: directorId || null,
       monthlyGoal,
+      commissionRate: commissionRate.trim() === "" ? null : commissionRate.trim(),
       status,
       department,
       language: department === "internacional" ? language : null,
@@ -364,6 +371,36 @@ export function SalesEditCard({
               />
             ) : (
               <span style={{ fontSize: 13.5 }}>{monthlyGoal} reseñas/mes</span>
+            )}
+          </dd>
+        </div>
+
+        {/* Comisión por reseña */}
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Comisión/reseña</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <input
+                type="number"
+                min={0}
+                max={9999}
+                step="0.01"
+                value={commissionRate}
+                onChange={(e) => setCommissionRate(e.target.value)}
+                placeholder="Sin tarifa"
+                style={{ ...inputStyle, width: 120 }}
+              />
+            ) : (
+              <span
+                style={{
+                  fontSize: 13.5,
+                  color: initial.commissionRate === null ? "var(--ink-4)" : "var(--ink)",
+                }}
+              >
+                {initial.commissionRate === null
+                  ? "Sin tarifa configurada"
+                  : `${formatEuro(initial.commissionRate)} / reseña`}
+              </span>
             )}
           </dd>
         </div>
