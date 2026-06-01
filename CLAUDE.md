@@ -100,7 +100,7 @@ Chrome mobile (sales + director):
 - Para director: `/manager/export` y `/perfil` se acceden navegando desde el resto de pantallas (no caben 5 tabs).
 - [`/panel/ranking`](app/(sales)/panel/ranking/page.tsx) = ranking del propio equipo del comercial (sales con su mismo `director_id`, o pool de huérfanos si su director_id es null). Cards verticales con [`<LeaderboardCardList>`](components/ranking/LeaderboardCardList.tsx); la card del propio comercial se destaca con borde tinta y badge "Tú". RLS se sortea con service-role server-side filtrando por `director_id` calculado desde la sesión (no es query-param). Implementado 2026-05-26.
 
-Clases mobile (todas `!important` para vencer al inline `style={{}}` desktop): `m-hide-mobile` / `m-hide-desktop` / `m-mobile-only`, `m-page-pad`, `m-grid-hero` / `m-stats-3` / `m-stats-4` / `m-qr-grid` / `m-detail-grid`, `m-ring-row`, `m-review-row` + `m-review-pill`, `m-rangepicker-popover`, `m-topbar-compact` (activada con prop `compact` de `Topbar`).
+Clases mobile (todas `!important` para vencer al inline `style={{}}` desktop): `m-hide-mobile` / `m-hide-desktop` / `m-mobile-only`, `m-page-pad`, `m-grid-hero` / `m-stats-3` / `m-stats-4` / `m-qr-grid` / `m-detail-grid`, `m-ring-row`, `m-callout-wide` (libera el `maxWidth: 240` del callout del objetivo a ancho completo solo en mobile; en desktop el callout va contenido — ver §4.32), `m-review-row` + `m-review-pill`, `m-rangepicker-popover`, `m-topbar-compact` (activada con prop `compact` de `Topbar`).
 
 `ClientRowItem` mantiene dos sub-layouts coexistentes (desktop grid 5 cols + mobile card vertical) compartiendo estado. Las tablas del director en `/comerciales` y `/fichas` usan `overflowX: auto` + `minWidth: 720-920px` para permitir scroll horizontal en mobile (acabado "aceptable", no se reescriben a cards).
 
@@ -698,6 +698,12 @@ Hasta ahora el comercial compartía el enlace de un cliente con **una sola** pla
 **Tests** ([lib/__tests__/messaging.test.ts](lib/__tests__/messaging.test.ts)): 3 ids en orden, `post_visita` base == default histórico, cada base con los 3 placeholders + marca correcta, `resolveTemplate` (body: override/blanco/id no coincidente) y `resolveLabel` (rename/blanco/independencia nombre-cuerpo).
 
 ⚠️ **El director productor no tiene `/clientes` ni `/panel/plantillas` propios** (usa layout admin/manager); la feature es del rol `sales`. La columna `message_templates` vive en `profiles` y serviría para director en el futuro, pero hoy no tiene editor.
+
+### 4.32 Callout del objetivo en `/panel` — contenido en desktop, ancho completo en mobile
+
+El callout motivacional del objetivo (`app/(sales)/panel/page.tsx`, ver §v2 panel-motivation) vive en la columna derecha del grid hero (`1.2fr 1fr`), dentro del flex `.m-ring-row`. En **desktop** el wrapper del callout lleva `maxWidth: 240` inline para no desbordar/superponerse en esa columna estrecha. En **mobile** el grid colapsa a una columna y queremos el callout a ancho completo: la clase `m-callout-wide` (globals.css, `@media max-width:767px`) hace `max-width: none !important`.
+
+Historia: el commit `ab72777` quitó el `maxWidth: 240` para lograr el ancho completo en mobile, pero rompió desktop (se superponía). La solución correcta es la combinación de arriba — NO quitar el `maxWidth` inline. Un intento intermedio con `min-width: 0` en `.m-ring-row` no era la causa y se descartó.
 
 ---
 
