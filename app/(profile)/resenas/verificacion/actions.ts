@@ -48,6 +48,24 @@ async function getActorForAction(action: VerificationAction): Promise<Actor | nu
 }
 
 /**
+ * True si `clientId` pertenece a `salesId`. La RLS de claim/reassign fuerza
+ * el `sales_id` pero NO restringe `client_id`, así que sin esta comprobación
+ * un comercial podría atribuir una reseña a un cliente de OTRO comercial
+ * (corrompiendo atribución y anti-fraude). Mismo criterio que
+ * `linkOrphanReviewToClient` en (sales)/clientes/actions.ts.
+ */
+async function clientBelongsToSales(clientId: string, salesId: string): Promise<boolean> {
+  const adminSrv = createServiceClient();
+  const { data } = await adminSrv
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .eq("sales_id", salesId)
+    .maybeSingle<{ id: string }>();
+  return !!data;
+}
+
+/**
  * Verifica que la reseña está dentro del scope del actor:
  *
  *   admin / reviews_manager → siempre.
@@ -324,6 +342,19 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
     }
   }
 
+  // El cliente destino (si se indica) debe pertenecer al comercial destino:
+  // evita pares (sales_id, client_id) inconsistentes que alimentarían mal el
+  // anti-fraude y el Excel. Aplica a admin/manager/director por igual.
+  if (
+    parsed.data.clientId &&
+    !(await clientBelongsToSales(parsed.data.clientId, parsed.data.salesId))
+  ) {
+    return {
+      ok: false as const,
+      error: "El cliente seleccionado no pertenece a ese comercial.",
+    };
+  }
+
   // Anti-fraude: si la reseña pasa a tener un client_id que ya tiene
   // principal, marcarla como duplicada. Si la entrante es MÁS antigua,
   // demotamos la principal previa.
@@ -425,6 +456,15 @@ export async function claimReview(input: ClaimReviewInput) {
   if (!actor) return { ok: false as const, error: "No autorizado." };
   const inScope = await assertReviewInScope(actor, parsed.data.reviewId);
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
+
+  // Un clientId existente debe ser del propio comercial. La rama de cliente
+  // nuevo (newClientName) es segura: createClientRecord fuerza sales_id = self.
+  if (
+    parsed.data.clientId &&
+    !(await clientBelongsToSales(parsed.data.clientId, actor.userId))
+  ) {
+    return { ok: false as const, error: "Ese cliente no es tuyo." };
+  }
 
   // Resolver el cliente: existente, nuevo o ninguno.
   let clientId: string | null = parsed.data.clientId;
