@@ -190,16 +190,6 @@ button {
     padding: 16px 16px 24px !important;
   }
 
-  /* FAB de acción primaria — pill fijo centrado sobre la tab bar. */
-  .m-fab-primary {
-    position: fixed !important;
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    z-index: 29 !important;
-    white-space: nowrap !important;
-  }
-
   /* Hero del panel: 1.2fr / 1fr → 1 columna. */
   .m-grid-hero {
     grid-template-columns: 1fr !important;

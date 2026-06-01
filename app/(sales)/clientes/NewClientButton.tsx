@@ -17,11 +17,9 @@ type NewClientButtonProps = {
   salesName: string;
   salesSlug: string;
   brand: Brand;
-  /** Renderiza botón ancho completo para embeber dentro de una card. */
-  cardCta?: boolean;
 };
 
-export function NewClientButton({ appBase, salesName, salesSlug, brand, cardCta }: NewClientButtonProps) {
+export function NewClientButton({ appBase, salesName, salesSlug, brand }: NewClientButtonProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<ClientRow | null>(null);
@@ -67,29 +65,9 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, cardCta 
 
   return (
     <>
-      {cardCta ? (
-        <button
-          onClick={() => setOpen(true)}
-          style={{
-            width: "100%",
-            padding: "11px 0",
-            background: "var(--ink)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 10,
-            fontSize: 14,
-            fontWeight: 600,
-            letterSpacing: "-0.01em",
-            cursor: "pointer",
-          }}
-        >
-          + Nuevo cliente
-        </button>
-      ) : (
-        <GhostBtn primary onClick={() => setOpen(true)}>
-          + Nuevo cliente
-        </GhostBtn>
-      )}
+      <GhostBtn primary onClick={() => setOpen(true)}>
+        + Nuevo cliente
+      </GhostBtn>
 
       {open && !created && (
         <div

@@ -81,6 +81,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | v2 · Sales descarga su propio Excel desde /panel/resenas | ✅ (2026-05-26) |
 | v2 · Alertas tempranas por reseñas ≤2★ (mig 017) | ✅ (2026-05-26) |
 | v2 · Quitar visitas a enlaces de la UI de management (decision negocio) | ✅ (2026-05-26) |
+| v2 · Panel mobile: CTA "+ Nuevo cliente" en Topbar, card "Ver mis clientes" simplificada | ✅ (2026-06-01) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -92,7 +93,7 @@ Chrome mobile (sales + director):
 - [`<MobileTabBar />`](components/layout/MobileTabBar.tsx) fija inferior con 4 tabs, iconos lucide, `padding-bottom: env(safe-area-inset-bottom)`. Acepta un prop `tabs: MobileTab[]` y exporta dos constantes:
   - `SALES_MOBILE_TABS`: Panel · Enlace · Reseñas · Ranking (consumida por [(sales)/layout.tsx](app/(sales)/layout.tsx)).
   - `DIRECTOR_MOBILE_TABS`: Inicio · Comerciales · Reseñas · Mi ficha (consumida por [(admin)/layout.tsx](app/(admin)/layout.tsx) y [(manager)/layout.tsx](app/(manager)/layout.tsx) cuando el rol es `office_director`).
-- Para sales: "Clientes" no está en la tab bar (fidelidad al mockup). Se accede desde card mobile-only "Mis clientes" en `/panel`.
+- Para sales: "Clientes" no está en la tab bar (fidelidad al mockup). Se accede desde card mobile-only **"Ver mis clientes"** en `/panel`. El Topbar del Panel tiene **"+ Nuevo cliente"** como CTA principal (en lugar de "Buscar mis reseñas" y "Compartir mi enlace", que se eliminaron del Panel para que cada acción viva en su pantalla: Reseñas y Enlace respectivamente). El botón usa el componente [`NewClientButton`](app/(sales)/clientes/NewClientButton.tsx) importado directamente en [`panel/page.tsx`](app/(sales)/panel/page.tsx).
 - Para director: `/manager/export` y `/perfil` se acceden navegando desde el resto de pantallas (no caben 5 tabs).
 - [`/panel/ranking`](app/(sales)/panel/ranking/page.tsx) = ranking del propio equipo del comercial (sales con su mismo `director_id`, o pool de huérfanos si su director_id es null). Cards verticales con [`<LeaderboardCardList>`](components/ranking/LeaderboardCardList.tsx); la card del propio comercial se destaca con borde tinta y badge "Tú". RLS se sortea con service-role server-side filtrando por `director_id` calculado desde la sesión (no es query-param). Implementado 2026-05-26.
 
