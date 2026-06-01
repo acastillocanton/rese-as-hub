@@ -32,7 +32,7 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test               # Vitest unit tests (181 tests: matcher + date-range + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation)
+npm test               # Vitest unit tests (241 tests: matcher + date-range (incl. periodo comisión 20→20) + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + rls-self-update)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright happy paths (login + admin nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo

@@ -2,9 +2,9 @@
 
 > **Fuente de verdad del producto.** Este documento define qué construimos, por qué, y cómo sabemos que está hecho. Si un cambio (de código, scope, o decisión arquitectónica) entra en conflicto con este archivo, **se actualiza la spec primero** y luego se implementa.
 >
-> Documento vivo · versión 1.0 (v1 cerrada el 2026-05-26) · última edición 2026-05-26 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
+> Documento vivo · versión 1.0 (v1 cerrada el 2026-05-26) · última edición 2026-06-01 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
 >
-> 🏁 **V1 cerrada el 2026-05-26**. MVP completo, live en producción, trayendo reseñas reales vía Places API (Business Profile esperando cuota de Google). Próxima iteración → v2 (features sin definir; ver `CLAUDE.md` §8 Backlog).
+> 🏁 **V1 cerrada el 2026-05-26**. MVP completo, live en producción, trayendo reseñas reales vía Places API (Business Profile esperando cuota de Google). **v2 en curso (jun 2026)**: anti-fraude, verificación abierta, alertas ≤2★, plantillas de mensaje, panel "Histórico/ranking/insignias", **modelo de comisión (periodo 20→20 + tarifa €/reseña)** y endurecimiento de seguridad. Ver §9 (cerradas v2) y `CLAUDE.md` §3/§4.
 
 ---
 
@@ -306,6 +306,8 @@ El MVP está hecho cuando **todas** estas condiciones son verdad:
 Cuestiones sin resolver que necesitan input antes (o durante) la implementación. Las marcadas con ~~tachado~~ se cerraron en v1; las abiertas pasan al **backlog v2** (`CLAUDE.md` §8).
 
 **Cerrada en v2 (2026-05-26) · Anti-fraude por enlace de cliente**: cuando un cliente reenvía su enlace a familia/amigos, varias reseñas pueden llegar al mismo `client_id`. **Decisión**: todas se atribuyen al mismo `sales_id` (correcto — el comercial sabe que su cliente trajo más gente), pero solo la primera por `google_created_at` cuenta en KPIs/pagos. Migración 015 introduce `reviews.is_duplicate boolean`. Ver `CLAUDE.md` §4.23 para el flujo completo (cron + server actions + UI badge + Excel).
+
+**Cerrada en v2 (2026-06-01) · Modelo de comisión por reseña**: a los productores (comerciales + directores) se les abona una **comisión por cada reseña verificada**. **Decisiones de negocio**: (a) el **periodo de liquidación va del día 20 al día 19 del mes siguiente** (no el mes natural) — el día 20 abre periodo nuevo, sin solapamientos; (b) **abonable = solo `match_state='counted'`, no-duplicada, no-eliminada** (las `pending` son "potenciales" hasta verificarse); (c) **tarifa €/reseña por productor** (`profiles.commission_rate`, migración 020). El panel del comercial muestra ese periodo por defecto + el importe estimado (`counted × commission_rate`). ⚠️ La app **solo muestra** el estimado; **no** calcula nóminas ni registra pagos reales (la liquidación final sigue siendo externa). Ver `CLAUDE.md` §4.35.
 
 1. **Dominio definitivo de producción**. El diseño usa `reseñahub.es`; pendiente confirmar si se compra o usamos otro (¿`resenas.inseryal.es`?). No bloquea desarrollo local. **Dominio corporativo de emails confirmado**: `inseryal.es` (con "y").
 2. **Branding final** (logo, paleta exacta, tipografía si se aparta de la del prototipo). El chat original dijo "logo placeholder, lo aporto luego". Hasta que llegue, usamos el cuadrado negro con `r` que tiene el prototipo.

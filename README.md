@@ -2,7 +2,7 @@
 
 Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google Business Profile por comercial.
 
-> 🏁 **V1 cerrada el 2026-05-26 · v2.0.0 abierta** — sin features nuevas definidas todavía. Ver [`CLAUDE.md`](CLAUDE.md) §8 (Backlog v2) y [`spec.md`](spec.md) §9 (open questions pendientes).
+> 🏁 **V1 cerrada el 2026-05-26 · v2 en curso (jun 2026)** — entregadas: anti-fraude, verificación abierta, alertas ≤2★, plantillas de mensaje, panel "Histórico/ranking/insignias", **periodo de comisión 20→20 + tarifa €/reseña**, y endurecimiento de seguridad (RLS de perfil, inyección de fórmulas). Ver [`CLAUDE.md`](CLAUDE.md) §3/§4 y §8 (Backlog v2) y [`spec.md`](spec.md) §9 (open questions).
 >
 > 📖 **Fuente de verdad del producto**: [`spec.md`](spec.md). Leer antes de añadir features o tomar decisiones de arquitectura.
 > 📋 **Estado actual del proyecto, workarounds y comandos**: [`CLAUDE.md`](CLAUDE.md). Leer al abrir el repo en una máquina nueva.
@@ -25,7 +25,7 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 - **Vercel Hobby** hosting + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC ≈ 6-7 AM España) + **GitHub Action horario** (cada hora 06-23 UTC) llamando al cron Places para fichas activas + botón **"Sincronizar ahora"** en UI (admin/gestor/comercial)
 - **ExcelJS** (dynamic import server-side) para export mensual del gestor
 - **qrcode.react** + Zod + middleware con RLS y redirección por rol
-- **Vitest** unit tests (172 verdes — matcher + date-range + cliente Places + leaderboard + branding + messaging + role/route helpers + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts)
+- **Vitest** unit tests (241 verdes — matcher + date-range (incl. periodo de comisión 20→20) + cliente Places + leaderboard + branding + messaging + role/route helpers + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + rls-self-update)
 - **Playwright** E2E (login + admin-nav smoke; setup en [`playwright.config.ts`](playwright.config.ts) + helper de auth via `/login/manual`)
 - **eslint-plugin-jsx-a11y** activo (preset `recommended`); 0 errors, deuda menor en modal backdrops como warnings documentadas
 - **Content-Security-Policy** + HSTS + headers de seguridad en [`next.config.ts`](next.config.ts)
@@ -40,7 +40,8 @@ Por fase:
 
 - **Fase 1 Foundation** — ✅ schema + RLS + middleware + landing + login.
 - **Fase 2 Admin** — ✅ `/dashboard` con datos reales, `/comerciales` + `/comerciales/[slug]` editable, `/gestores`, `/fichas` con botón Conectar Google + UI selección Business Profile + edición de Place ID, `/resenas/verificacion` con confirm/reject/reassign.
-- **Fase 3 Sales (desktop + mobile)** — ✅ `/panel`, `/panel/enlace`, `/panel/plantillas` (3 plantillas por cliente editables nombre+cuerpo, mig 019), `/panel/resenas`, `/clientes` con QR + selector de plantilla + deep-links, `/clientes/[slug]` con edición inline. Vista mobile (≤767px) con MobileTabBar + avatar fijo top-right.
+- **Fase 3 Sales (desktop + mobile)** — ✅ `/panel` (con bloque "Histórico, ranking e insignias" + **periodo de comisión 20→20** como rango protagonista y **€ estimado**), `/panel/enlace`, `/panel/plantillas` (3 plantillas por cliente editables nombre+cuerpo, mig 019), `/panel/resenas`, `/clientes` con QR + selector de plantilla + deep-links, `/clientes/[slug]` con edición inline. Vista mobile (≤767px) con MobileTabBar + avatar fijo top-right.
+- **v2 (jun 2026)** — ✅ panel "Histórico, ranking e insignias" (insignias derivadas, sin tabla); **periodo de comisión (20→20)** + **tarifa €/reseña por productor** (`profiles.commission_rate`, mig 020); blindaje RLS de auto-edición de perfil (mig 021/022); hardening de seguridad (inyección de fórmulas en Excel, propiedad de cliente en verificación). Detalle en [CLAUDE.md §4.34-4.37](CLAUDE.md).
 - **Fase 4 Google Business Profile sync** — ⚠️ código 100% (OAuth, refresh-token, cliente API, matcher con ventana 48h + similitud + modo anonymous, cron con lock optimista + email batch, notificador Brevo). Esperando aprobación de Google a la cuota de la API.
 - **Fase 4.b Places API fallback** — ✅ cron `/api/cron/sync-places-reviews` trae las 5 reseñas más recientes por ficha (Places API legacy con `reviews_sort=newest`) sin necesidad de OAuth + cron horario GitHub Action + botón "Sincronizar ahora" en UI. Detalle en [CLAUDE.md §3 Fase 4.b](CLAUDE.md).
 - **Fase 5 Manager (Bel)** — ✅ comparte vista con admin en `/dashboard` y `/comerciales` con plenos permisos, `/manager/resenas` con filtros, `/manager/export` y endpoint `/api/export/reviews` con ExcelJS (dos hojas).
@@ -95,6 +96,11 @@ npm run dev
    supabase/migrations/015_review_duplicates.sql
    supabase/migrations/016_verification_open_to_all.sql
    supabase/migrations/017_low_rating_alerts.sql
+   supabase/migrations/018_monthly_goal_default_5.sql
+   supabase/migrations/019_sales_message_templates.sql
+   supabase/migrations/020_commission_rate.sql
+   supabase/migrations/021_profiles_self_update_lockdown.sql
+   supabase/migrations/022_profiles_self_update_freeze_department.sql
    ```
 4. Auth: usar el flujo OTP `token_hash` documentado en [CLAUDE.md §4.1](CLAUDE.md). Las plantillas de email en Supabase Dashboard → Authentication → Emails deben usar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type={email|invite}`.
 
@@ -215,7 +221,7 @@ npm run build        # Build producción
 npm run start        # Server producción
 npm run typecheck    # tsc --noEmit (gate antes de cerrar tareas)
 npm run lint         # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test             # Vitest unit tests (192 verdes)
+npm test             # Vitest unit tests (241 verdes)
 npm run test:watch   # Vitest en modo watch
 npm run test:e2e     # Playwright E2E (login + admin-nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui  # Playwright en modo UI interactivo
@@ -262,8 +268,10 @@ app/
   login/                ─ /login + /login/manual (workaround tokens)
 components/
   ui/                   ─ Card, Stat, Pill, Avatar, Stars, Progress, RangePicker,
-                          SyncNowButton, RemovalControls, …
+                          SyncNowButton, RemovalControls, Badge, FormField, …
+  panel/                ─ MonthlyEvolutionCard, RecentReviewsCard, TeamRankSummary, BadgesCard
   charts/               ─ Sparkline, AreaChart, MonthBars, Ring
+  ranking/              ─ LeaderboardTable, LeaderboardCardList
   layout/               ─ Frame, Sidebar, Topbar, MobileTabBar, MobileProfileAvatar
   help/HelpFigure       ─ Imagen del manual /ayuda con placeholder + lightbox
 
@@ -275,15 +283,23 @@ lib/
   google/__tests__/places.test.ts   ─ Tests Vitest del cliente Places (20)
   matching/attribute-review.ts      ─ Algoritmo (ventana 48h + nombre + modo anonymous)
   matching/__tests__/               ─ Tests Vitest del matcher (22)
-  cron/process-reviews.ts           ─ Helper compartido (matcher + insert + notif batch)
+  cron/process-reviews.ts           ─ Helper compartido (matcher + insert + notif batch + anti-fraude fail-safe)
+  cron/duplicate-detection.ts       ─ Anti-fraude (decideFromPrincipals/decideDuplicateForClient/promoteNextPrincipal)
   email/{brevo,notify-new-review}   ─ Wrapper Brevo SMTP + plantilla HTML escapada
   supabase/{client,server,middleware,service,types,config}
   audit.ts              ─ recordAudit() con service-client
   messaging.ts          ─ 3 plantillas por cliente (resolveTemplate/resolveLabel) + genérica + deep-links
+  panel-badges.ts       ─ computePanelBadges() — insignias derivadas (sin tabla)
+  panel-motivation.ts   ─ getMotivationSuffix() — copy del callout por día/estado
+  validation/sales-schemas.ts       ─ Zod compartido (commissionRate/department/pauseReason)
+  constants.ts          ─ DEPARTMENT/STATUS/PAUSE_REASON_OPTIONS (UI compartida)
+  format.ts             ─ formatReviewDate/formatDateTime + matchStateLabel/Tone
+  reports/{weekly,sales}-report.ts  ─ Excel global + individual (ExcelJS)
+  reports/excel-safe.ts             ─ excelSafe() anti-inyección de fórmulas
   url-validation.ts     ─ isSafeNext / isValidSlug
-  date-range.ts         ─ parseRange, thisMonthRange, defaultShortcuts
-  __tests__/            ─ Tests Vitest de date-range (14)
-  utils.ts              ─ cn, slugify, initials, avatarColor
+  date-range.ts         ─ parseRange (+fallback), commissionPeriodRange (20→20), bucketByMonth, …
+  __tests__/            ─ Tests Vitest: date-range, leaderboard, panel-badges, sales-schemas, rls-self-update, …
+  utils.ts              ─ cn, slugify, initials, avatarColor, formatEuro
 supabase/migrations/    ─ 001 schema, 002 RLS, 003 seed, 004 google_oauth,
                          005 manager_sales_admin, 006 profile_avatars,
                          007 reviews_composite_indices, 008 audit_log_insert_policy,
@@ -295,7 +311,10 @@ supabase/migrations/    ─ 001 schema, 002 RLS, 003 seed, 004 google_oauth,
                          016 verification_open_to_all (unmatched visible a sales/director),
                          017 low_rating_alerts (low_rating_alerted_at + índice parcial),
                          018 monthly_goal_default_5,
-                         019 sales_message_templates (profiles.message_templates jsonb)
+                         019 sales_message_templates (profiles.message_templates jsonb),
+                         020 commission_rate (profiles.commission_rate numeric — tarifa €/reseña),
+                         021 profiles_self_update_lockdown (congela columnas sensibles en RLS),
+                         022 profiles_self_update_freeze_department (addendum: + department/language)
 e2e/                    ─ Playwright specs (login + admin-nav) + helpers/auth.ts
 test/                   ─ server-only-stub.ts (para que Vitest importe módulos server-only)
 middleware.ts           ─ Auth + roles + redirección por rol
