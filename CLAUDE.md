@@ -796,6 +796,10 @@ Hallazgo de la auditoría: la policy `profiles_self_update` (mig 002) solo compr
 
 **Tests** ([lib/matching/__tests__/attribute-review.test.ts](lib/matching/__tests__/attribute-review.test.ts)): 14 nuevos (`mentionsCommercial` + Tier 1/Tier 2 + ambigüedad + no-rescata-sin-texto + no-degrada-counted).
 
+⚠️ **La atribución de una reseña de Google a un cliente es heurística por construcción — no hay forma determinista.** Google es el dueño del dato: la reseña se escribe en SU formulario (nosotros solo hacemos 302 a la URL de "escribir reseña") y la API solo nos devuelve `reviewId · displayName · profilePhotoUrl · isAnonymous · starRating · comment · createTime · updateTime · reviewReply` (ver [business-profile.ts:283](lib/google/business-profile.ts#L283)). **Ningún campo es nuestro**: no podemos inyectar un código/parámetro que viaje al cliente y vuelva con la reseña (Google ignora cualquier querystring; no hay campo oculto). Evaluado y **descartado** (2026-06-01): (a) "código round-trip" — imposible; (b) página intermedia + alias del cliente — añade fricción sin aportar certeza nueva (sigue siendo la misma inferencia tiempo+identidad-del-clic). NO volver a proponer estas vías.
+
+**Replanteamiento aceptado**: separar atribución al **comercial** (resoluble — la mención del texto + tiempo lo cubren; es lo que importa para la comisión, que es por reseña × comercial) de atribución al **cliente exacto** (imposible-determinista; solo importa para anti-fraude de duplicados y CRM del comercial → se resuelve en la confirmación humana o lo reconoce el propio comercial). **El único lever sin fricción y compatible con políticas de Google** para mejorar la heurística es el **copy del mensaje** que el comercial manda al cliente: orientarlo a que el cliente **nombre a su comercial** refuerza la señal de mención (§4.31 plantillas). ⚠️ NO hacer "review gating" (recoger la reseña first-party y reenviar solo las buenas a Google) — viola las políticas de Google y arriesga la ficha.
+
 ---
 
 ## 5. Setup en otro Mac
