@@ -17,9 +17,10 @@ type NewClientButtonProps = {
   salesName: string;
   salesSlug: string;
   brand: Brand;
+  fab?: boolean;
 };
 
-export function NewClientButton({ appBase, salesName, salesSlug, brand }: NewClientButtonProps) {
+export function NewClientButton({ appBase, salesName, salesSlug, brand, fab }: NewClientButtonProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<ClientRow | null>(null);
@@ -65,9 +66,30 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand }: NewCli
 
   return (
     <>
-      <GhostBtn primary onClick={() => setOpen(true)}>
-        + Nuevo cliente
-      </GhostBtn>
+      {fab ? (
+        <button
+          className="m-fab-primary"
+          onClick={() => setOpen(true)}
+          style={{
+            padding: "14px 28px",
+            background: "var(--ink)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 999,
+            fontSize: 15,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+            cursor: "pointer",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.22), 0 1px 4px rgba(0,0,0,0.12)",
+          }}
+        >
+          + Nuevo cliente
+        </button>
+      ) : (
+        <GhostBtn primary onClick={() => setOpen(true)}>
+          + Nuevo cliente
+        </GhostBtn>
+      )}
 
       {open && !created && (
         <div
