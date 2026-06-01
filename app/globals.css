@@ -201,6 +201,11 @@ button {
     align-items: flex-start !important;
     gap: 16px !important;
   }
+  /* El callout del objetivo va contenido (maxWidth 240 inline) en desktop para
+     no desbordar su columna; en mobile lo liberamos a ancho completo. */
+  .m-callout-wide {
+    max-width: none !important;
+  }
 
   /* Grids de stats con número fijo de columnas. */
   .m-stats-3 {

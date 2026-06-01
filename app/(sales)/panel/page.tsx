@@ -317,12 +317,9 @@ export default async function PanelPage({
               </div>
             </div>
 
-            <div
-              className="m-ring-row"
-              style={{ display: "flex", alignItems: "center", gap: 24, minWidth: 0 }}
-            >
+            <div className="m-ring-row" style={{ display: "flex", alignItems: "center", gap: 24 }}>
               <Ring value={data.reviews} max={data.goal} size={140} />
-              <div style={{ minWidth: 0 }}>
+              <div>
                 <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Objetivo mensual</div>
                 <div
                   style={{
@@ -335,7 +332,7 @@ export default async function PanelPage({
                 >
                   {data.reviews} / {data.goal}
                 </div>
-                <div style={{ marginTop: 8 }}>
+                <div className="m-callout-wide" style={{ marginTop: 8, maxWidth: 240 }}>
                   {!isCurrentPeriod ? (
                     <span style={{ fontSize: 12.5, color: "var(--ink-4)", lineHeight: 1.5 }}>
                       Vista del rango {range.label}. La proyección al objetivo solo se calcula sobre el periodo en curso.
