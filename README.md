@@ -40,7 +40,7 @@ Por fase:
 
 - **Fase 1 Foundation** — ✅ schema + RLS + middleware + landing + login.
 - **Fase 2 Admin** — ✅ `/dashboard` con datos reales, `/comerciales` + `/comerciales/[slug]` editable, `/gestores`, `/fichas` con botón Conectar Google + UI selección Business Profile + edición de Place ID, `/resenas/verificacion` con confirm/reject/reassign.
-- **Fase 3 Sales (desktop + mobile)** — ✅ `/panel`, `/panel/enlace`, `/panel/resenas`, `/clientes` con QR + plantilla editable + deep-links, `/clientes/[slug]` con edición inline. Vista mobile (≤767px) con MobileTabBar + avatar fijo top-right.
+- **Fase 3 Sales (desktop + mobile)** — ✅ `/panel`, `/panel/enlace`, `/panel/plantillas` (3 plantillas por cliente editables nombre+cuerpo, mig 019), `/panel/resenas`, `/clientes` con QR + selector de plantilla + deep-links, `/clientes/[slug]` con edición inline. Vista mobile (≤767px) con MobileTabBar + avatar fijo top-right.
 - **Fase 4 Google Business Profile sync** — ⚠️ código 100% (OAuth, refresh-token, cliente API, matcher con ventana 48h + similitud + modo anonymous, cron con lock optimista + email batch, notificador Brevo). Esperando aprobación de Google a la cuota de la API.
 - **Fase 4.b Places API fallback** — ✅ cron `/api/cron/sync-places-reviews` trae las 5 reseñas más recientes por ficha (Places API legacy con `reviews_sort=newest`) sin necesidad de OAuth + cron horario GitHub Action + botón "Sincronizar ahora" en UI. Detalle en [CLAUDE.md §3 Fase 4.b](CLAUDE.md).
 - **Fase 5 Manager (Bel)** — ✅ comparte vista con admin en `/dashboard` y `/comerciales` con plenos permisos, `/manager/resenas` con filtros, `/manager/export` y endpoint `/api/export/reviews` con ExcelJS (dos hojas).
@@ -187,11 +187,12 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/fichas/:id/conectar`         | admin + office_director | UI selección de Business Profile location                  |
 | `/resenas/verificacion`        | 4 roles (mig 016) | Bandeja pending/unmatched/eliminadas + confirm/reject/reassign/marcar eliminada/claim |
 | `/panel`                       | sales             | KPIs propios + RangePicker + proyección ETA + card mobile clientes |
-| `/panel/enlace`                | sales             | URL + QR + plantilla editable + deep-links WhatsApp/Email/SMS    |
+| `/panel/enlace`                | sales             | URL + QR + plantilla genérica editable + deep-links + card a "Mis plantillas" |
+| `/panel/plantillas`            | sales             | Editor de las 3 plantillas por cliente (nombre + cuerpo), guardadas en `profiles.message_templates` (mig 019) |
 | `/panel/resenas`               | sales             | Histórico de reseñas atribuidas con RangePicker + bot. "Descargar Excel" propio |
 | `/panel/ranking`               | sales             | Ranking de su equipo (sales con mismo `director_id`) en mobile cards |
 | `/ranking`                     | admin + manager + office_director | Ranking completo desktop (todos los productores según RLS) |
-| `/clientes`                    | sales             | Lista + alta + dialog QR/plantilla/deep-links                    |
+| `/clientes`                    | sales             | Lista + alta + dialog QR + selector de 3 plantillas/deep-links   |
 | `/clientes/:slug`              | sales             | Ficha cliente editable + visitas (info contextual del comercial) + reseñas atribuidas + botón "Buscar reseñas" |
 | `/manager/resenas`             | reviews_manager + admin | Lista global de reseñas con filtros                        |
 | `/manager/export`              | reviews_manager + admin | Descarga del Excel mensual                                 |
@@ -214,7 +215,7 @@ npm run build        # Build producción
 npm run start        # Server producción
 npm run typecheck    # tsc --noEmit (gate antes de cerrar tareas)
 npm run lint         # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test             # Vitest unit tests (99 verdes)
+npm test             # Vitest unit tests (192 verdes)
 npm run test:watch   # Vitest en modo watch
 npm run test:e2e     # Playwright E2E (login + admin-nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui  # Playwright en modo UI interactivo
@@ -235,7 +236,8 @@ app/
     ajustes/                         (oculto del sidebar, stub ComingSoon)
   (sales)/              ─ Pantallas del comercial
     panel/
-    panel/enlace/                    "Sala de armas" URL + QR + plantilla
+    panel/enlace/                    "Sala de armas" URL + QR + plantilla genérica
+    panel/plantillas/                Editor de las 3 plantillas por cliente (nombre + cuerpo)
     panel/resenas/                   Histórico personal
     panel/ranking/                   Ranking del equipo del comercial (mobile cards)
     clientes/[slug]/
@@ -277,7 +279,7 @@ lib/
   email/{brevo,notify-new-review}   ─ Wrapper Brevo SMTP + plantilla HTML escapada
   supabase/{client,server,middleware,service,types,config}
   audit.ts              ─ recordAudit() con service-client
-  messaging.ts          ─ Plantilla por defecto + deep-links WhatsApp/Email/SMS
+  messaging.ts          ─ 3 plantillas por cliente (resolveTemplate/resolveLabel) + genérica + deep-links
   url-validation.ts     ─ isSafeNext / isValidSlug
   date-range.ts         ─ parseRange, thisMonthRange, defaultShortcuts
   __tests__/            ─ Tests Vitest de date-range (14)
@@ -289,7 +291,11 @@ supabase/migrations/    ─ 001 schema, 002 RLS, 003 seed, 004 google_oauth,
                          010 review_removed_at (soft delete + view reviews_active),
                          011-013 office_director (role, policies, team scope por director_id),
                          014 location_brand (enum inseryal/marina_dor_construcciones),
-                         015 review_duplicates (is_duplicate boolean + backfill anti-fraude)
+                         015 review_duplicates (is_duplicate boolean + backfill anti-fraude),
+                         016 verification_open_to_all (unmatched visible a sales/director),
+                         017 low_rating_alerts (low_rating_alerted_at + índice parcial),
+                         018 monthly_goal_default_5,
+                         019 sales_message_templates (profiles.message_templates jsonb)
 e2e/                    ─ Playwright specs (login + admin-nav) + helpers/auth.ts
 test/                   ─ server-only-stub.ts (para que Vitest importe módulos server-only)
 middleware.ts           ─ Auth + roles + redirección por rol
