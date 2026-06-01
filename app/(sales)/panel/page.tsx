@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
 import { Ring } from "@/components/charts/Ring";
-import { ComingSoon } from "@/components/ui/ComingSoon";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -19,13 +18,25 @@ import {
   defaultShortcuts,
   isFullNaturalMonth,
   lastMonthRange,
+  bucketByMonth,
   type DateRange,
 } from "@/lib/date-range";
+import { MONTHS } from "@/lib/demo-data";
+import { getLeaderboard } from "@/lib/leaderboard";
+import { computePanelBadges } from "@/lib/panel-badges";
+import type { SavedTemplates } from "@/lib/messaging";
 import { CopyLinkButton } from "./CopyLinkButton";
 import { NewClientButton } from "../clientes/NewClientButton";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
 import { getMotivationSuffix } from "@/lib/panel-motivation";
+import { MonthlyEvolutionCard } from "@/components/panel/MonthlyEvolutionCard";
+import {
+  RecentReviewsCard,
+  type RecentReview,
+} from "@/components/panel/RecentReviewsCard";
+import { TeamRankSummary } from "@/components/panel/TeamRankSummary";
+import { BadgesCard } from "@/components/panel/BadgesCard";
 
 type PanelData = {
   name: string;
@@ -37,11 +48,34 @@ type PanelData = {
   prevReviews: number | null;
   links: number;
   avgRating: number | null;
+  insights: PanelInsights;
+  /** Plantillas de mensaje personalizadas del comercial. */
+  messageTemplates: SavedTemplates;
+};
+
+/** Datos del bloque "Histórico, ranking e insignias" (sección inferior). */
+type PanelInsights = {
+  /** Reseñas verificadas por mes (últimos 6, índice 0 = más antiguo). */
+  monthBuckets: number[];
+  /** Etiquetas de mes alineadas a `monthBuckets`. */
+  monthLabels: string[];
+  /** Últimas reseñas verificadas (counted, no-duplicadas). */
+  recentReviews: RecentReview[];
+  /** Total histórico de reseñas verificadas. */
+  lifetimeCounted: number;
+  /** Total histórico de reseñas de 5★. */
+  fiveStarCount: number;
+  /** Posición 0-based en el ranking del equipo; null si no aplica. */
+  rankIndex: number | null;
+  /** Tamaño del equipo (incluyéndose). */
+  teamSize: number;
+  /** Si tiene director asignado (cambia el copy del estado "equipo de 1"). */
+  hasDirector: boolean;
 };
 
 type PanelSearchParams = Promise<{ from?: string; to?: string }>;
 
-const DEMO_DATA: PanelData = {
+const DEMO_DATA: Omit<PanelData, "insights"> = {
   name: "Mateo Salgado",
   slug: "mateo-salgado",
   reviews: 74,
@@ -49,24 +83,82 @@ const DEMO_DATA: PanelData = {
   prevReviews: 65,
   links: 96,
   avgRating: 4.8,
+  messageTemplates: null,
 };
 
-async function loadPanelData(range: DateRange): Promise<PanelData> {
-  if (!isSupabaseConfigured()) return DEMO_DATA;
+/** Etiquetas de los últimos 6 meses terminando en el mes en curso. */
+function lastSixMonthLabels(now: Date): string[] {
+  const labels: string[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    labels.push(MONTHS[d.getMonth()] ?? "");
+  }
+  return labels;
+}
+
+function buildDemoInsights(now: Date): PanelInsights {
+  return {
+    monthBuckets: [4, 6, 5, 9, 7, 3],
+    monthLabels: lastSixMonthLabels(now),
+    recentReviews: [
+      {
+        id: "demo-1",
+        author_name: "Andrea Pinto",
+        rating: 5,
+        google_created_at: "2026-05-30T10:00:00.000Z",
+        client_name: "Andrea Pinto",
+        place_id: null,
+      },
+      {
+        id: "demo-2",
+        author_name: "Familia Soriano",
+        rating: 5,
+        google_created_at: "2026-05-28T16:30:00.000Z",
+        client_name: "Familia Soriano",
+        place_id: null,
+      },
+      {
+        id: "demo-3",
+        author_name: "Jorge Mas",
+        rating: 4,
+        google_created_at: "2026-05-26T09:15:00.000Z",
+        client_name: null,
+        place_id: null,
+      },
+    ],
+    lifetimeCounted: 74,
+    fiveStarCount: 61,
+    rankIndex: 1,
+    teamSize: 8,
+    hasDirector: true,
+  };
+}
+
+async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
+  const demo = (): PanelData => ({ ...DEMO_DATA, insights: buildDemoInsights(now) });
+
+  if (!isSupabaseConfigured()) return demo();
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return DEMO_DATA;
+  if (!user) return demo();
 
   const profileRes = await supabase
     .from("profiles")
-    .select("full_name, slug, monthly_goal")
+    .select("id, full_name, slug, monthly_goal, director_id, message_templates")
     .eq("id", user.id)
-    .maybeSingle<{ full_name: string; slug: string; monthly_goal: number }>();
+    .maybeSingle<{
+      id: string;
+      full_name: string;
+      slug: string;
+      monthly_goal: number;
+      director_id: string | null;
+      message_templates: SavedTemplates;
+    }>();
 
-  if (!profileRes.data) return DEMO_DATA;
+  if (!profileRes.data) return demo();
 
   // La pill "vs. periodo anterior" solo aparece cuando el rango activo es un
   // mes natural completo. Para custom queda como null y el render la oculta.
@@ -117,6 +209,14 @@ async function loadPanelData(range: DateRange): Promise<PanelData> {
       ? null
       : ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length;
 
+  const insights = await loadPanelInsights(
+    supabase,
+    user.id,
+    profileRes.data.director_id,
+    range,
+    now,
+  );
+
   return {
     name: profileRes.data.full_name,
     slug: profileRes.data.slug,
@@ -125,6 +225,114 @@ async function loadPanelData(range: DateRange): Promise<PanelData> {
     links: links.count ?? 0,
     goal: profileRes.data.monthly_goal,
     avgRating,
+    insights,
+    messageTemplates: profileRes.data.message_templates,
+  };
+}
+
+/**
+ * Carga los datos del bloque "Histórico, ranking e insignias": evolución
+ * mensual (6 meses), últimas reseñas verificadas, totales históricos y la
+ * posición en el ranking del equipo. Todo se restringe a reseñas verificadas
+ * (counted), no-duplicadas y no-eliminadas.
+ */
+async function loadPanelInsights(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  directorId: string | null,
+  range: DateRange,
+  now: Date,
+): Promise<PanelInsights> {
+  const histStartIso = new Date(
+    now.getFullYear(),
+    now.getMonth() - 5,
+    1,
+  ).toISOString();
+
+  // Filtro común "reseña verificada del comercial": counted, no-duplicada,
+  // no-eliminada. Cada query lo repite inline tras su propio `.select(...)`
+  // (los filtros de supabase-js van después de select).
+  const [historyRes, lifetimeRes, fiveStarRes, recentRes, leaderboard] =
+    await Promise.all([
+      supabase
+        .from("reviews")
+        .select("google_created_at")
+        .eq("sales_id", userId)
+        .eq("match_state", "counted")
+        .is("removed_at", null)
+        .eq("is_duplicate", false)
+        .gte("google_created_at", histStartIso)
+        .returns<{ google_created_at: string }[]>(),
+      supabase
+        .from("reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("sales_id", userId)
+        .eq("match_state", "counted")
+        .is("removed_at", null)
+        .eq("is_duplicate", false),
+      supabase
+        .from("reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("sales_id", userId)
+        .eq("match_state", "counted")
+        .is("removed_at", null)
+        .eq("is_duplicate", false)
+        .eq("rating", 5),
+      supabase
+        .from("reviews")
+        .select(
+          "id, author_name, rating, google_created_at, client:clients(full_name), location:locations(google_place_id)",
+        )
+        .eq("sales_id", userId)
+        .eq("match_state", "counted")
+        .is("removed_at", null)
+        .eq("is_duplicate", false)
+        .order("google_created_at", { ascending: false })
+        .limit(5)
+        .returns<
+          {
+            id: string;
+            author_name: string;
+            rating: number;
+            google_created_at: string;
+            client: { full_name: string } | null;
+            location: { google_place_id: string | null } | null;
+          }[]
+        >(),
+      getLeaderboard({
+        startIso: range.startIso,
+        endIso: range.endIso,
+        teamFilter: { directorId },
+        currentUserId: userId,
+      }),
+    ]);
+
+  const monthBuckets = bucketByMonth(
+    (historyRes.data ?? []).map((r) => r.google_created_at),
+    6,
+    now,
+  );
+
+  const recentReviews: RecentReview[] = (recentRes.data ?? []).map((r) => ({
+    id: r.id,
+    author_name: r.author_name,
+    rating: r.rating,
+    google_created_at: r.google_created_at,
+    client_name: r.client?.full_name ?? null,
+    place_id: r.location?.google_place_id ?? null,
+  }));
+
+  const selfIdx = leaderboard.findIndex((row) => row.isSelf);
+
+  return {
+    monthBuckets,
+    monthLabels: lastSixMonthLabels(now),
+    recentReviews,
+    lifetimeCounted: lifetimeRes.count ?? 0,
+    fiveStarCount: fiveStarRes.count ?? 0,
+    rankIndex: selfIdx === -1 ? null : selfIdx,
+    teamSize: leaderboard.length,
+    hasDirector: directorId !== null,
   };
 }
 
@@ -203,7 +411,7 @@ export default async function PanelPage({
     new Date(range.startIso).getTime() <= now.getTime() &&
     now.getTime() < new Date(range.endIso).getTime();
 
-  const data = await loadPanelData(range);
+  const data = await loadPanelData(range, now);
   const appBase = process.env.NEXT_PUBLIC_APP_URL ?? "https://reseñahub.es";
   const link = `${appBase.replace(/^https?:\/\//, "")}/c/${data.slug}`;
   const fullUrl = `${appBase}/c/${data.slug}`;
@@ -215,6 +423,16 @@ export default async function PanelPage({
     now,
   });
   const dayOfWeek = now.getDay();
+
+  const badges = computePanelBadges({
+    lifetimeCounted: data.insights.lifetimeCounted,
+    reviewsThisPeriod: data.reviews,
+    goal: data.goal,
+    monthBuckets: data.insights.monthBuckets,
+    fiveStarCount: data.insights.fiveStarCount,
+    rankIndex: data.insights.rankIndex,
+    teamSize: data.insights.teamSize,
+  });
 
   // Etiqueta corta para el lead-in: "Llevas en <rango>".
   const periodLabel = isMonth
@@ -242,6 +460,7 @@ export default async function PanelPage({
               salesName={data.name}
               salesSlug={data.slug}
               brand={brand}
+              templates={data.messageTemplates}
             />
           </>
         }
@@ -319,7 +538,7 @@ export default async function PanelPage({
 
             <div className="m-ring-row" style={{ display: "flex", alignItems: "center", gap: 24 }}>
               <Ring value={data.reviews} max={data.goal} size={140} />
-              <div>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Objetivo mensual</div>
                 <div
                   style={{
@@ -332,7 +551,7 @@ export default async function PanelPage({
                 >
                   {data.reviews} / {data.goal}
                 </div>
-                <div className="m-callout-wide" style={{ marginTop: 8, maxWidth: 240 }}>
+                <div className="m-callout-wide" style={{ marginTop: 8 }}>
                   {!isCurrentPeriod ? (
                     <span style={{ fontSize: 12.5, color: "var(--ink-4)", lineHeight: 1.5 }}>
                       Vista del rango {range.label}. La proyección al objetivo solo se calcula sobre el periodo en curso.
@@ -524,10 +743,26 @@ export default async function PanelPage({
         </div>
 
         <div style={{ marginTop: 16 }}>
-          <ComingSoon
-            title="Histórico, ranking e insignias"
-            description="Próximamente: tu evolución mensual con barras, las últimas reseñas verificadas, tu posición en el ranking del equipo y las insignias conseguidas."
+          <MonthlyEvolutionCard
+            data={data.insights.monthBuckets}
+            labels={data.insights.monthLabels}
           />
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <TeamRankSummary
+            rankIndex={data.insights.rankIndex}
+            teamSize={data.insights.teamSize}
+            hasDirector={data.insights.hasDirector}
+          />
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <RecentReviewsCard reviews={data.insights.recentReviews} />
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <BadgesCard badges={badges} />
         </div>
       </div>
 

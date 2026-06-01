@@ -82,5 +82,7 @@ export async function saveMessageTemplates(
   });
 
   revalidatePath("/panel/plantillas");
+  revalidatePath("/panel");
+  revalidatePath("/clientes");
   return { ok: true };
 }

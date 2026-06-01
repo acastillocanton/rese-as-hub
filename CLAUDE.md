@@ -85,6 +85,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | v2 · Objetivo mensual por defecto bajado de 50 a 5 (mig 018 + bulk update perfiles existentes) | ✅ (2026-06-01) |
 | v2 · Mensajes motivacionales del panel varían por día de la semana (7 variantes × 3 estados) | ✅ (2026-06-01) |
 | v2 · 3 plantillas de mensaje por cliente + personalizables por comercial (mig 019) | ✅ (2026-06-01) |
+| v2 · Panel: bloque "Histórico, ranking e insignias" (barras 6 meses + últimas reseñas + posición en equipo + insignias derivadas, sin migración) | ✅ (2026-06-01) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -714,6 +715,23 @@ Fix: `createClientRecord` **ya no revalida**. El refresco de la lista lo dispara
 El callout motivacional del objetivo (`app/(sales)/panel/page.tsx`, ver §v2 panel-motivation) vive en la columna derecha del grid hero (`1.2fr 1fr`), dentro del flex `.m-ring-row`. En **desktop** el wrapper del callout lleva `maxWidth: 240` inline para no desbordar/superponerse en esa columna estrecha. En **mobile** el grid colapsa a una columna y queremos el callout a ancho completo: la clase `m-callout-wide` (globals.css, `@media max-width:767px`) hace `max-width: none !important`.
 
 Historia: el commit `ab72777` quitó el `maxWidth: 240` para lograr el ancho completo en mobile, pero rompió desktop (se superponía). La solución correcta es la combinación de arriba — NO quitar el `maxWidth` inline. Un intento intermedio con `min-width: 0` en `.m-ring-row` no era la causa y se descartó.
+
+### 4.34 Bloque "Histórico, ranking e insignias" del panel — insignias calculadas al vuelo
+
+La card placeholder `<ComingSoon>` del fondo de `/panel` se sustituyó por la sección real con 4 widgets. Todos son **server-component-safe** y viven en [components/panel/](components/panel/): `MonthlyEvolutionCard`, `RecentReviewsCard`, `TeamRankSummary`, `BadgesCard`. La carga de datos vive en `loadPanelInsights()` dentro de [app/(sales)/panel/page.tsx](app/(sales)/panel/page.tsx) (un `Promise.all` paralelo a las queries del hero).
+
+- **Barras de evolución**: `MonthBars` ([components/charts/MonthBars.tsx](components/charts/MonthBars.tsx)) con `bucketByMonth` — **extraído de `dashboard/page.tsx` a [lib/date-range.ts](lib/date-range.ts)** (ahora compartido por dashboard y panel). 6 meses, mes en curso resaltado. Reseñas verificadas (`counted`, no-duplicadas, no-eliminadas).
+- **Últimas reseñas**: 5 más recientes `counted`. Reutiliza `Avatar`/`Stars`/`GoogleReviewLink`.
+- **Posición en ranking**: `getLeaderboard({ teamFilter:{directorId}, currentUserId })` (mismo helper que `/panel/ranking`); `rankIndex = rows.findIndex(isSelf)`. Link al ranking completo.
+- **Insignias**: ⚠️ **calculadas al vuelo, SIN tabla ni migración** (decisión de producto). Helper puro [lib/panel-badges.ts](lib/panel-badges.ts) (`computePanelBadges`, testeado en [lib/__tests__/panel-badges.test.ts](lib/__tests__/panel-badges.test.ts)). Cada insignia se deriva de datos ya cargados:
+  - **Objetivo del mes** ← `reviewsThisPeriod >= monthly_goal`.
+  - **En racha** ← meses consecutivos cumpliendo objetivo (`trailingStreak`, ignora el mes en curso si aún no llegó).
+  - **Podio / Líder del equipo** ← `rankIndex` (solo si `teamSize > 1`).
+  - **Hitos de volumen** (10/25/50/100) ← total histórico counted; muestra conseguidos + el siguiente.
+  - **Coleccionista 5★** (10/25) ← total histórico de 5★.
+  - Componente UI [components/ui/Badge.tsx](components/ui/Badge.tsx) (medalla, distinta del `Pill`): icono lucide en disco, estados `earned`/`locked`. `BadgesCard` ordena conseguidas primero.
+
+  Si en el futuro se quiere fecha de desbloqueo o notificación al ganarlas, habría que persistir (tabla `achievements` + migración — "Ask first"). Hoy a propósito no se hace.
 
 ---
 

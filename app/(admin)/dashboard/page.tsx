@@ -16,6 +16,7 @@ import {
   parseRange,
   defaultShortcuts,
   isFullNaturalMonth,
+  bucketByMonth,
 } from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
@@ -74,22 +75,6 @@ type ReviewLite = {
 
 function startOfMonthsAgoIso(n: number, d = new Date()) {
   return new Date(d.getFullYear(), d.getMonth() - n, 1).toISOString();
-}
-
-/** Bucketea ISO timestamps por mes (yyyy-mm) y devuelve un array alineado a `monthsBack` posiciones. */
-function bucketByMonth(timestamps: string[], monthsBack: number, now = new Date()): number[] {
-  const buckets = new Array<number>(monthsBack).fill(0);
-  const baseY = now.getFullYear();
-  const baseM = now.getMonth();
-  for (const t of timestamps) {
-    const d = new Date(t);
-    const monthsAgo = (baseY - d.getFullYear()) * 12 + (baseM - d.getMonth());
-    if (monthsAgo >= 0 && monthsAgo < monthsBack) {
-      const idx = monthsBack - 1 - monthsAgo;
-      buckets[idx] = (buckets[idx] ?? 0) + 1;
-    }
-  }
-  return buckets;
 }
 
 type DashboardSearchParams = Promise<{ from?: string; to?: string }>;

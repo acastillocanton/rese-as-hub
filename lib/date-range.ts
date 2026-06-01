@@ -262,6 +262,33 @@ export function previousMonthRange(range: DateRange): DateRange {
   return buildRange(prevFrom, prevTo);
 }
 
+/**
+ * Bucketea ISO timestamps por mes natural y devuelve un array alineado a
+ * `monthsBack` posiciones, ordenado del más antiguo (índice 0) al actual
+ * (índice `monthsBack - 1`). Los timestamps fuera de la ventana se ignoran.
+ *
+ * Compartido por el dashboard del admin (`AreaChart` de reseñas por mes) y el
+ * panel del comercial (`MonthBars` de su evolución). Es una función pura.
+ */
+export function bucketByMonth(
+  timestamps: string[],
+  monthsBack: number,
+  now = new Date(),
+): number[] {
+  const buckets = new Array<number>(monthsBack).fill(0);
+  const baseY = now.getFullYear();
+  const baseM = now.getMonth();
+  for (const t of timestamps) {
+    const d = new Date(t);
+    const monthsAgo = (baseY - d.getFullYear()) * 12 + (baseM - d.getMonth());
+    if (monthsAgo >= 0 && monthsAgo < monthsBack) {
+      const idx = monthsBack - 1 - monthsAgo;
+      buckets[idx] = (buckets[idx] ?? 0) + 1;
+    }
+  }
+  return buckets;
+}
+
 /** Componentes año/mes del rango (útiles para etiquetas legibles). */
 export function rangeYearMonth(range: DateRange): { year: number; monthIndex: number; monthLabel: string } {
   const parts = range.from.split("-").map(Number);
