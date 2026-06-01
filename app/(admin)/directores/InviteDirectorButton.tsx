@@ -51,7 +51,7 @@ export function InviteDirectorButton({
         department: dept,
         language:
           dept === "internacional" ? String(formData.get("language") ?? "") : null,
-        monthlyGoal: String(formData.get("monthlyGoal") ?? "50"),
+        monthlyGoal: String(formData.get("monthlyGoal") ?? "5"),
       };
       const result = await inviteOfficeDirector(input as never);
       if (!result.ok) {
@@ -285,7 +285,7 @@ export function InviteDirectorButton({
                       type="number"
                       min={0}
                       max={1000}
-                      defaultValue={50}
+                      defaultValue={5}
                       required
                       style={inputStyle}
                     />

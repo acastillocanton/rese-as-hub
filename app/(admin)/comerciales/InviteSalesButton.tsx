@@ -83,7 +83,7 @@ export function InviteSalesButton({
         phone: String(formData.get("phone") ?? ""),
         locationId: String(formData.get("locationId") ?? ""),
         directorId: String(formData.get("directorId") ?? "") || null,
-        monthlyGoal: String(formData.get("monthlyGoal") ?? "50"),
+        monthlyGoal: String(formData.get("monthlyGoal") ?? "5"),
         department: dept,
         language:
           dept === "internacional" ? String(formData.get("language") ?? "") : null,
@@ -335,7 +335,7 @@ export function InviteSalesButton({
                       type="number"
                       min={0}
                       max={1000}
-                      defaultValue={50}
+                      defaultValue={5}
                       required
                       style={inputStyle}
                     />
