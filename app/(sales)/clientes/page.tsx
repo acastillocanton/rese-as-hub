@@ -167,16 +167,19 @@ export default async function ClientesPage() {
         )}
       </div>
 
-      {/* FAB "Nuevo cliente" — solo mobile, fijo sobre la tab bar */}
-      <div className="m-mobile-only">
-        <NewClientButton
-          fab
-          appBase={appBase}
-          salesName={profile.full_name}
-          salesSlug={profile.slug}
-          brand={brand}
-        />
-      </div>
+      {/* FAB "Nuevo cliente" — solo mobile, fijo sobre la tab bar.
+          Solo cuando hay clientes; en empty state el botón de la card es suficiente. */}
+      {clients.length > 0 && (
+        <div className="m-mobile-only">
+          <NewClientButton
+            fab
+            appBase={appBase}
+            salesName={profile.full_name}
+            salesSlug={profile.slug}
+            brand={brand}
+          />
+        </div>
+      )}
     </>
   );
 }

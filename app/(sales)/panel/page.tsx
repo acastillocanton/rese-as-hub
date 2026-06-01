@@ -22,6 +22,7 @@ import {
   type DateRange,
 } from "@/lib/date-range";
 import { CopyLinkButton } from "./CopyLinkButton";
+import { NewClientButton } from "../clientes/NewClientButton";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
 
@@ -511,6 +512,17 @@ export default async function PanelPage({
             description="Próximamente: tu evolución mensual con barras, las últimas reseñas verificadas, tu posición en el ranking del equipo y las insignias conseguidas."
           />
         </div>
+      </div>
+
+      {/* FAB "Nuevo cliente" — solo mobile, fijo sobre la tab bar */}
+      <div className="m-mobile-only">
+        <NewClientButton
+          fab
+          appBase={appBase}
+          salesName={data.name}
+          salesSlug={data.slug}
+          brand={brand}
+        />
       </div>
     </>
   );
