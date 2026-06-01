@@ -25,6 +25,7 @@ import { CopyLinkButton } from "./CopyLinkButton";
 import { NewClientButton } from "../clientes/NewClientButton";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
+import { getMotivationSuffix } from "@/lib/panel-motivation";
 
 type PanelData = {
   name: string;
@@ -213,6 +214,7 @@ export default async function PanelPage({
     goal: data.goal,
     now,
   });
+  const dayOfWeek = now.getDay();
 
   // Etiqueta corta para el lead-in: "Llevas en <rango>".
   const periodLabel = isMonth
@@ -346,7 +348,7 @@ export default async function PanelPage({
                   ) : remaining === 0 ? (
                     <>
                       <strong style={{ color: "var(--ok)" }}>Objetivo conseguido.</strong>{" "}
-                      Quedan {daysLeft} días para sumar más.
+                      {getMotivationSuffix(dayOfWeek, "done", { daysLeft })}
                     </>
                   ) : etaLabel ? (
                     <>
@@ -354,7 +356,8 @@ export default async function PanelPage({
                       <strong style={{ color: "var(--ink)" }}>
                         {remaining} reseñas
                       </strong>{" "}
-                      en {daysLeft} días. Con tu ritmo actual cierras objetivo el{" "}
+                      en {daysLeft} días.{" "}
+                      {getMotivationSuffix(dayOfWeek, "on_track", { daysLeft })} Con tu ritmo actual cierras objetivo el{" "}
                       <strong style={{ color: "var(--ink)" }}>{etaLabel}</strong>.
                     </>
                   ) : (
@@ -363,7 +366,8 @@ export default async function PanelPage({
                       <strong style={{ color: "var(--ink)" }}>
                         {remaining} reseñas
                       </strong>{" "}
-                      en {daysLeft} días. Necesitas acelerar para llegar.
+                      en {daysLeft} días.{" "}
+                      {getMotivationSuffix(dayOfWeek, "behind", { daysLeft })}
                     </>
                   )}
                 </div>
