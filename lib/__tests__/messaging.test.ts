@@ -4,6 +4,7 @@ import {
   getGenericLinkTemplate,
   MESSAGE_TEMPLATES,
   renderMessage,
+  resolveLabel,
   resolveTemplate,
 } from "@/lib/messaging";
 
@@ -79,26 +80,53 @@ describe("messaging templates", () => {
     });
   });
 
-  describe("resolveTemplate", () => {
-    it("returns the base template when there are no overrides", () => {
+  describe("resolveTemplate (body)", () => {
+    it("returns the base body when there are no overrides", () => {
       expect(resolveTemplate("reavivar", "inseryal", null)).toBe(
         MESSAGE_TEMPLATES.find((t) => t.id === "reavivar")!.build("inseryal"),
       );
     });
 
-    it("returns the override when present and non-blank", () => {
-      const override = "Mi versión {nombre_cliente} {url}";
-      expect(resolveTemplate("breve", "inseryal", { breve: override })).toBe(override);
+    it("returns the override body when present and non-blank", () => {
+      const body = "Mi versión {nombre_cliente} {url}";
+      expect(resolveTemplate("breve", "inseryal", { breve: { body } })).toBe(body);
     });
 
-    it("falls back to base when the override is blank/whitespace", () => {
-      expect(resolveTemplate("post_visita", "inseryal", { post_visita: "   " })).toBe(
-        getDefaultReviewMessageTemplate("inseryal"),
+    it("falls back to base when the override body is blank/whitespace", () => {
+      expect(
+        resolveTemplate("post_visita", "inseryal", { post_visita: { body: "   " } }),
+      ).toBe(getDefaultReviewMessageTemplate("inseryal"));
+    });
+
+    it("only applies the override body for the matching id", () => {
+      const overrides = { reavivar: { body: "solo reavivar {url}" } };
+      expect(resolveTemplate("breve", "inseryal", overrides)).toBe(
+        MESSAGE_TEMPLATES.find((t) => t.id === "breve")!.build("inseryal"),
+      );
+    });
+  });
+
+  describe("resolveLabel (nombre)", () => {
+    it("returns the base label when there are no overrides", () => {
+      const base = MESSAGE_TEMPLATES.find((t) => t.id === "post_visita")!.label;
+      expect(resolveLabel("post_visita", null)).toBe(base);
+    });
+
+    it("returns the renamed label when present and non-blank", () => {
+      expect(resolveLabel("reavivar", { reavivar: { label: "Cliente dormido" } })).toBe(
+        "Cliente dormido",
       );
     });
 
-    it("only applies the override for the matching id", () => {
-      const overrides = { reavivar: "solo reavivar {url}" };
+    it("falls back to base label when the rename is blank", () => {
+      const base = MESSAGE_TEMPLATES.find((t) => t.id === "breve")!.label;
+      expect(resolveLabel("breve", { breve: { label: "  " } })).toBe(base);
+    });
+
+    it("label and body overrides are independent", () => {
+      const overrides = { breve: { label: "Rápida" } };
+      // label renombrada, pero el cuerpo sigue siendo el base
+      expect(resolveLabel("breve", overrides)).toBe("Rápida");
       expect(resolveTemplate("breve", "inseryal", overrides)).toBe(
         MESSAGE_TEMPLATES.find((t) => t.id === "breve")!.build("inseryal"),
       );

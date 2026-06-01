@@ -10,6 +10,7 @@ import {
   MESSAGE_TEMPLATES,
   type MessageTemplateId,
   renderMessage,
+  resolveLabel,
   resolveTemplate,
   type SavedTemplates,
   smsHref,
@@ -171,7 +172,7 @@ export function ShareBlock({
                     fontFamily: "inherit",
                   }}
                 >
-                  {t.label}
+                  {resolveLabel(t.id, templates)}
                 </button>
               );
             })}

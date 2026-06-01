@@ -35,7 +35,7 @@ export type MessageTemplateId = "post_visita" | "reavivar" | "breve";
 
 export type MessageTemplateDef = {
   id: MessageTemplateId;
-  /** Etiqueta corta para las pestañas / el editor. */
+  /** Etiqueta base para las pestañas / el editor (el comercial puede renombrarla). */
   label: string;
   /** Ayuda de una línea: cuándo usar esta plantilla. */
   description: string;
@@ -43,9 +43,16 @@ export type MessageTemplateDef = {
   build: (brand: Brand) => string;
 };
 
-/** Versiones personalizadas del comercial, leídas de `profiles.message_templates`.
- *  Una clave ausente o en blanco → se usa la base. */
-export type SavedTemplates = Partial<Record<MessageTemplateId, string>> | null | undefined;
+/** Override personalizado de una plantilla por el comercial: nombre y/o cuerpo.
+ *  Cualquier campo ausente o en blanco → se usa el valor base. */
+export type SavedTemplateEntry = { label?: string; body?: string };
+
+/** Versiones personalizadas del comercial, leídas de `profiles.message_templates`,
+ *  keyed por MessageTemplateId. */
+export type SavedTemplates =
+  | Partial<Record<MessageTemplateId, SavedTemplateEntry>>
+  | null
+  | undefined;
 
 /** Plantilla B — reavivar una visita anterior (herramienta comercial para
  *  recuperar clientes que pasaron por la oficina hace tiempo). */
@@ -93,18 +100,25 @@ export const MESSAGE_TEMPLATES: MessageTemplateDef[] = [
   },
 ];
 
-/** Devuelve la plantilla (CON placeholders) que debe usarse para `id`:
- *  la versión personalizada del comercial si existe y no está en blanco,
- *  o la base de código en caso contrario. */
+/** Devuelve el CUERPO (CON placeholders) que debe usarse para `id`:
+ *  el del comercial si existe y no está en blanco, o el base en caso contrario. */
 export function resolveTemplate(
   id: MessageTemplateId,
   brand: Brand,
   overrides: SavedTemplates,
 ): string {
-  const override = overrides?.[id]?.trim();
-  if (override) return override;
+  const body = overrides?.[id]?.body?.trim();
+  if (body) return body;
   const def = MESSAGE_TEMPLATES.find((t) => t.id === id);
   return def ? def.build(brand) : getDefaultReviewMessageTemplate(brand);
+}
+
+/** Devuelve el NOMBRE de la plantilla `id` para mostrar en las pestañas/editor:
+ *  el renombrado por el comercial si existe y no está en blanco, o el base. */
+export function resolveLabel(id: MessageTemplateId, overrides: SavedTemplates): string {
+  const label = overrides?.[id]?.label?.trim();
+  if (label) return label;
+  return MESSAGE_TEMPLATES.find((t) => t.id === id)?.label ?? "Mensaje";
 }
 
 export const DEFAULT_EMAIL_SUBJECT = "¿Nos dejas una reseña en Google?";
