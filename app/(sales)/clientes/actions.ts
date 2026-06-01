@@ -100,7 +100,13 @@ export async function createClientRecord(
     return { ok: false, error: error?.message ?? "No se pudo crear el cliente." };
   }
 
-  revalidatePath("/clientes");
+  // OJO: NO revalidamos /clientes aquí. La revalidación re-renderiza la página y,
+  // al crear el PRIMER cliente, conmuta el empty-state por la tabla — eso desmonta
+  // el NewClientButton (que vive dentro del empty-state) junto con el diálogo de
+  // compartir que se acaba de abrir, y el diálogo se cerraba solo (bug).
+  // El refresco de la lista lo dispara NewClientButton con router.refresh() al
+  // CERRAR el diálogo (cuando el comercial ya terminó). `claimReview`, que también
+  // usa esta acción, revalida /clientes por su cuenta — no depende de aquí.
   return { ok: true, client: data };
 }
 

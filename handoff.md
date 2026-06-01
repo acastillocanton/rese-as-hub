@@ -25,6 +25,9 @@ Feature completa. El comercial ahora, al compartir el enlace de un cliente, elig
 ### B. Fix del callout del objetivo en `/panel` (desktop vs mobile)
 El callout motivacional se superponía en desktop tras un cambio previo que lo expandió a ancho completo para mobile. Solución: `maxWidth: 240` inline (desktop) + clase `m-callout-wide` que solo en ≤767px lo libera a ancho completo. Detalle: **CLAUDE.md §4.32**.
 
+### C2. Bugfix: el diálogo de compartir se cerraba solo al crear el primer cliente
+`createClientRecord` hacía `revalidatePath("/clientes")`; al crear el primer cliente la página pasaba de empty-state a tabla y desmontaba el `NewClientButton` (y su diálogo). Fix: quitada la revalidación de la acción; `NewClientButton` hace `router.refresh()` al **cerrar** el diálogo. Detalle: **CLAUDE.md §4.33**.
+
 ### C. Corrección de la memoria del email de Vercel
 La nota de memoria decía usar `socialmedia.inseryal@gmail.com` — era **incorrecta** y bloqueó un deploy. El email correcto es **`alejandro.castillo@inseryal.es`** (el del repo). Ver §4 abajo y memoria `vercel-hobby-author-email`.
 

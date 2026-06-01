@@ -699,6 +699,16 @@ Hasta ahora el comercial compartía el enlace de un cliente con **una sola** pla
 
 ⚠️ **El director productor no tiene `/clientes` ni `/panel/plantillas` propios** (usa layout admin/manager); la feature es del rol `sales`. La columna `message_templates` vive en `profiles` y serviría para director en el futuro, pero hoy no tiene editor.
 
+### 4.33 No revalidar en `createClientRecord` — el diálogo de compartir se cerraba solo
+
+`/clientes` renderiza el `NewClientButton` en dos sitios: el del Topbar (siempre montado) y otro **dentro del empty-state** (solo cuando `clients.length === 0`). El diálogo de compartir (`ClientLinkDialog`) y el `OrphanReviewsModal` viven como estado local de `NewClientButton`.
+
+Bug (2026-06-01): al crear el **primer** cliente, `createClientRecord` hacía `revalidatePath("/clientes")`. La revalidación re-renderiza la página, que pasa del empty-state a la tabla → **desmonta el `NewClientButton` del empty-state** y, con él, el diálogo recién abierto → el diálogo "se cerraba solo".
+
+Fix: `createClientRecord` **ya no revalida**. El refresco de la lista lo dispara `NewClientButton` con `router.refresh()` **al cerrar** el diálogo (`close()`, solo si se creó cliente), cuando ya no hay nada que desmontar. `claimReview` (que reutiliza `createClientRecord`) revalida `/clientes` por su cuenta, así que no se ve afectado.
+
+⚠️ Si vuelves a añadir `revalidatePath` dentro de `createClientRecord`, el bug reaparece. Las server actions que abren/mantienen un modal en un componente que puede re-renderizarse condicionalmente no deben revalidar la misma ruta hasta que el modal se cierre.
+
 ### 4.32 Callout del objetivo en `/panel` — contenido en desktop, ancho completo en mobile
 
 El callout motivacional del objetivo (`app/(sales)/panel/page.tsx`, ver §v2 panel-motivation) vive en la columna derecha del grid hero (`1.2fr 1fr`), dentro del flex `.m-ring-row`. En **desktop** el wrapper del callout lleva `maxWidth: 240` inline para no desbordar/superponerse en esa columna estrecha. En **mobile** el grid colapsa a una columna y queremos el callout a ancho completo: la clase `m-callout-wide` (globals.css, `@media max-width:767px`) hace `max-width: none !important`.

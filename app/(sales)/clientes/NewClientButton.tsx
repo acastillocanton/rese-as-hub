@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import {
   createClientRecord,
@@ -22,6 +23,7 @@ type NewClientButtonProps = {
 };
 
 export function NewClientButton({ appBase, salesName, salesSlug, brand, templates }: NewClientButtonProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<ClientRow | null>(null);
@@ -30,11 +32,16 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
   const [isPending, startTransition] = useTransition();
 
   function close() {
+    // Si se llegó a crear un cliente, refrescamos la lista AHORA (al cerrar),
+    // no durante la creación: createClientRecord ya no revalida para no
+    // desmontar este botón + el diálogo mientras está abierto (ver actions.ts).
+    const createdClient = created !== null;
     setOpen(false);
     setError(null);
     setCreated(null);
     setOrphanCandidates([]);
     setShowOrphans(false);
+    if (createdClient) router.refresh();
   }
 
   function handleSubmit(formData: FormData) {
