@@ -34,6 +34,30 @@ export const AUTO_THRESHOLD = 75;
 /** Confianza entre PENDING_THRESHOLD y AUTO_THRESHOLD → 'pending'. */
 export const PENDING_THRESHOLD = 40;
 
+/**
+ * Rescate por mención del comercial (ver `rescueByCommercialMention`).
+ *
+ * En este negocio la relación es PERSONAL con el comercial, así que la reseña
+ * casi siempre nombra al comercial ("Tono es muy buen comercial"), mientras
+ * que el nombre del autor en Google rara vez coincide con el que el comercial
+ * dio de alta como cliente ("Maf" vs "Marta Ferrer"). Cuando la atribución
+ * normal por nombre+tiempo se quedaría en `unmatched`, intentamos rescatarla
+ * usando la mención del comercial en el texto.
+ *
+ * Decisión de producto clave (anti-fraude): la mención NUNCA atribuye en
+ * automático. Solo rescata a `pending` para que un humano (Bel) confirme. Por
+ * eso ambas confianzas son < AUTO_THRESHOLD.
+ */
+/** Token mínimo del nombre del comercial que cuenta como mención (evita que
+ *  partículas tipo "de"/"la" o iniciales sueltas disparen falsos positivos). */
+const MIN_MENTION_TOKEN_LEN = 3;
+/** Confianza del rescate cuando el comercial mencionado SÍ tiene un enlace
+ *  abierto en la ventana temporal (hay cliente candidato). */
+const MENTION_RESCUE_CONFIDENCE = 60;
+/** Confianza del rescate cuando el comercial mencionado NO tiene enlace en
+ *  ventana (más débil: pre-asignamos al comercial sin cliente). */
+const MENTION_RESCUE_NO_WINDOW_CONFIDENCE = 50;
+
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
 export type ShareLinkCandidate = {
@@ -42,6 +66,20 @@ export type ShareLinkCandidate = {
   client_id: string | null;
   client_full_name: string | null;
   opened_at: string; // ISO
+  /** Nombre completo del comercial dueño del enlace. Necesario para el
+   *  rescate por mención (ver `attributeReview`). Si no se enriquece, ese
+   *  candidato simplemente no se considera para la detección de mención. */
+  sales_full_name?: string | null;
+};
+
+/**
+ * Roster mínimo de comerciales de una ficha. Lo usa el rescate por mención
+ * cuando el texto nombra a un comercial que NO tiene ningún enlace abierto en
+ * la ventana temporal (decisión de producto: pre-asignar igual, sin cliente).
+ */
+export type CommercialInfo = {
+  sales_id: string;
+  full_name: string;
 };
 
 export type ReviewInput = {
@@ -53,6 +91,9 @@ export type ReviewInput = {
   /** Si false, el matcher ignora la similitud de nombre y se apoya solo
    *  en la ventana temporal corta. Default true (asume nombre real). */
   hasAuthorName?: boolean;
+  /** Texto/comentario de la reseña, si lo hay. Se usa SOLO para el rescate
+   *  por mención del comercial (ver `attributeReview`). */
+  text?: string | null;
   google_created_at: string; // ISO
 };
 
@@ -137,17 +178,61 @@ export function nameSimilarity(clientName: string, authorName: string): number {
   return 0;
 }
 
+/**
+ * ¿El texto de la reseña menciona el nombre del comercial?
+ *
+ * Coincidencia por TOKEN COMPLETO sobre el texto normalizado (no substring,
+ * así "Tono" no casa dentro de "monótono"). Decisión de producto: casa el
+ * nombre de pila O cualquier apellido (cualquier token ≥ MIN_MENTION_TOKEN_LEN
+ * del nombre del comercial que aparezca como palabra en el texto).
+ */
+export function mentionsCommercial(
+  text: string | null | undefined,
+  fullName: string | null | undefined,
+): boolean {
+  if (!text || !fullName) return false;
+  const nameTokens = tokenize(fullName).filter(
+    (t) => t.length >= MIN_MENTION_TOKEN_LEN,
+  );
+  if (nameTokens.length === 0) return false;
+  const textTokens = new Set(tokenize(text));
+  return nameTokens.some((t) => textTokens.has(t));
+}
+
 // ─── Núcleo del matcher ─────────────────────────────────────────────────────
+
+/**
+ * Punto de entrada del matcher.
+ *
+ * No hace I/O: el caller (cron) le pasa los candidatos ya filtrados por
+ * `location_id` y por `opened_at >= review.created - TEMPORAL_WINDOW_HOURS`,
+ * y opcionalmente el roster de comerciales de la ficha (para el rescate por
+ * mención cuando no hay enlace en ventana).
+ *
+ * Estrategia en dos pasos:
+ *   1. Atribución normal por nombre del cliente + ventana temporal
+ *      (`primaryAttribution`). Es la única vía que puede dar `counted`.
+ *   2. Si esa vía se quedaría en `unmatched`, intento de rescate por mención
+ *      del comercial en el texto (`rescueByCommercialMention`). Solo puede dar
+ *      `pending` — nunca atribuye en automático.
+ */
+export function attributeReview(
+  review: ReviewInput,
+  candidates: ShareLinkCandidate[],
+  commercials: CommercialInfo[] = [],
+): MatchResult {
+  const primary = primaryAttribution(review, candidates);
+  if (primary.match_state !== "unmatched") return primary;
+  const rescued = rescueByCommercialMention(review, candidates, commercials);
+  return rescued ?? primary;
+}
 
 /**
  * Dada una reseña y la lista de share_links de la misma ficha en la ventana
  * temporal previa, escoge el mejor candidato (si lo hay) y devuelve el
- * resultado del matching.
- *
- * No hace I/O: el caller (cron) le pasa los candidatos ya filtrados por
- * `location_id` y por `opened_at >= review.created - TEMPORAL_WINDOW_HOURS`.
+ * resultado del matching por nombre + tiempo.
  */
-export function attributeReview(
+function primaryAttribution(
   review: ReviewInput,
   candidates: ShareLinkCandidate[],
 ): MatchResult {
@@ -259,4 +344,122 @@ export function attributeReview(
     client_id: best.candidate.client_id ?? undefined,
     share_link_id: best.candidate.id,
   };
+}
+
+/**
+ * Rescate por mención del comercial en el texto de la reseña.
+ *
+ * Se invoca solo cuando la atribución normal se quedaría en `unmatched`.
+ * Devuelve siempre `pending` (nunca `counted`) o `null` si no rescata.
+ *
+ * Dos niveles:
+ *   - Tier 1 — el comercial mencionado tiene un enlace abierto en la ventana
+ *     temporal: pre-asignamos a ese comercial + el cliente del mejor candidato
+ *     (mayor parecido de nombre; desempate por cercanía temporal).
+ *   - Tier 2 — el comercial mencionado NO tiene enlace en ventana pero está en
+ *     el roster de la ficha: pre-asignamos al comercial SIN cliente (decisión
+ *     de producto: el comercial nombrado es señal suficiente para que un
+ *     humano lo revise).
+ *
+ * En ambos niveles, si el texto menciona a MÁS DE UN comercial distinto de
+ * forma ambigua, no adivinamos → `null` (queda unmatched).
+ */
+function rescueByCommercialMention(
+  review: ReviewInput,
+  candidates: ShareLinkCandidate[],
+  commercials: CommercialInfo[],
+): MatchResult | null {
+  const text = review.text;
+  if (!text) return null;
+  const reviewMs = new Date(review.google_created_at).getTime();
+
+  // Candidatos cuyo enlace cae en ventana Y cuyo comercial se menciona.
+  const inWindowMentioned = candidates.filter((c) => {
+    const openedMs = new Date(c.opened_at).getTime();
+    if (openedMs > reviewMs) return false; // enlace posterior a la reseña
+    const hoursDelta = (reviewMs - openedMs) / 3_600_000;
+    if (hoursDelta > TEMPORAL_WINDOW_HOURS) return false;
+    return mentionsCommercial(text, c.sales_full_name);
+  });
+
+  const distinctSalesInWindow = new Set(
+    inWindowMentioned.map((c) => c.sales_id),
+  );
+
+  // Tier 1: exactamente un comercial mencionado con enlace en ventana.
+  if (distinctSalesInWindow.size === 1) {
+    let best: {
+      candidate: ShareLinkCandidate;
+      nameScore: number;
+      hoursDelta: number;
+    } | null = null;
+    for (const c of inWindowMentioned) {
+      const nameScore = c.client_full_name
+        ? nameSimilarity(c.client_full_name, review.author_name)
+        : 0;
+      const hoursDelta =
+        (reviewMs - new Date(c.opened_at).getTime()) / 3_600_000;
+      if (
+        !best ||
+        nameScore > best.nameScore ||
+        (nameScore === best.nameScore && hoursDelta < best.hoursDelta)
+      ) {
+        best = { candidate: c, nameScore, hoursDelta };
+      }
+    }
+    if (!best) return null;
+    // Confianza acotada estrictamente por debajo de AUTO_THRESHOLD: el
+    // rescate por mención jamás cuenta en automático.
+    const confidence = Math.min(
+      AUTO_THRESHOLD - 5,
+      MENTION_RESCUE_CONFIDENCE +
+        (best.hoursDelta <= TEMPORAL_BONUS_HOURS ? 8 : 0),
+    );
+    return {
+      match_state: "pending",
+      match_confidence: confidence,
+      match_evidence: {
+        reason: "rescued_by_commercial_mention_in_window",
+        share_link_id: best.candidate.id,
+        commercial_name: best.candidate.sales_full_name,
+        client_full_name: best.candidate.client_full_name,
+        review_author: review.author_name,
+        name_score: best.nameScore,
+        hours_delta: Number(best.hoursDelta.toFixed(2)),
+        candidates_considered: candidates.length,
+      },
+      sales_id: best.candidate.sales_id,
+      client_id: best.candidate.client_id ?? undefined,
+      share_link_id: best.candidate.id,
+    };
+  }
+
+  // Más de un comercial mencionado con enlace en ventana → ambiguo.
+  if (distinctSalesInWindow.size > 1) return null;
+
+  // Tier 2: ningún comercial mencionado tiene enlace en ventana. Buscamos en
+  // el roster de la ficha. Solo pre-asignamos si hay EXACTAMENTE uno.
+  const mentionedRoster = commercials.filter((c) =>
+    mentionsCommercial(text, c.full_name),
+  );
+  const distinctRoster = new Set(mentionedRoster.map((c) => c.sales_id));
+  if (distinctRoster.size === 1) {
+    const c = mentionedRoster[0]!;
+    return {
+      match_state: "pending",
+      match_confidence: MENTION_RESCUE_NO_WINDOW_CONFIDENCE,
+      match_evidence: {
+        reason: "rescued_by_commercial_mention_no_window",
+        commercial_name: c.full_name,
+        review_author: review.author_name,
+        candidates_considered: candidates.length,
+        roster_size: commercials.length,
+      },
+      sales_id: c.sales_id,
+      // client_id ausente a propósito: sin enlace en ventana no hay cliente
+      // identificable. Lo asigna el humano al confirmar.
+    };
+  }
+
+  return null;
 }

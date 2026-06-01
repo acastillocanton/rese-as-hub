@@ -16,6 +16,7 @@ import {
   type FreshReview,
   type PendingNotification,
   type LowRatingAlertContext,
+  type CommercialInfo,
 } from "@/lib/cron/process-reviews";
 import {
   resolveLowRatingRecipients,
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
       }[]>(),
     admin
       .from("profiles")
-      .select("id, full_name, email, status, director_id")
+      .select("id, full_name, email, status, director_id, location_id")
       .in("role", ["sales", "office_director"])
       .returns<{
         id: string;
@@ -80,6 +81,7 @@ export async function GET(request: NextRequest) {
         email: string | null;
         status: string;
         director_id: string | null;
+        location_id: string | null;
       }[]>(),
     admin
       .from("profiles")
@@ -122,6 +124,15 @@ export async function GET(request: NextRequest) {
         });
       }
     }
+  }
+  // Roster de comerciales NO archivados por ficha — para el rescate por
+  // mención del matcher (comercial nombrado en el texto sin enlace en ventana).
+  const commercialsByLocation = new Map<string, CommercialInfo[]>();
+  for (const s of salesRes.data ?? []) {
+    if (!s.location_id || s.status === "archived") continue;
+    const arr = commercialsByLocation.get(s.location_id) ?? [];
+    arr.push({ sales_id: s.id, full_name: s.full_name });
+    commercialsByLocation.set(s.location_id, arr);
   }
   const appBase =
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
@@ -274,6 +285,7 @@ export async function GET(request: NextRequest) {
             },
             fresh: freshNormalized,
             salesById,
+            commercials: commercialsByLocation.get(loc.id) ?? [],
             source: "business_profile",
           },
           entry,

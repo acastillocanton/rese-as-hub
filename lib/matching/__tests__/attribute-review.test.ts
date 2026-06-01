@@ -2,11 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   attributeReview,
   nameSimilarity,
+  mentionsCommercial,
   TEMPORAL_WINDOW_HOURS,
   AUTO_THRESHOLD,
   PENDING_THRESHOLD,
   type ShareLinkCandidate,
   type ReviewInput,
+  type CommercialInfo,
 } from "../attribute-review";
 
 const REVIEW_AT = "2026-05-20T12:00:00Z";
@@ -18,6 +20,7 @@ function candidate(p: Partial<ShareLinkCandidate>): ShareLinkCandidate {
     client_id: p.client_id ?? "client-1",
     client_full_name: p.client_full_name ?? "Cliente Genérico",
     opened_at: p.opened_at ?? "2026-05-20T10:00:00Z", // 2h antes
+    sales_full_name: p.sales_full_name,
   };
 }
 
@@ -26,6 +29,7 @@ function review(p: Partial<ReviewInput>): ReviewInput {
     google_review_id: p.google_review_id ?? "g-1",
     author_name: p.author_name ?? "Cliente Genérico",
     hasAuthorName: p.hasAuthorName,
+    text: p.text,
     google_created_at: p.google_created_at ?? REVIEW_AT,
   };
 }
@@ -197,6 +201,160 @@ describe("attributeReview — modo anonymous (autor sin nombre)", () => {
     const r = attributeReview(
       review({ author_name: "Anónimo", hasAuthorName: false }),
       [candidate({ opened_at: far })],
+    );
+    expect(r.match_state).toBe("unmatched");
+  });
+});
+
+describe("mentionsCommercial", () => {
+  it("casa el nombre de pila como palabra completa", () => {
+    expect(mentionsCommercial("Tono es muy buen comercial", "Tono Sánchez Abadía")).toBe(true);
+  });
+
+  it("casa cualquier apellido", () => {
+    expect(mentionsCommercial("Genial el trato de Abadía", "Tono Sánchez Abadía")).toBe(true);
+    expect(mentionsCommercial("gracias Sanchez", "Tono Sánchez Abadía")).toBe(true);
+  });
+
+  it("ignora acentos y mayúsculas", () => {
+    expect(mentionsCommercial("TONO un crack", "tóno pérez")).toBe(true);
+  });
+
+  it("no casa como substring dentro de otra palabra", () => {
+    expect(mentionsCommercial("un sonido monótono", "Tono Pérez")).toBe(false);
+  });
+
+  it("ignora tokens cortos del nombre (< 3 letras)", () => {
+    // "Jo" es < 3 letras → no debe disparar por aparecer en el texto.
+    expect(mentionsCommercial("yo no fui", "Jo Li")).toBe(false);
+  });
+
+  it("texto o nombre vacío/null → false", () => {
+    expect(mentionsCommercial(null, "Tono Pérez")).toBe(false);
+    expect(mentionsCommercial("Tono Pérez", null)).toBe(false);
+    expect(mentionsCommercial("", "Tono Pérez")).toBe(false);
+  });
+});
+
+describe("attributeReview — rescate por mención del comercial", () => {
+  // Caso real: cliente "Marta Ferrer" deja reseña como "Maf" (sin parecido de
+  // nombre) pero el texto menciona a "Tono", que tiene enlace en ventana.
+  it("Tier 1: nombre no casa pero el texto menciona al comercial con enlace en ventana → pending", () => {
+    const r = attributeReview(
+      review({ author_name: "Maf", text: "Tono es muy buen comercial y simpático." }),
+      [
+        candidate({
+          sales_id: "tono",
+          client_id: "marta",
+          client_full_name: "Marta Ferrer",
+          sales_full_name: "Tono Sánchez Abadía",
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("pending");
+    expect(r.match_confidence).toBeGreaterThanOrEqual(PENDING_THRESHOLD);
+    expect(r.match_confidence).toBeLessThan(AUTO_THRESHOLD);
+    expect(r.sales_id).toBe("tono");
+    expect(r.client_id).toBe("marta");
+    expect(r.match_evidence.reason).toBe("rescued_by_commercial_mention_in_window");
+  });
+
+  it("Tier 1: elige el cliente con mejor parecido entre varios enlaces del MISMO comercial", () => {
+    // Autor "María Ferrer": comparte apellido con "Marta Ferrer" (score 30,
+    // por debajo del umbral del matcher normal → unmatched → entra al rescate)
+    // y nada con "Pedro Pérez" (0). El rescate debe quedarse con Marta.
+    const r = attributeReview(
+      review({ author_name: "María Ferrer", text: "Gracias Tono!" }),
+      [
+        candidate({
+          id: "s-a",
+          sales_id: "tono",
+          client_id: "otro",
+          client_full_name: "Pedro Pérez",
+          sales_full_name: "Tono Sánchez",
+        }),
+        candidate({
+          id: "s-b",
+          sales_id: "tono",
+          client_id: "marta",
+          client_full_name: "Marta Ferrer",
+          sales_full_name: "Tono Sánchez",
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("pending");
+    expect(r.client_id).toBe("marta");
+    expect(r.share_link_id).toBe("s-b");
+  });
+
+  it("ambiguo: el texto menciona a DOS comerciales con enlace en ventana → unmatched", () => {
+    const r = attributeReview(
+      review({ author_name: "Random", text: "Gracias Tono y también Luis" }),
+      [
+        candidate({ id: "a", sales_id: "tono", sales_full_name: "Tono Sánchez", client_full_name: "X" }),
+        candidate({ id: "b", sales_id: "luis", sales_full_name: "Luis Gómez", client_full_name: "Y" }),
+      ],
+    );
+    expect(r.match_state).toBe("unmatched");
+  });
+
+  it("Tier 2: comercial mencionado SIN enlace en ventana pero en el roster → pending sin cliente", () => {
+    const roster: CommercialInfo[] = [
+      { sales_id: "tono", full_name: "Tono Sánchez Abadía" },
+      { sales_id: "luis", full_name: "Luis Gómez" },
+    ];
+    const r = attributeReview(
+      review({ author_name: "Maf", text: "Tono me atendió genial" }),
+      [], // sin enlaces en ventana
+      roster,
+    );
+    expect(r.match_state).toBe("pending");
+    expect(r.sales_id).toBe("tono");
+    expect(r.client_id).toBeUndefined();
+    expect(r.match_evidence.reason).toBe("rescued_by_commercial_mention_no_window");
+  });
+
+  it("Tier 2 ambiguo: dos comerciales del roster mencionados → unmatched", () => {
+    const roster: CommercialInfo[] = [
+      { sales_id: "tono", full_name: "Tono Sánchez" },
+      { sales_id: "luis", full_name: "Luis Gómez" },
+    ];
+    const r = attributeReview(
+      review({ author_name: "Maf", text: "Gracias Tono y Luis" }),
+      [],
+      roster,
+    );
+    expect(r.match_state).toBe("unmatched");
+  });
+
+  it("no rescata si la reseña no tiene texto", () => {
+    const r = attributeReview(
+      review({ author_name: "Maf" }),
+      [candidate({ sales_id: "tono", sales_full_name: "Tono Sánchez", client_full_name: "Marta Ferrer" })],
+      [{ sales_id: "tono", full_name: "Tono Sánchez" }],
+    );
+    expect(r.match_state).toBe("unmatched");
+  });
+
+  it("un match por nombre fuerte NO se ve afectado por el rescate (sigue counted)", () => {
+    const r = attributeReview(
+      review({ author_name: "Marta Ferrer", text: "Tono es un crack" }),
+      [
+        candidate({
+          sales_id: "tono",
+          client_id: "marta",
+          client_full_name: "Marta Ferrer",
+          sales_full_name: "Tono Sánchez",
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("counted");
+  });
+
+  it("mención sin enlace en ventana y sin roster → unmatched", () => {
+    const r = attributeReview(
+      review({ author_name: "Maf", text: "Tono genial" }),
+      [],
     );
     expect(r.match_state).toBe("unmatched");
   });

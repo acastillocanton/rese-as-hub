@@ -10,6 +10,7 @@ import {
   type FreshReview,
   type PendingNotification,
   type LowRatingAlertContext,
+  type CommercialInfo,
 } from "@/lib/cron/process-reviews";
 import { notifyNewReview } from "@/lib/email/notify-new-review";
 import { notifyLowRating } from "@/lib/email/notify-low-rating";
@@ -157,7 +158,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
     locationsQuery.returns<{ id: string; name: string; google_place_id: string; brand: Brand }[]>(),
     admin
       .from("profiles")
-      .select("id, full_name, email, status, director_id")
+      .select("id, full_name, email, status, director_id, location_id")
       .in("role", ["sales", "office_director"])
       .returns<{
         id: string;
@@ -165,6 +166,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
         email: string | null;
         status: string;
         director_id: string | null;
+        location_id: string | null;
       }[]>(),
     admin
       .from("profiles")
@@ -213,6 +215,15 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
         });
       }
     }
+  }
+  // Roster de comerciales NO archivados por ficha — para el rescate por
+  // mención del matcher (comercial nombrado en el texto sin enlace en ventana).
+  const commercialsByLocation = new Map<string, CommercialInfo[]>();
+  for (const s of salesRes.data ?? []) {
+    if (!s.location_id || s.status === "archived") continue;
+    const arr = commercialsByLocation.get(s.location_id) ?? [];
+    arr.push({ sales_id: s.id, full_name: s.full_name });
+    commercialsByLocation.set(s.location_id, arr);
   }
   // Mapa brand por location para que flushLowRatingAlerts resuelva sin
   // queries adicionales.
@@ -325,6 +336,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
           },
           fresh,
           salesById,
+          commercials: commercialsByLocation.get(loc.id) ?? [],
           source: "places_api",
         },
         entry,

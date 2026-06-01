@@ -32,7 +32,7 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test               # Vitest unit tests (241 tests: matcher + date-range (incl. periodo comisión 20→20) + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + rls-self-update)
+npm test               # Vitest unit tests (255 tests: matcher (incl. rescate por mención del comercial) + date-range (incl. periodo comisión 20→20) + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + rls-self-update)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright happy paths (login + admin nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo
@@ -779,6 +779,22 @@ Hallazgo de la auditoría: la policy `profiles_self_update` (mig 002) solo compr
 - **Rendimiento `/panel`**: `loadPanelInsights` ahora va dentro del mismo `Promise.all` que las queries del hero (antes serializado). `locations.find` en el leaderboard → `Map` (evita O(n·m)).
 - **Límite defensivo `.limit(1000)`** en los listados de `/panel/resenas` y `/manager/resenas`.
 - **Ring** protege `max=0` (objetivo 0 ya no pinta `NaN%`).
+
+### 4.38 Rescate por mención del comercial en el texto (matcher)
+
+**Problema**: en este negocio la relación es PERSONAL con el comercial, así que la reseña casi siempre lo nombra ("Tono es muy buen comercial"), mientras que el nombre del autor en Google rara vez coincide con el que el comercial dio de alta como cliente ("Maf" vs "Marta Ferrer"). El matcher solo miraba nombre-de-cliente + ventana temporal e ignoraba el texto → reseñas legítimas caían a `unmatched` ("colgando" en la bandeja).
+
+**Solución** (en [lib/matching/attribute-review.ts](lib/matching/attribute-review.ts)): cuando la atribución normal (`primaryAttribution`) se quedaría en `unmatched`, se intenta un **rescate por mención** (`rescueByCommercialMention`). El `attributeReview` ahora es un wrapper en dos pasos.
+
+- ⚠️ **El rescate NUNCA atribuye en automático (`counted`)** — solo deja `pending` para que un humano (Bel) confirme. Decisión de producto anti-fraude. Ambas confianzas (60 con enlace en ventana, 50 sin él) son < `AUTO_THRESHOLD`. Lo que ya casa por nombre (`counted`/`pending`) NO se toca: el rescate solo sube hacia arriba un `unmatched`.
+- **Tier 1** — el comercial mencionado tiene enlace en ventana 48h: pre-asigna ese comercial + el cliente del mejor candidato (mayor `nameSimilarity`; desempate por cercanía temporal). `reason: 'rescued_by_commercial_mention_in_window'`.
+- **Tier 2** — el comercial mencionado NO tiene enlace en ventana pero está en el roster de la ficha: pre-asigna al comercial SIN cliente (lo pone el humano al confirmar). `reason: 'rescued_by_commercial_mention_no_window'`.
+- **Ambigüedad**: si el texto menciona a >1 comercial distinto (en ventana o en roster), NO adivina → sigue `unmatched`.
+- `mentionsCommercial(text, fullName)`: coincidencia por **token completo** (no substring; "Tono" no casa en "monótono"), ignora acentos/mayúsculas, casa nombre de pila **O cualquier apellido**, ignora tokens < 3 letras.
+
+**Cableado**: `ReviewInput` gana `text`; `ShareLinkCandidate` gana `sales_full_name`; `attributeReview` gana 3er parámetro opcional `commercials: CommercialInfo[]` (roster de la ficha). En [lib/cron/process-reviews.ts](lib/cron/process-reviews.ts) se enriquecen los candidatos con `sales_full_name` (desde `salesById`) y se pasa `text` + `commercials`. Ambos crons ([sync-places.ts](lib/google/sync-places.ts) y [sync-google-reviews/route.ts](app/api/cron/sync-google-reviews/route.ts)) añaden `location_id` a su query de `profiles` y construyen `commercialsByLocation` (sales + office_director NO archivados, por ficha). Sin migración ni cambio de BD.
+
+**Tests** ([lib/matching/__tests__/attribute-review.test.ts](lib/matching/__tests__/attribute-review.test.ts)): 14 nuevos (`mentionsCommercial` + Tier 1/Tier 2 + ambigüedad + no-rescata-sin-texto + no-degrada-counted).
 
 ---
 

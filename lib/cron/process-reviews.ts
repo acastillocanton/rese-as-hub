@@ -4,7 +4,12 @@ import {
   attributeReview,
   TEMPORAL_WINDOW_HOURS,
   type ShareLinkCandidate,
+  type CommercialInfo,
 } from "@/lib/matching/attribute-review";
+
+// Re-export para que los crons (callers) tipen el roster sin importar dos
+// módulos distintos.
+export type { CommercialInfo };
 import { decideDuplicateForClient } from "@/lib/cron/duplicate-detection";
 import { isLowRating, type LowRatingAlert } from "@/lib/cron/low-rating-alerts";
 import type { Brand } from "@/lib/supabase/types";
@@ -77,6 +82,10 @@ export type ProcessReviewsArgs = {
   location: LocationCtx;
   fresh: FreshReview[];
   salesById: Map<string, SalesInfo>;
+  /** Roster de comerciales (sales + office_director NO archivados) de ESTA
+   *  ficha. Lo usa el rescate por mención del matcher cuando el texto nombra a
+   *  un comercial sin enlace en ventana. Vacío si no se pasa. */
+  commercials?: CommercialInfo[];
   source: "business_profile" | "places_api";
 };
 
@@ -137,9 +146,16 @@ export async function processFreshReviews(
   lowRatingAlerts: LowRatingAlert[];
 }> {
   const { admin, location, fresh, salesById, source } = args;
+  const commercials = args.commercials ?? [];
   if (fresh.length === 0) return { notifications: [], lowRatingAlerts: [] };
 
-  const candidates = await loadCandidates(admin, location.id, fresh);
+  const rawCandidates = await loadCandidates(admin, location.id, fresh);
+  // Enriquecemos cada candidato con el nombre del comercial dueño del enlace,
+  // que el matcher necesita para detectar la mención del comercial en el texto.
+  const candidates: ShareLinkCandidate[] = rawCandidates.map((c) => ({
+    ...c,
+    sales_full_name: salesById.get(c.sales_id)?.full_name ?? null,
+  }));
   const notifications: PendingNotification[] = [];
   const lowRatingAlerts: LowRatingAlert[] = [];
 
@@ -149,9 +165,11 @@ export async function processFreshReviews(
         google_review_id: fr.google_review_id,
         author_name: fr.author_name,
         hasAuthorName: fr.hasAuthorName,
+        text: fr.text,
         google_created_at: fr.google_created_at,
       },
       candidates,
+      commercials,
     );
 
     // Anti-fraude (migración 015): si esta reseña va a un client_id que ya
