@@ -370,48 +370,65 @@ export default async function PanelPage({
 
         {/* Card "Mis clientes" — solo mobile (en desktop el sidebar ya lo cubre). */}
         <div className="m-mobile-only" style={{ marginTop: 16 }}>
-          <Link
-            href="/clientes"
+          <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              padding: "16px 18px",
               background: "var(--surface)",
               border: "1px solid var(--line)",
               borderRadius: 14,
-              textDecoration: "none",
-              color: "var(--ink)",
               boxShadow: "var(--shadow-card)",
+              overflow: "hidden",
             }}
           >
-            <div
-              aria-hidden="true"
+            <Link
+              href="/clientes"
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                background: "var(--surface-2)",
-                display: "grid",
-                placeItems: "center",
-                color: "var(--ink-2)",
-                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                padding: "16px 18px 14px",
+                textDecoration: "none",
+                color: "var(--ink)",
               }}
             >
-              <Users size={20} strokeWidth={1.75} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>
-                Mis clientes
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  background: "var(--surface-2)",
+                  display: "grid",
+                  placeItems: "center",
+                  color: "var(--ink-2)",
+                  flexShrink: 0,
+                }}
+              >
+                <Users size={20} strokeWidth={1.75} />
               </div>
-              <div style={{ fontSize: 12.5, color: "var(--ink-4)", marginTop: 2 }}>
-                Da de alta antes de pedir una reseña
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>
+                  Mis clientes
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--ink-4)", marginTop: 2 }}>
+                  Da de alta antes de pedir una reseña
+                </div>
+              </div>
+              <span aria-hidden="true" style={{ color: "var(--ink-4)", fontSize: 18 }}>
+                ›
+              </span>
+            </Link>
+            <div style={{ padding: "0 16px 16px", borderTop: "1px solid var(--line)" }}>
+              <div style={{ paddingTop: 12 }}>
+                <NewClientButton
+                  cardCta
+                  appBase={appBase}
+                  salesName={data.name}
+                  salesSlug={data.slug}
+                  brand={brand}
+                />
               </div>
             </div>
-            <span aria-hidden="true" style={{ color: "var(--ink-4)", fontSize: 18 }}>
-              ›
-            </span>
-          </Link>
+          </div>
         </div>
 
         <div style={{ marginTop: 16 }}>
@@ -514,16 +531,6 @@ export default async function PanelPage({
         </div>
       </div>
 
-      {/* FAB "Nuevo cliente" — solo mobile, fijo sobre la tab bar */}
-      <div className="m-mobile-only">
-        <NewClientButton
-          fab
-          appBase={appBase}
-          salesName={data.name}
-          salesSlug={data.slug}
-          brand={brand}
-        />
-      </div>
     </>
   );
 }

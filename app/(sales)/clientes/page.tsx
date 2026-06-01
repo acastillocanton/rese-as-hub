@@ -64,14 +64,12 @@ export default async function ClientesPage() {
         breadcrumb={getBrandBreadcrumb(brand)}
         compact
         right={
-          <div className="m-hide-mobile">
-            <NewClientButton
-              appBase={appBase}
-              salesName={profile.full_name}
-              salesSlug={profile.slug}
-              brand={brand}
-            />
-          </div>
+          <NewClientButton
+            appBase={appBase}
+            salesName={profile.full_name}
+            salesSlug={profile.slug}
+            brand={brand}
+          />
         }
       />
 
@@ -167,19 +165,6 @@ export default async function ClientesPage() {
         )}
       </div>
 
-      {/* FAB "Nuevo cliente" — solo mobile, fijo sobre la tab bar.
-          Solo cuando hay clientes; en empty state el botón de la card es suficiente. */}
-      {clients.length > 0 && (
-        <div className="m-mobile-only">
-          <NewClientButton
-            fab
-            appBase={appBase}
-            salesName={profile.full_name}
-            salesSlug={profile.slug}
-            brand={brand}
-          />
-        </div>
-      )}
     </>
   );
 }
