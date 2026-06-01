@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { exchangeCodeForTokens, getUserInfo } from "@/lib/google/business-profile";
 
@@ -44,6 +45,32 @@ export async function GET(request: NextRequest) {
   const [, locationId] = state.split(".");
   if (!locationId || !/^[0-9a-f-]{36}$/i.test(locationId)) {
     fichasUrl.searchParams.set("oauth_error", "bad_state");
+    return clearCookieAndRedirect(fichasUrl);
+  }
+
+  // Defensa en profundidad: no confiar SOLO en la cookie state (que setea
+  // /start). Reconfirmamos que quien completa el flujo sigue autenticado y con
+  // permiso sobre esta location, por si el gate de /start regresara o la cookie
+  // se reutilizara tras revocar permisos. admin → cualquier ficha;
+  // office_director → solo la suya.
+  const authClient = await createClient();
+  const {
+    data: { user },
+  } = await authClient.auth.getUser();
+  if (!user) {
+    fichasUrl.searchParams.set("oauth_error", "not_authenticated");
+    return clearCookieAndRedirect(fichasUrl);
+  }
+  const { data: prof } = await authClient
+    .from("profiles")
+    .select("role, location_id")
+    .eq("id", user.id)
+    .maybeSingle<{ role: string; location_id: string | null }>();
+  const allowed =
+    prof?.role === "admin" ||
+    (prof?.role === "office_director" && prof.location_id === locationId);
+  if (!allowed) {
+    fichasUrl.searchParams.set("oauth_error", "forbidden");
     return clearCookieAndRedirect(fichasUrl);
   }
 

@@ -191,6 +191,24 @@ export async function processFreshReviews(
 
     if (insErr || !inserted) {
       console.error("[cron] insert review failed:", insErr, fr.google_review_id);
+      // Visibilidad: una reseña "fresca" (no detectada como existente) que
+      // falla al insertar suele ser una colisión del unique(location_id,
+      // google_review_id) — p.ej. IDs sintéticos de dos autores anónimos en el
+      // mismo segundo (ver lib/google/places.ts). Antes se perdía en silencio
+      // (incluida una posible alerta ≤2★). Dejamos traza para detectarlo.
+      await admin.from("audit_log").insert({
+        entity_type: "review",
+        entity_id: location.id,
+        action: "insert_collision",
+        payload: {
+          location_id: location.id,
+          google_review_id: fr.google_review_id,
+          author_name: fr.author_name,
+          rating: fr.rating,
+          source,
+          error: insErr?.message ?? null,
+        },
+      } as never);
       continue;
     }
 
@@ -205,6 +223,24 @@ export async function processFreshReviews(
           demoteErr,
           dup.demotedReviewId,
         );
+        // Fail-safe anti-doble-conteo: la nueva se insertó como principal pero
+        // la vieja NO se pudo demotar → quedarían DOS principales para el mismo
+        // cliente (inflaría KPIs/comisión). Revertimos la nueva a duplicada
+        // (sesgo a infra-contar, nunca sobre-contar) y dejamos traza.
+        await admin
+          .from("reviews")
+          .update({ is_duplicate: true } as never)
+          .eq("id", inserted.id);
+        await admin.from("audit_log").insert({
+          entity_type: "review",
+          entity_id: inserted.id,
+          action: "demote_failed_failsafe_duplicate",
+          payload: {
+            intended_demote: dup.demotedReviewId,
+            google_review_id: fr.google_review_id,
+            source,
+          },
+        } as never);
       } else {
         await admin.from("audit_log").insert({
           entity_type: "review",
@@ -249,10 +285,12 @@ export async function processFreshReviews(
       summary.unmatched++;
     }
 
-    // Alerta ≤2★: independiente del match_state. La idempotencia la
-    // garantiza el INSERT inicial (sólo procesamos reseñas frescas; un
-    // re-run no las re-inserta). Adicionalmente el flush marca
-    // `low_rating_alerted_at` tras envío exitoso como defensa.
+    // Alerta ≤2★: independiente del match_state. La idempotencia REAL la
+    // garantiza el INSERT inicial: sólo procesamos reseñas frescas (no
+    // existentes por unique(location_id, google_review_id)), así que un re-run
+    // no las re-inserta ni re-alerta. `low_rating_alerted_at` se rellena tras
+    // el envío (trazabilidad / posible reconciliación futura), pero hoy NO se
+    // lee en el flujo de sync — no construir defensas asumiendo que filtra.
     if (isLowRating(fr.rating)) {
       lowRatingAlerts.push({
         reviewId: inserted.id,

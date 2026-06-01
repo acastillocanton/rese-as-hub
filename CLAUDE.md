@@ -482,6 +482,7 @@ Cada listado de reseñas tiene un mini-link "Ver en Google" (icono `ExternalLink
 2. **Conectar las 7 fichas vía OAuth desde `/fichas`** en prod. El redirect URI de prod (`https://resenas.marinadorconstrucciones.com/api/google/oauth/callback`) ya está añadido en Google Cloud Console.
 3. **Verificar que el cron Business Profile** (`/api/cron/sync-google-reviews`, schedule `5 5 * * *` UTC en vercel.json) corre la noche siguiente y mete filas con `source='business_profile'`. Mirar `audit_log` para entries del cron + revisar en `/manager/resenas` filtro `Estado matching: Atribuidas`.
 4. **Pill "Business Profile" en dashboard y `/fichas`** cambia sola sin tocar código (lógica en §4.21). Confirmar visualmente.
+4.b. ⚠️ **Truncado del primer sync (hallazgo auditoría, §4.37 H3)**: el cron BP (`sync-google-reviews/route.ts`) hace early-exit por página + `MAX_PAGES=10` (500 reseñas). En la PRIMERA sincronización de una ficha con histórico profundo (>500 reseñas) **se perdería el tail** y los re-runs posteriores no lo recuperan (vuelven a salir pronto). Antes de conectar fichas con mucho histórico: hacer un backfill que pagine a fondo (subir `MAX_PAGES` temporalmente o un script one-shot) y marcar la ficha como "backfill completo". Solo afecta a la carga inicial; el régimen estable (top recientes) está bien.
 
 #### Bloque B — Limpieza de duplicados (one-shot)
 
@@ -735,6 +736,20 @@ La card placeholder `<ComingSoon>` del fondo de `/panel` se sustituyó por la se
   - Componente UI [components/ui/Badge.tsx](components/ui/Badge.tsx) (medalla, distinta del `Pill`): icono lucide en disco, estados `earned`/`locked`. `BadgesCard` ordena conseguidas primero.
 
   Si en el futuro se quiere fecha de desbloqueo o notificación al ganarlas, habría que persistir (tabla `achievements` + migración — "Ask first"). Hoy a propósito no se hace.
+
+### 4.37 Auditoría enfocada del pipeline (crons/matching/OAuth/landing/Excel) — 2026-06-01
+
+3ª ronda, sobre código crítico nunca auditado antes. Arreglado:
+- **Inyección de fórmulas en Excel (HIGH)**: `author_name`/`text` vienen de Google (atacante puede poner su display name como `=HYPERLINK(...)`) y se escribían crudos en celdas → al abrir el .xlsx, ejecución de fórmula/DDE. Helper [lib/reports/excel-safe.ts](lib/reports/excel-safe.ts) `excelSafe()` (prefija `'` si empieza por `= + - @ \t \r`) aplicado en los SINKS de [/api/export/reviews](app/api/export/reviews/route.ts) (hoja Detalle) y [lib/reports/sales-report.ts](lib/reports/sales-report.ts). Tests en [lib/reports/__tests__/excel-safe.test.ts](lib/reports/__tests__/excel-safe.test.ts).
+- **Cron — colisión de insert silenciosa (C2)**: si dos reseñas frescas colisionan en `unique(location_id, google_review_id)` (IDs sintéticos de anónimos en el mismo segundo) se perdían sin traza; ahora dejan `audit_log action='insert_collision'`.
+- **Cron — fail-safe anti-doble-conteo (C1)**: si el INSERT de la nueva principal va bien pero el UPDATE que demota a la vieja falla, quedarían dos principales (infla comisión). Ahora se revierte la nueva a `is_duplicate=true` (sesgo a infra-contar) + `audit_log action='demote_failed_failsafe_duplicate'`.
+- **Hardening**: `/api/sync/now` valida `location_id` como UUID; el callback OAuth ([api/google/oauth/callback](app/api/google/oauth/callback/route.ts)) reconfirma `getUser()` + rol/location (no solo la cookie state); `isPublicPath` ([lib/supabase/middleware.ts](lib/supabase/middleware.ts)) pasa a match por segmento exacto para `/login`,`/privacidad`,`/terminos`,`/accept-invite` (antes `/loginXYZ` colaba como público).
+- **Test de regresión RLS** [lib/__tests__/rls-self-update.test.ts](lib/__tests__/rls-self-update.test.ts): lee la última migración de `profiles_self_update` y verifica que todas las columnas sensibles siguen congeladas (codifica §4.36).
+
+**Diferidos (documentados, NO arreglados — latentes o de escala):**
+- **H2 lock de 60s < runtime del cron**: si una ficha tarda >60s en procesarse, dos crons podrían solaparse. Hoy irrelevante (7 fichas, proceso <1s). Cuando crezca la escala: refrescar el lock o subir la ventana / usar advisory lock. Ver §4.15/§4.b.
+- **H3 paginación Business Profile trunca el primer sync >500 reseñas**: el early-exit + `MAX_PAGES=10` puede dejar fuera el histórico profundo en la PRIMERA sincronización. **Latente: BP está a cuota 0.** Añadir a §4.26 (activación): primer sync paginando a fondo + flag "backfill completo". 
+- **M2** reassign sin cliente deja una counted con `client_id=null` (cuenta en KPI, no dedupable) — decisión de semántica de producto, sin cambio.
 
 ### 4.35 Periodo de comisión (20→20) + tarifa €/reseña por productor (mig 020)
 

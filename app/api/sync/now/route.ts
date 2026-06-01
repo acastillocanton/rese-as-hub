@@ -28,6 +28,9 @@ export const maxDuration = 60;
 
 type Payload = { location_id?: string };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const {
@@ -58,6 +61,11 @@ export async function POST(request: NextRequest) {
 
   if (profile.role === "admin" || profile.role === "reviews_manager") {
     if (typeof body.location_id === "string" && body.location_id.length > 0) {
+      // Validar formato UUID (defensa en profundidad; paridad con
+      // /api/export/sales/[id]). Evita propagar basura al filtro .in().
+      if (!UUID_RE.test(body.location_id)) {
+        return NextResponse.json({ error: "invalid_location_id" }, { status: 400 });
+      }
       locationIds = [body.location_id];
     } // si no, todas
   } else if (profile.role === "office_director" || profile.role === "sales") {

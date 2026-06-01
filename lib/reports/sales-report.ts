@@ -14,6 +14,7 @@
  */
 
 import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
+import { excelSafe } from "@/lib/reports/excel-safe";
 import type { SalesDepartment } from "@/lib/supabase/types";
 
 /**
@@ -206,8 +207,8 @@ export async function buildSalesReport(
     sorted.forEach((r, i) => {
       const rowIdx = tableHeaderRow + 1 + i;
       ws.getCell(rowIdx, 1).value = formatReviewDateForExcel(r.google_created_at);
-      ws.getCell(rowIdx, 2).value = r.client_name ?? "—";
-      ws.getCell(rowIdx, 3).value = r.author_name;
+      ws.getCell(rowIdx, 2).value = excelSafe(r.client_name ?? "—");
+      ws.getCell(rowIdx, 3).value = excelSafe(r.author_name);
       ws.getCell(rowIdx, 4).value = formatRatingForExcel(r.rating);
       const linkCell = ws.getCell(rowIdx, 5);
       const url = buildGoogleReviewListUrl(r.place_id);

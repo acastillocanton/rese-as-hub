@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { parseRange, previousMonthRange, rangeYearMonth } from "@/lib/date-range";
+import { excelSafe } from "@/lib/reports/excel-safe";
 import type { PauseReason, SalesDepartment } from "@/lib/supabase/types";
 import {
   DEPARTMENT_LABEL,
@@ -616,12 +617,12 @@ function renderDetailSheet(workbook: ExcelJS.Workbook, reviews: ReviewDetailRow[
   for (const r of reviews) {
     sheet.addRow({
       fecha: new Date(r.google_created_at),
-      autor: r.author_name,
+      autor: excelSafe(r.author_name),
       estrellas: r.rating,
-      comentario: r.text ?? "",
-      ficha: r.location?.name ?? "",
-      comercial: r.sales?.full_name ?? "Sin atribuir",
-      cliente: r.client?.full_name ?? "",
+      comentario: excelSafe(r.text ?? ""),
+      ficha: excelSafe(r.location?.name ?? ""),
+      comercial: excelSafe(r.sales?.full_name ?? "Sin atribuir"),
+      cliente: excelSafe(r.client?.full_name ?? ""),
       match: MATCH_LABEL[r.match_state] ?? r.match_state,
       duplicada: r.is_duplicate ? "Sí" : "",
       confianza: r.match_confidence,

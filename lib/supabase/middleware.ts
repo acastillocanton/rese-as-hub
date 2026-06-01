@@ -54,21 +54,34 @@ function isBlockedBot(ua: string | null): boolean {
 //  - /api/google/oauth/callback  OAuth return from Google Business Profile
 //  - /privacidad, /terminos  legal pages linked from OAuth consent
 //  - /_next, /favicon  framework + static assets
-const PUBLIC_PREFIXES = [
+// Rutas-página públicas: coincidencia por segmento exacto (la ruta exacta o un
+// subpath con "/"), para que "/loginXYZ" o "/terminos-falso" NO se traten como
+// públicas. (Aunque cada handler reverifica sesión, esto evita clasificar mal.)
+const PUBLIC_EXACT_OR_SUBPATH = [
   "/login",
   "/accept-invite",
+  "/privacidad",
+  "/terminos",
+];
+
+// Prefijos técnicos/servidor: coincidencia por prefijo crudo (cubren subpaths
+// y, en el caso de /favicon, /favicon.ico). No hay rutas sensibles que coluden.
+const PUBLIC_RAW_PREFIXES = [
   "/c/",
   "/auth/",
   "/api/cron",
   "/api/google/oauth/callback",
-  "/privacidad",
-  "/terminos",
   "/_next",
   "/favicon",
 ];
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p));
+  if (
+    PUBLIC_EXACT_OR_SUBPATH.some((p) => pathname === p || pathname.startsWith(p + "/"))
+  ) {
+    return true;
+  }
+  return PUBLIC_RAW_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
 // Allowlist of route prefixes per role. Keep this explicit — do NOT use a
