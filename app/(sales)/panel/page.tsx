@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Users } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
-import { SyncNowButton } from "@/components/ui/SyncNowButton";
+
 
 // Forzamos render dinámico: la página usa `new Date()` para proyección ETA
 // y deltas vs mes pasado. Si Next cachea la respuesta, los relativos
@@ -229,14 +229,18 @@ export default async function PanelPage({
         compact
         right={
           <>
-            <SyncNowButton label="Buscar mis reseñas" size="sm" variant="ghost" />
             <RangePicker
               from={range.from}
               to={range.to}
               label={range.label}
               shortcuts={shortcuts}
             />
-            <CopyLinkButton url={fullUrl} label="Compartir mi enlace" primary />
+            <NewClientButton
+              appBase={appBase}
+              salesName={data.name}
+              salesSlug={data.slug}
+              brand={brand}
+            />
           </>
         }
       />
@@ -368,67 +372,50 @@ export default async function PanelPage({
           </div>
         </Card>
 
-        {/* Card "Mis clientes" — solo mobile (en desktop el sidebar ya lo cubre). */}
+        {/* Card "Ver mis clientes" — solo mobile (en desktop el sidebar ya lo cubre). */}
         <div className="m-mobile-only" style={{ marginTop: 16 }}>
-          <div
+          <Link
+            href="/clientes"
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              padding: "16px 18px",
               background: "var(--surface)",
               border: "1px solid var(--line)",
               borderRadius: 14,
+              textDecoration: "none",
+              color: "var(--ink)",
               boxShadow: "var(--shadow-card)",
-              overflow: "hidden",
             }}
           >
-            <Link
-              href="/clientes"
+            <div
+              aria-hidden="true"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                padding: "16px 18px 14px",
-                textDecoration: "none",
-                color: "var(--ink)",
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: "var(--surface-2)",
+                display: "grid",
+                placeItems: "center",
+                color: "var(--ink-2)",
+                flexShrink: 0,
               }}
             >
-              <div
-                aria-hidden="true"
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  background: "var(--surface-2)",
-                  display: "grid",
-                  placeItems: "center",
-                  color: "var(--ink-2)",
-                  flexShrink: 0,
-                }}
-              >
-                <Users size={20} strokeWidth={1.75} />
+              <Users size={20} strokeWidth={1.75} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>
+                Ver mis clientes
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>
-                  Mis clientes
-                </div>
-                <div style={{ fontSize: 12.5, color: "var(--ink-4)", marginTop: 2 }}>
-                  Da de alta antes de pedir una reseña
-                </div>
-              </div>
-              <span aria-hidden="true" style={{ color: "var(--ink-4)", fontSize: 18 }}>
-                ›
-              </span>
-            </Link>
-            <div style={{ padding: "0 16px 16px", borderTop: "1px solid var(--line)" }}>
-              <div style={{ paddingTop: 12 }}>
-                <NewClientButton
-                  cardCta
-                  appBase={appBase}
-                  salesName={data.name}
-                  salesSlug={data.slug}
-                  brand={brand}
-                />
+              <div style={{ fontSize: 12.5, color: "var(--ink-4)", marginTop: 2 }}>
+                Da de alta antes de pedir una reseña
               </div>
             </div>
-          </div>
+            <span aria-hidden="true" style={{ color: "var(--ink-4)", fontSize: 18 }}>
+              ›
+            </span>
+          </Link>
         </div>
 
         <div style={{ marginTop: 16 }}>
