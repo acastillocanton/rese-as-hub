@@ -332,7 +332,7 @@ export default async function PanelPage({
                 >
                   {data.reviews} / {data.goal}
                 </div>
-                <div style={{ marginTop: 8, maxWidth: 240 }}>
+                <div style={{ marginTop: 8 }}>
                   {!isCurrentPeriod ? (
                     <span style={{ fontSize: 12.5, color: "var(--ink-4)", lineHeight: 1.5 }}>
                       Vista del rango {range.label}. La proyección al objetivo solo se calcula sobre el periodo en curso.
@@ -342,7 +342,6 @@ export default async function PanelPage({
                       style={{
                         padding: "8px 10px",
                         borderRadius: 6,
-                        borderLeft: `3px solid ${remaining === 0 || etaLabel ? "var(--ok)" : "var(--warn)"}`,
                         background: remaining === 0 || etaLabel ? "var(--ok-bg)" : "var(--warn-bg)",
                         display: "flex",
                         gap: 7,
