@@ -101,6 +101,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       .select("opened_at, source")
       .eq("client_id", client.id)
       .order("opened_at", { ascending: false })
+      .limit(1000) // límite defensivo: un cliente no debería tener tantas visitas
       .returns<{ opened_at: string; source: string }[]>(),
     supabase
       .from("reviews")
@@ -108,6 +109,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       .eq("client_id", client.id)
       .is("removed_at", null)
       .order("google_created_at", { ascending: false })
+      .limit(1000)
       .returns<ReviewRow[]>(),
   ]);
 

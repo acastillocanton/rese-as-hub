@@ -148,6 +148,7 @@ export default async function DashboardPage({
       .eq("is_duplicate", false)
       .gte("google_created_at", range.startIso)
       .lt("google_created_at", range.endIso)
+      .limit(10000) // techo defensivo de KPIs del periodo (global, todas las fichas)
       .returns<ReviewLite[]>(),
     supabase
       .from("reviews")
@@ -155,6 +156,7 @@ export default async function DashboardPage({
       .is("removed_at", null)
       .eq("is_duplicate", false)
       .gte("google_created_at", start6Months)
+      .limit(20000) // techo del histórico de 6 meses para el gráfico de barras
       .returns<{ google_created_at: string }[]>(),
   ]);
 

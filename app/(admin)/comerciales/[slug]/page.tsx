@@ -163,6 +163,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
       .select("id, full_name, slug, created_at")
       .eq("sales_id", sales.id)
       .order("created_at", { ascending: false })
+      .limit(2000)
       .returns<
         { id: string; full_name: string; slug: string; created_at: string }[]
       >(),
@@ -183,6 +184,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
       .gte("google_created_at", range.startIso)
       .lt("google_created_at", range.endIso)
       .order("google_created_at", { ascending: false })
+      .limit(1000)
       .returns<ReviewRow[]>(),
   ]);
 

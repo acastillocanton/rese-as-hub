@@ -45,7 +45,8 @@ export default async function ClientesPage() {
           .from("clients")
           .select("id, full_name, slug, email, phone, created_at")
           .eq("sales_id", user.id)
-          .order("created_at", { ascending: false }),
+          .order("created_at", { ascending: false })
+          .limit(2000), // límite defensivo de la cartera del comercial
       ]);
       salesProfile = profileRes.data ?? null;
       if (clientsRes.error) {
