@@ -116,7 +116,9 @@ export default async function ManagerResenasPage({
   if (ratingLteNum !== null) query = query.lte("rating", ratingLteNum);
 
   const [reviewsRes, salesRes, locationsRes] = await Promise.all([
-    query.returns<ReviewRow[]>(),
+    // Límite defensivo: evita traer un volumen sin tope si el rango/filtro es
+    // amplio. 1000 cubre cualquier periodo real de gestión con holgura.
+    query.limit(1000).returns<ReviewRow[]>(),
     supabase
       .from("profiles")
       .select("id, full_name, slug, role")

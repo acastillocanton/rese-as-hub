@@ -114,7 +114,9 @@ export function LeaderboardCardList({ rows }: { rows: LeaderboardRow[] }) {
                 paddingTop: 4,
               }}
             >
-              <StatCell label="Reseñas" value={p.reviews} muted={p.reviews === 0} strong />
+              {/* "Verificadas" = counted (abonables): el ranking del comercial se
+                  ordena por esta métrica, así que mostramos el mismo número. */}
+              <StatCell label="Verificadas" value={p.counted} muted={p.counted === 0} strong />
               <StatCell label="Meta" value={p.goal} muted={p.goal === 0} />
             </div>
           </article>

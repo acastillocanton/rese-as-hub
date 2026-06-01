@@ -7,6 +7,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { createInvitedProfile } from "@/lib/invite";
 import { generateAccessLink } from "@/lib/auth/resend-link";
 import { slugify } from "@/lib/utils";
+import { recordAudit } from "@/lib/audit";
+import { commissionRateSchema, departmentSchema } from "@/lib/validation/sales-schemas";
 
 /**
  * Asegura que el caller puede administrar directores. Admite admin global y
@@ -36,28 +38,7 @@ async function assertCanManageDirectors(): Promise<
 
 // El director es también productor (vende, tiene reseñas, aparece en
 // leaderboard/Excel). Por eso pedimos los mismos campos de comercial:
-// department, language (si internacional), monthly_goal.
-const departmentSchema = z.enum(["nacional", "internacional", "castellon", "valencia"]);
-
-/**
- * Tarifa de comisión por reseña en € (mig 020). El director también es
- * productor y cobra comisión. Vacío → null. Admite coma decimal, redondea a 2
- * decimales y acota a [0, 9999]. (Mismo criterio que en comerciales/actions.ts;
- * se redefine aquí porque "use server" no permite exportar/importar el helper.)
- */
-const commissionRateSchema = z
-  .union([z.string(), z.number()])
-  .optional()
-  .nullable()
-  .transform((v) => {
-    if (v === null || v === undefined) return null;
-    const s = typeof v === "number" ? String(v) : v.trim();
-    if (s === "") return null;
-    const n = Number(s.replace(",", "."));
-    if (!Number.isFinite(n) || n < 0) return null;
-    return Math.round(Math.min(n, 9999) * 100) / 100;
-  });
-
+// department, language (si internacional), monthly_goal, commission_rate.
 const inviteDirectorSchema = z
   .object({
     fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
@@ -213,6 +194,14 @@ export async function updateDirector(input: UpdateDirectorInput) {
     console.error("[directores] updateDirector failed:", error);
     return { ok: false as const, error: error.message };
   }
+  // Traza de la tarifa de comisión (campo que afecta a pagos). Los directores
+  // solo los edita admin/reviews_manager.
+  await recordAudit({
+    entityType: "profile",
+    entityId: parsed.data.id,
+    action: "update_commission_rate",
+    payload: { commission_rate: parsed.data.commissionRate },
+  });
   revalidatePath("/directores");
   revalidatePath(`/directores/${parsed.data.id}`);
   return { ok: true as const };

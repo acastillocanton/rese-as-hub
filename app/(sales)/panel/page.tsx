@@ -183,7 +183,9 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
 
   // Reseñas del rango con su estado, para separar abonables (counted) de
   // potenciales (pending). Solo no-duplicadas y no-eliminadas.
-  const [reviewsRange, links, prevCountedRes] = await Promise.all([
+  // `loadPanelInsights` va en el mismo Promise.all para no serializar sus
+  // queries tras las del hero (antes se esperaba secuencialmente).
+  const [reviewsRange, links, prevCountedRes, insights] = await Promise.all([
     supabase
       .from("reviews")
       .select("rating, match_state")
@@ -211,6 +213,7 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
           .gte("google_created_at", prev.startIso)
           .lt("google_created_at", prev.endIso)
       : Promise.resolve(null),
+    loadPanelInsights(supabase, user.id, profileRes.data.director_id, range, now),
   ]);
 
   const rows = reviewsRange.data ?? [];
@@ -220,14 +223,6 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
     rows.length === 0
       ? null
       : rows.reduce((sum, r) => sum + r.rating, 0) / rows.length;
-
-  const insights = await loadPanelInsights(
-    supabase,
-    user.id,
-    profileRes.data.director_id,
-    range,
-    now,
-  );
 
   return {
     name: profileRes.data.full_name,
@@ -318,6 +313,9 @@ async function loadPanelInsights(
         endIso: range.endIso,
         teamFilter: { directorId },
         currentUserId: userId,
+        // Posición por reseñas verificadas (abonables), no totales — coherente
+        // con la narrativa de comisión del panel y las insignias podio/líder.
+        metric: "counted",
       }),
     ]);
 

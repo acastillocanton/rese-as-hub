@@ -50,10 +50,13 @@ export type LeaderboardRow = {
   name: string;
   status: string;
   branch: string;
+  /** visits/conv se calculan por compatibilidad pero NO se muestran en ninguna
+   *  pantalla (las visitas dejaron de ser KPI accionable, ver CLAUDE.md §4.30).
+   *  Se conservan por si se reactivan; eliminar si tras tiempo siguen sin uso. */
   visits: number;
   reviews: number;
   counted: number;
-  /** Conversión visitas → reseñas, 0..100 (entero). */
+  /** Conversión visitas → reseñas, 0..100 (entero). Ver nota de `visits`. */
   conv: number;
   goal: number;
   isDirector: boolean;
@@ -70,8 +73,19 @@ export function computeLeaderboard(args: {
   reviews: LeaderboardReview[];
   /** Si se pasa, la fila con `id === currentUserId` se marca con `isSelf: true`. */
   currentUserId?: string;
+  /**
+   * Métrica de ordenación:
+   *   - "reviews" (default): por reseñas atribuidas no-duplicadas (uso admin).
+   *   - "counted": por reseñas VERIFICADAS (abonables). Lo usa el panel del
+   *     comercial para que la posición/"Líder" sea coherente con la comisión.
+   */
+  metric?: "reviews" | "counted";
 }): LeaderboardRow[] {
-  const { sales, locations, shares, reviews, currentUserId } = args;
+  const { sales, locations, shares, reviews, currentUserId, metric = "reviews" } = args;
+
+  // Índice por id para evitar O(n·m) con locations.find dentro del map.
+  const locationById = new Map<string, LeaderboardLocation>();
+  for (const l of locations) locationById.set(l.id, l);
 
   const sharesBySales = new Map<string, number>();
   for (const s of shares) {
@@ -93,7 +107,7 @@ export function computeLeaderboard(args: {
 
   return sales
     .map((s) => {
-      const location = locations.find((l) => l.id === s.location_id);
+      const location = s.location_id ? locationById.get(s.location_id) : undefined;
       const visits = sharesBySales.get(s.id) ?? 0;
       const reviewsN = reviewsBySales.get(s.id) ?? 0;
       const counted = reviewsCountedBySales.get(s.id) ?? 0;
@@ -115,7 +129,7 @@ export function computeLeaderboard(args: {
     })
     .sort(
       (a, b) =>
-        b.reviews - a.reviews ||
+        (metric === "counted" ? b.counted - a.counted : b.reviews - a.reviews) ||
         a.name.localeCompare(b.name, "es"),
     );
 }
@@ -141,6 +155,8 @@ export async function getLeaderboard(opts: {
   endIso: string;
   teamFilter?: { directorId: string | null };
   currentUserId?: string;
+  /** Métrica de orden — ver computeLeaderboard. Default "reviews". */
+  metric?: "reviews" | "counted";
 }): Promise<LeaderboardRow[]> {
   // Path "ranking del propio equipo del rol sales": usa service-role porque
   // RLS de profiles bloquea a un sales leer otros perfiles. Filtro server-side
@@ -181,6 +197,7 @@ export async function getLeaderboard(opts: {
       shares: sharesRes.data ?? [],
       reviews: reviewsRes.data ?? [],
       currentUserId: opts.currentUserId,
+      metric: opts.metric,
     });
   }
 
@@ -219,5 +236,6 @@ export async function getLeaderboard(opts: {
     shares: sharesRes.data ?? [],
     reviews: reviewsRes.data ?? [],
     currentUserId: opts.currentUserId,
+    metric: opts.metric,
   });
 }

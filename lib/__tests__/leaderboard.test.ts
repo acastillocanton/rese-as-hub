@@ -184,4 +184,33 @@ describe("computeLeaderboard", () => {
     const rows = computeLeaderboard({ sales, locations: LOC, shares: [], reviews: [] });
     expect(rows.every((r) => r.isSelf === false)).toBe(true);
   });
+
+  it("metric='counted' ordena por verificadas, no por reseñas totales", () => {
+    // a: 1 counted + 3 pending = 4 totales, 1 verificada.
+    // b: 2 counted = 2 totales, 2 verificadas.
+    const sales: LeaderboardSales[] = [
+      baseSale({ id: "a", full_name: "Ana", slug: "ana" }),
+      baseSale({ id: "b", full_name: "Bea", slug: "bea" }),
+    ];
+    const reviews = [
+      { sales_id: "a", match_state: "counted" },
+      { sales_id: "a", match_state: "pending" },
+      { sales_id: "a", match_state: "pending" },
+      { sales_id: "a", match_state: "pending" },
+      { sales_id: "b", match_state: "counted" },
+      { sales_id: "b", match_state: "counted" },
+    ];
+    // Por defecto (reviews): a (4) va antes que b (2).
+    const byReviews = computeLeaderboard({ sales, locations: LOC, shares: [], reviews });
+    expect(byReviews.map((r) => r.id)).toEqual(["a", "b"]);
+    // Por counted: b (2 verificadas) va antes que a (1 verificada).
+    const byCounted = computeLeaderboard({
+      sales,
+      locations: LOC,
+      shares: [],
+      reviews,
+      metric: "counted",
+    });
+    expect(byCounted.map((r) => r.id)).toEqual(["b", "a"]);
+  });
 });

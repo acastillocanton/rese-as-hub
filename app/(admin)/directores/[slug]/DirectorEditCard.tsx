@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { Pill } from "@/components/ui/Pill";
 import { formatEuro } from "@/lib/utils";
+import { DEPARTMENT_OPTIONS, STATUS_OPTIONS } from "@/lib/constants";
 import { updateDirector, type UpdateDirectorInput } from "../actions";
 import {
   SALES_LANGUAGES,
@@ -29,24 +30,10 @@ export type DirectorEditCardProps = {
   };
 };
 
-const DEPARTMENT_OPTIONS: { value: SalesDepartment; label: string }[] = [
-  { value: "nacional", label: "Nacional" },
-  { value: "internacional", label: "Internacional" },
-  { value: "castellon", label: "Castellón" },
-  { value: "valencia", label: "Valencia" },
-];
-
 function departmentLabel(d: SalesDepartment | null): string {
   if (!d) return "Sin asignar";
   return DEPARTMENT_OPTIONS.find((o) => o.value === d)?.label ?? d;
 }
-
-// 'archived' no se gestiona desde este card — lo hace ArchiveDirectorButton.
-const STATUS_OPTIONS: { value: Exclude<ProfileStatus, "archived">; label: string }[] = [
-  { value: "invited", label: "Invitado (no ha entrado)" },
-  { value: "active", label: "Activo" },
-  { value: "paused", label: "Pausado" },
-];
 
 export function DirectorEditCard({
   id,

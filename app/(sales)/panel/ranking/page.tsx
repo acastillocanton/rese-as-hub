@@ -70,6 +70,8 @@ export default async function SalesRankingPage({
     endIso: range.endIso,
     teamFilter: { directorId: profile.director_id },
     currentUserId: profile.id,
+    // Ranking por reseñas VERIFICADAS (abonables) — coherente con la comisión.
+    metric: "counted",
   });
 
   const teamSize = rows.length;

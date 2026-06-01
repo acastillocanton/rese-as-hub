@@ -7,8 +7,14 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { createInvitedProfile } from "@/lib/invite";
 import { generateAccessLink } from "@/lib/auth/resend-link";
 import { slugify } from "@/lib/utils";
+import { recordAudit } from "@/lib/audit";
 import type { Role } from "@/lib/supabase/types";
 import { canManageSales } from "@/lib/supabase/types";
+import {
+  commissionRateSchema,
+  departmentSchema,
+  pauseReasonSchema,
+} from "@/lib/validation/sales-schemas";
 
 type Actor = { role: Role; locationId: string | null; userId: string };
 
@@ -113,28 +119,6 @@ const ymdSchema = z
     const dt = new Date(y, m - 1, d);
     return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
   }, "Fecha inválida.");
-
-const departmentSchema = z.enum(["nacional", "internacional", "castellon", "valencia"]);
-
-const pauseReasonSchema = z.enum(["vacaciones", "baja_medica", "permiso_laboral"]);
-
-/**
- * Tarifa de comisión por reseña en € (mig 020). Acepta string del form o
- * number. Vacío → null (tarifa no configurada). Admite coma decimal. Se
- * redondea a 2 decimales y se acota a [0, 9999].
- */
-const commissionRateSchema = z
-  .union([z.string(), z.number()])
-  .optional()
-  .nullable()
-  .transform((v) => {
-    if (v === null || v === undefined) return null;
-    const s = typeof v === "number" ? String(v) : v.trim();
-    if (s === "") return null;
-    const n = Number(s.replace(",", "."));
-    if (!Number.isFinite(n) || n < 0) return null;
-    return Math.round(Math.min(n, 9999) * 100) / 100;
-  });
 
 const inviteSchema = z
   .object({
@@ -357,6 +341,14 @@ export async function updateSales(input: UpdateSalesInput) {
     console.error("[comerciales] updateSales failed:", error);
     return { ok: false as const, error: error.message };
   }
+
+  // Traza de la tarifa de comisión (campo que afecta a pagos).
+  await recordAudit({
+    entityType: "profile",
+    entityId: parsed.data.id,
+    action: "update_commission_rate",
+    payload: { commission_rate: parsed.data.commissionRate, actor_id: auth.actor.userId },
+  });
 
   revalidatePath("/comerciales");
   revalidatePath(`/comerciales/${parsed.data.id}`);

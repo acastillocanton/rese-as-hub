@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { Pill } from "@/components/ui/Pill";
 import { formatEuro } from "@/lib/utils";
+import { DEPARTMENT_OPTIONS, PAUSE_REASON_OPTIONS, STATUS_OPTIONS } from "@/lib/constants";
 import { updateSales, type UpdateSalesInput } from "../actions";
 import {
   SALES_LANGUAGES,
@@ -34,25 +35,7 @@ export type SalesEditCardProps = {
   };
 };
 
-const DEPARTMENT_OPTIONS: { value: SalesDepartment; label: string }[] = [
-  { value: "nacional", label: "Nacional" },
-  { value: "internacional", label: "Internacional" },
-  { value: "castellon", label: "Castellón" },
-  { value: "valencia", label: "Valencia" },
-];
-
-const PAUSE_REASON_OPTIONS: { value: PauseReason; label: string }[] = [
-  { value: "vacaciones", label: "Vacaciones" },
-  { value: "baja_medica", label: "Baja médica" },
-  { value: "permiso_laboral", label: "Permiso laboral" },
-];
-
-// 'archived' no se gestiona desde este card (lo hace ArchiveSalesButton).
-const STATUS_OPTIONS: { value: Exclude<ProfileStatus, "archived">; label: string }[] = [
-  { value: "invited", label: "Invitado (no ha entrado)" },
-  { value: "active", label: "Activo" },
-  { value: "paused", label: "Pausado" },
-];
+// Opciones compartidas en lib/constants.ts (antes duplicadas en cada form).
 
 export function SalesEditCard({
   id,

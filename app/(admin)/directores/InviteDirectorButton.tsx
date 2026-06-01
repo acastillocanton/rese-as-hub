@@ -3,16 +3,10 @@
 import { useState, useTransition } from "react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { SALES_LANGUAGES, type SalesDepartment } from "@/lib/supabase/types";
+import { DEPARTMENT_OPTIONS } from "@/lib/constants";
 import { inviteOfficeDirector } from "./actions";
 
 type LocationOption = { id: string; name: string };
-
-const DEPARTMENT_OPTIONS: { value: SalesDepartment; label: string }[] = [
-  { value: "nacional", label: "Nacional" },
-  { value: "internacional", label: "Internacional" },
-  { value: "castellon", label: "Castellón" },
-  { value: "valencia", label: "Valencia" },
-];
 
 export function InviteDirectorButton({
   locations,

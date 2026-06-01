@@ -19,6 +19,7 @@ import {
   type DateRange,
 } from "@/lib/date-range";
 import { formatEuro } from "@/lib/utils";
+import { formatReviewDate, matchStateLabel, matchStateTone } from "@/lib/format";
 
 // `new Date()` + rango activo basado en "ahora" → forzamos dinámico.
 export const dynamic = "force-dynamic";
@@ -103,6 +104,9 @@ export default async function MisResenasPage({
     .gte("google_created_at", range.startIso)
     .lt("google_created_at", range.endIso)
     .order("google_created_at", { ascending: false })
+    // Límite defensivo: el rango podría abarcar mucho histórico para un
+    // comercial muy activo. 1000 cubre cualquier periodo real con holgura.
+    .limit(1000)
     .returns<ReviewRow[]>();
 
   const reviews = reviewsRes.data ?? [];
@@ -110,32 +114,24 @@ export default async function MisResenasPage({
   // KPIs del rango — anti-fraude (mig 015): contamos sólo las NO duplicadas.
   // Las duplicadas siguen apareciendo en el listado con badge "Duplicada".
   const total = reviews.length;
-  const counted = reviews.filter(
-    (r) => r.match_state === "counted" && !r.is_duplicate,
-  ).length;
-  const pending = reviews.filter(
-    (r) => r.match_state === "pending" && !r.is_duplicate,
-  ).length;
+  // Conjunto "computable" (no duplicadas) sobre el que se calculan los KPIs de
+  // calidad, coherente con counted/pending (que también excluyen duplicadas).
+  const scored = reviews.filter((r) => !r.is_duplicate);
+  const counted = scored.filter((r) => r.match_state === "counted").length;
+  const pending = scored.filter((r) => r.match_state === "pending").length;
   const duplicates = reviews.filter((r) => r.is_duplicate).length;
   const avgRating =
-    reviews.length > 0
-      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+    scored.length > 0
+      ? scored.reduce((sum, r) => sum + r.rating, 0) / scored.length
       : null;
-  const fiveStars = reviews.filter((r) => r.rating === 5).length;
+  const fiveStars = scored.filter((r) => r.rating === 5).length;
   const fiveStarsPct =
-    reviews.length > 0 ? Math.round((fiveStars / reviews.length) * 100) : null;
+    scored.length > 0 ? Math.round((fiveStars / scored.length) * 100) : null;
 
   // Comisión estimada del periodo: solo las abonables (counted) × tarifa.
   const rate = profile.commission_rate;
   const earnedEuro = rate !== null ? rate * counted : null;
   const pendingEuro = rate !== null ? rate * pending : null;
-
-  const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
 
   return (
     <>
@@ -283,7 +279,7 @@ export default async function MisResenasPage({
           ) : (
             <div>
               {reviews.map((r) => (
-                <ReviewItem key={r.id} review={r} fmtDate={fmtDate} />
+                <ReviewItem key={r.id} review={r} fmtDate={formatReviewDate} />
               ))}
             </div>
           )}
@@ -386,20 +382,6 @@ function ReviewItem({
       </div>
     </div>
   );
-}
-
-function matchStateLabel(state: string): string {
-  if (state === "counted") return "Contada";
-  if (state === "pending") return "Por verificar";
-  if (state === "manual") return "Manual";
-  if (state === "unmatched") return "Sin atribuir";
-  return state;
-}
-
-function matchStateTone(state: string): "ok" | "warn" | "neutral" {
-  if (state === "counted" || state === "manual") return "ok";
-  if (state === "pending") return "warn";
-  return "neutral";
 }
 
 function EmptyState({ range }: { range: DateRange }) {

@@ -7,7 +7,9 @@ type RingProps = {
 export function Ring({ value, max, size = 120 }: RingProps) {
   const r = size / 2 - 8;
   const c = 2 * Math.PI * r;
-  const pct = Math.min(1, value / max);
+  // Guarda contra max=0 (objetivo 0 está permitido): evita NaN/Infinity en el
+  // porcentaje y en strokeDasharray.
+  const pct = max > 0 ? Math.min(1, value / max) : 0;
   return (
     <svg
       width={size}
