@@ -4,12 +4,22 @@
  * tonos del match_state).
  */
 
-/** Fecha de reseña en formato "05 jun 2026" (es-ES). */
+/** Fecha en formato "05 jun 2026" (es-ES). Reutilizada en reseñas y fichas. */
 export function formatReviewDate(iso: string): string {
   return new Date(iso).toLocaleDateString("es-ES", {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  });
+}
+
+/** Fecha + hora corta "05 jun, 14:30" (es-ES). Para actividad reciente. */
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 

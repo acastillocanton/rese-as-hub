@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
+import { FormField as Field, formInputStyle as inputStyle } from "@/components/ui/FormField";
 import {
   createClientRecord,
   findOrphanReviewsForClient,
@@ -226,42 +227,4 @@ const modalHeader: React.CSSProperties = {
   borderBottom: "1px solid var(--line)",
 };
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "9px 12px",
-  background: "var(--surface)",
-  border: "1px solid var(--line-strong)",
-  borderRadius: 9,
-  fontSize: 13,
-  color: "var(--ink)",
-};
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 11.5,
-          color: "var(--ink-4)",
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-          marginBottom: 6,
-        }}
-      >
-        {label}
-      </div>
-      {children}
-      {hint && (
-        <div style={{ marginTop: 4, fontSize: 11.5, color: "var(--ink-4)" }}>{hint}</div>
-      )}
-    </div>
-  );
-}
+// inputStyle (formInputStyle) y Field (FormField) viven en components/ui/FormField.tsx

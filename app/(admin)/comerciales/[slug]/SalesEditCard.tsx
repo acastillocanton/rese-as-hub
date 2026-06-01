@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { Pill } from "@/components/ui/Pill";
 import { formatEuro } from "@/lib/utils";
+import { formatReviewDate } from "@/lib/format";
 import { DEPARTMENT_OPTIONS, PAUSE_REASON_OPTIONS, STATUS_OPTIONS } from "@/lib/constants";
 import { updateSales, type UpdateSalesInput } from "../actions";
 import {
@@ -83,12 +84,7 @@ export function SalesEditCard({
   const [notes, setNotes] = useState<string>(initial.notes ?? "");
 
   const currentLocation = locations.find((l) => l.id === locationId);
-  const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+  const fmtDate = formatReviewDate;
 
   function onCancel() {
     setPhone(initialPhone ?? "");

@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus, OauthStatus } from "@/lib/supabase/types";
 import { MONTHS } from "@/lib/demo-data";
+import { formatDateTime } from "@/lib/format";
 import {
   parseRange,
   defaultShortcuts,
@@ -279,13 +280,7 @@ export default async function DashboardPage({
   const teamProgress = teamGoal > 0 ? Math.round((teamCounted / teamGoal) * 100) : 0;
   const rangeLabel = range.label;
 
-  const fmtDateTime = (iso: string) =>
-    new Date(iso).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const fmtDateTime = formatDateTime;
 
   return (
     <>
