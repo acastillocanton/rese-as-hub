@@ -6,11 +6,22 @@ import { NewClientButton } from "./NewClientButton";
 import { ClientRowItem } from "./ClientRowItem";
 import type { ClientRow } from "./actions";
 import { DEFAULT_BRAND, getBrandBreadcrumb } from "@/lib/branding";
+import type { SavedTemplates } from "@/lib/messaging";
 import type { Brand } from "@/lib/supabase/types";
 
-type SalesProfile = { full_name: string; slug: string; locations: { brand: Brand } | null };
+type SalesProfile = {
+  full_name: string;
+  slug: string;
+  locations: { brand: Brand } | null;
+  message_templates: SavedTemplates;
+};
 
-const DEMO_PROFILE: SalesProfile = { full_name: "Mateo Salgado", slug: "mateo-salgado", locations: null };
+const DEMO_PROFILE: SalesProfile = {
+  full_name: "Mateo Salgado",
+  slug: "mateo-salgado",
+  locations: null,
+  message_templates: null,
+};
 
 export default async function ClientesPage() {
   let salesProfile: SalesProfile | null = null;
@@ -27,7 +38,7 @@ export default async function ClientesPage() {
       const [profileRes, clientsRes] = await Promise.all([
         supabase
           .from("profiles")
-          .select("full_name, slug, locations:locations(brand)")
+          .select("full_name, slug, message_templates, locations:locations(brand)")
           .eq("id", user.id)
           .maybeSingle<SalesProfile>(),
         supabase
@@ -69,6 +80,7 @@ export default async function ClientesPage() {
             salesName={profile.full_name}
             salesSlug={profile.slug}
             brand={brand}
+            templates={profile.message_templates}
           />
         }
       />
@@ -126,6 +138,7 @@ export default async function ClientesPage() {
               salesName={profile.full_name}
               salesSlug={profile.slug}
               brand={brand}
+              templates={profile.message_templates}
             />
           </Card>
         ) : (
@@ -159,6 +172,7 @@ export default async function ClientesPage() {
                 salesName={profile.full_name}
                 salesSlug={profile.slug}
                 brand={brand}
+                templates={profile.message_templates}
               />
             ))}
           </Card>

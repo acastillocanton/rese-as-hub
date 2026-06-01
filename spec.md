@@ -282,7 +282,7 @@ El MVP está hecho cuando **todas** estas condiciones son verdad:
 **Funcionales** (✅ todos verificados al cerrar v1):
 - [x] Admin puede dar de alta una ficha Google, conectarla por OAuth (o solo Place ID para Places API), y ver el estado de sincronización en `/fichas`.
 - [x] Admin puede invitar a un comercial, asignarle ficha y objetivo mensual. El comercial recibe email y completa alta vía magic-link.
-- [x] Comercial puede registrar un cliente desde `/clientes` y obtener URL `{appBase}/c/{sales-slug}/{client-slug}`, QR para imprimir, y deep-links WhatsApp/Email/SMS.
+- [x] Comercial puede registrar un cliente desde `/clientes` y obtener URL `{appBase}/c/{sales-slug}/{client-slug}`, QR para imprimir, y deep-links WhatsApp/Email/SMS. El mensaje ofrece **3 plantillas** según perfil (recién atendido / reavivar visita / breve) y el comercial puede personalizarlas a su tono en `/panel/plantillas` (persisten en `profiles.message_templates`, mig 019).
 - [x] Abrir ese enlace lleva al cliente directamente a la URL de "escribir reseña" en Google sin landing intermedia (302 redirect).
 - [x] Tras dejar una reseña real en Google, el cron Places la detecta (en producción desde 2026-05-23) y la atribuye al comercial via matcher (ventana 48h + similitud nombre + modo anonymous). Aparece en panel + dashboard.
 - [x] Una reseña dejada **sin** pasar por nuestro enlace queda como `unmatched` en `/resenas/verificacion` (no se pierde).

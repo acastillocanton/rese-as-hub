@@ -1,13 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useState } from "react";
+import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import {
   DEFAULT_EMAIL_SUBJECT,
   emailHref,
-  getDefaultReviewMessageTemplate,
+  MESSAGE_TEMPLATES,
+  type MessageTemplateId,
   renderMessage,
+  resolveTemplate,
+  type SavedTemplates,
   smsHref,
   whatsappHref,
 } from "@/lib/messaging";
@@ -23,6 +27,8 @@ export type ShareBlockProps = {
   clientPhone?: string | null;
   qrSize?: number;
   brand: Brand;
+  /** Versiones personalizadas del comercial (profiles.message_templates). */
+  templates?: SavedTemplates;
 };
 
 export function ShareBlock({
@@ -35,22 +41,33 @@ export function ShareBlock({
   clientPhone,
   qrSize = 144,
   brand,
+  templates,
 }: ShareBlockProps) {
   const fullUrl = `${appBase}/c/${salesSlug}/${clientSlug}`;
   const displayUrl = fullUrl.replace(/^https?:\/\//, "");
 
-  const initialMessage = useMemo(
-    () =>
-      renderMessage(getDefaultReviewMessageTemplate(brand), {
+  // Renderiza la plantilla `id` (override del comercial o base) con los datos
+  // de este cliente. Memoizado por las deps que afectan al texto.
+  const buildMessage = useCallback(
+    (id: MessageTemplateId) =>
+      renderMessage(resolveTemplate(id, brand, templates), {
         nombre_cliente: clientName.split(" ")[0] || clientName,
         nombre_comercial: salesName.split(" ")[0] || salesName,
         url: fullUrl,
       }),
-    [clientName, salesName, fullUrl, brand],
+    [clientName, salesName, fullUrl, brand, templates],
   );
 
-  const [message, setMessage] = useState(initialMessage);
+  // Pestaña activa + texto. Al cambiar de pestaña se recalcula el texto;
+  // los retoques manuales del textarea son efímeros (se pierden al cambiar).
+  const [activeId, setActiveId] = useState<MessageTemplateId>("post_visita");
+  const [message, setMessage] = useState(() => buildMessage("post_visita"));
   const [copied, setCopied] = useState(false);
+
+  function selectTemplate(id: MessageTemplateId) {
+    setActiveId(id);
+    setMessage(buildMessage(id));
+  }
 
   async function copyUrl() {
     try {
@@ -126,6 +143,39 @@ export function ShareBlock({
           >
             Mensaje
           </div>
+          {/* Selector de plantilla (3 perfiles). La activa rellena el textarea. */}
+          <div
+            role="tablist"
+            aria-label="Plantilla de mensaje"
+            style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}
+          >
+            {MESSAGE_TEMPLATES.map((t) => {
+              const active = t.id === activeId;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  title={t.description}
+                  onClick={() => selectTemplate(t.id)}
+                  style={{
+                    padding: "5px 11px",
+                    borderRadius: 999,
+                    border: `1px solid ${active ? "var(--ink)" : "var(--line-strong)"}`,
+                    background: active ? "var(--ink)" : "var(--surface)",
+                    color: active ? "#fff" : "var(--ink-2)",
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -170,13 +220,19 @@ export function ShareBlock({
               lineHeight: 1.55,
             }}
           >
-            Edita el texto si quieres.{" "}
+            Edita el texto si quieres para este envío.{" "}
             {clientPhone ? null : (
               <>
                 No tienes teléfono del cliente: WhatsApp abrirá para que elijas
-                contacto.
+                contacto.{" "}
               </>
             )}
+            <Link
+              href="/panel/plantillas"
+              style={{ color: "var(--ink-3)", textDecoration: "underline" }}
+            >
+              Editar mis plantillas →
+            </Link>
           </p>
         </div>
       </div>

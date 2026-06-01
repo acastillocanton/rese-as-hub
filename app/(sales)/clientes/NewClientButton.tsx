@@ -10,6 +10,7 @@ import {
 import { ClientLinkDialog } from "./ClientLinkDialog";
 import { OrphanReviewsModal } from "@/components/clients/OrphanReviewsModal";
 import type { OrphanReviewCandidate } from "@/lib/clients/orphan-reviews";
+import type { SavedTemplates } from "@/lib/messaging";
 import type { Brand } from "@/lib/supabase/types";
 
 type NewClientButtonProps = {
@@ -17,9 +18,10 @@ type NewClientButtonProps = {
   salesName: string;
   salesSlug: string;
   brand: Brand;
+  templates?: SavedTemplates;
 };
 
-export function NewClientButton({ appBase, salesName, salesSlug, brand }: NewClientButtonProps) {
+export function NewClientButton({ appBase, salesName, salesSlug, brand, templates }: NewClientButtonProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<ClientRow | null>(null);
@@ -183,6 +185,7 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand }: NewCli
           clientEmail={created.email}
           clientPhone={created.phone}
           brand={brand}
+          templates={templates}
         />
       )}
     </>

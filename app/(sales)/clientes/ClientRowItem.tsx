@@ -11,6 +11,7 @@ import {
 import { ClientLinkDialog } from "./ClientLinkDialog";
 import { OrphanReviewsModal } from "@/components/clients/OrphanReviewsModal";
 import type { OrphanReviewCandidate } from "@/lib/clients/orphan-reviews";
+import type { SavedTemplates } from "@/lib/messaging";
 import type { Brand } from "@/lib/supabase/types";
 
 type ClientRowItemProps = {
@@ -20,6 +21,7 @@ type ClientRowItemProps = {
   salesName: string;
   salesSlug: string;
   brand: Brand;
+  templates?: SavedTemplates;
 };
 
 export function ClientRowItem({
@@ -29,6 +31,7 @@ export function ClientRowItem({
   salesName,
   salesSlug,
   brand,
+  templates,
 }: ClientRowItemProps) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -260,6 +263,7 @@ export function ClientRowItem({
         clientEmail={client.email}
         clientPhone={client.phone}
         brand={brand}
+        templates={templates}
       />
 
       {orphanOpen && (

@@ -136,6 +136,10 @@ export type Database = {
           paused_reason: PauseReason | null;
           notes: string | null;
           archived_at: string | null;
+          /** Plantillas de mensaje personalizadas por el comercial, keyed por
+           *  MessageTemplateId (ver lib/messaging.ts). NULL = usa las de código.
+           *  Migración 019. */
+          message_templates: Record<string, string> | null;
         };
         Insert: {
           id: string;
@@ -155,6 +159,7 @@ export type Database = {
           paused_reason?: PauseReason | null;
           notes?: string | null;
           archived_at?: string | null;
+          message_templates?: Record<string, string> | null;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
         Relationships: [];

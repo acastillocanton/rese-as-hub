@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { MessageSquareText, Users } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
@@ -201,6 +201,50 @@ export default async function EnlacePage() {
             brand={profile.locations?.brand ?? DEFAULT_BRAND}
           />
         </Card>
+
+        {/* Acceso al editor de plantillas por cliente (3 perfiles de mensaje). */}
+        <Link
+          href="/panel/plantillas"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            padding: "16px 18px",
+            background: "var(--surface)",
+            border: "1px solid var(--line)",
+            borderRadius: 14,
+            textDecoration: "none",
+            color: "var(--ink)",
+            boxShadow: "var(--shadow-card)",
+          }}
+        >
+          <div
+            aria-hidden="true"
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: "var(--surface-2)",
+              display: "grid",
+              placeItems: "center",
+              color: "var(--ink-2)",
+              flexShrink: 0,
+            }}
+          >
+            <MessageSquareText size={20} strokeWidth={1.75} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>
+              Mis plantillas de mensaje
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-4)", marginTop: 2 }}>
+              3 plantillas por cliente (recién atendido, reavivar, breve) que puedes adaptar a tu tono
+            </div>
+          </div>
+          <span aria-hidden="true" style={{ color: "var(--ink-4)", fontSize: 18 }}>
+            ›
+          </span>
+        </Link>
 
         {/* Card "Mis clientes" — solo mobile (en desktop el sidebar ya lo cubre). */}
         <Link
