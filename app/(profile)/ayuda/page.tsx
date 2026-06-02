@@ -182,6 +182,7 @@ export default async function AyudaPage() {
             <HelpFigure
               src="/help/10-menu-movil-tabbar.png"
               caption="En el móvil, la barra de abajo: Panel, Enlace, Reseñas y Ranking."
+              maxWidth={300}
             />
 
             <h3 style={h3Style}>En el ordenador</h3>
@@ -193,6 +194,7 @@ export default async function AyudaPage() {
             <HelpFigure
               src="/help/11-menu-escritorio-sidebar.png"
               caption="En el ordenador, el menú de la izquierda con todas las secciones."
+              maxWidth={240}
             />
             <Callout tone="info">
               En el móvil tienes lo del día a día. Para tareas más cómodas con

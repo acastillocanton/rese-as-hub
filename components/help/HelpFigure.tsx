@@ -14,9 +14,15 @@ import { useState, useEffect, useCallback } from "react";
 export function HelpFigure({
   src,
   caption,
+  maxWidth,
 }: {
   src: string;
   caption: string;
+  /** Tope de ancho de visualización en px. Útil para capturas verticales
+   *  (móvil, sidebar) que de otro modo se verían enormes en el contenedor
+   *  ancho. Si se omite, la imagen llena el ancho disponible (hasta su
+   *  tamaño natural). El lightbox siempre muestra la imagen a tamaño grande. */
+  maxWidth?: number;
 }) {
   const [hasError, setHasError] = useState(false);
   const [open, setOpen] = useState(false);
@@ -107,9 +113,15 @@ export function HelpFigure({
             onError={() => setHasError(true)}
             onClick={() => setOpen(true)}
             style={{
+              // maxWidth (no width:100%) evita AMPLIAR capturas estrechas:
+              // las de escritorio (~1400px) llenan el ancho del contenedor,
+              // pero las verticales (móvil, sidebar) se topan con `maxWidth`
+              // y se muestran tamaño natural CENTRADAS, sin estirarse.
               display: "block",
-              width: "100%",
+              width: maxWidth ? "100%" : undefined,
+              maxWidth: maxWidth ? `${maxWidth}px` : "100%",
               height: "auto",
+              margin: "0 auto",
               background: "var(--surface)",
               cursor: "zoom-in",
             }}
