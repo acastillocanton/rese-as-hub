@@ -56,3 +56,6 @@ e2e/.auth/
 
 # Excel lock files (~$ prefix)
 ~$*.xlsx
+
+# Mensajes de commit temporales (se usan con git commit -F y se borran)
+.commit-msg.tmp
