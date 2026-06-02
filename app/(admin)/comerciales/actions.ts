@@ -312,9 +312,12 @@ export async function updateSales(input: UpdateSalesInput) {
   if (!dirCheck.ok) return { ok: false as const, error: dirCheck.error };
 
   const supabase = await createClient();
-  // RLS: admin (profiles_admin_all) + reviews_manager (profiles_manager_update_sales
-  // de la migración 005) son los únicos que pueden hacer UPDATE en filas con
-  // role='sales'. Middleware también gatea esta ruta.
+  // RLS: pueden hacer UPDATE en filas role='sales' → admin (profiles_admin_all),
+  // reviews_manager (profiles_manager_update_sales, mig 005) y office_director
+  // sobre SU equipo (profiles_director_update_sales, mig 013: USING + WITH CHECK
+  // exigen director_id = auth.uid()). El scope del director se refuerza arriba
+  // en código (assertSalesInScope + forzado de location/director). Middleware
+  // también gatea esta ruta.
   const payload = {
     phone: parsed.data.phone,
     monthly_goal: parsed.data.monthlyGoal,

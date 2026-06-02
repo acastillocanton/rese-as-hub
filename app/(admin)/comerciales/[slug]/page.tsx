@@ -121,10 +121,19 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
       .maybeSingle<{ role: string }>();
     viewerRole = profile?.role ?? null;
   }
-  // Admin y reviews_manager comparten administración total del comercial
-  // (editar objetivo/ficha/estado, reenviar acceso, eliminar). Ver migración
-  // 005 y assertCanManageSales en actions.ts.
-  const canEdit = viewerRole === "admin" || viewerRole === "reviews_manager";
+  // Admin, reviews_manager y office_director administran al comercial
+  // (editar objetivo/ficha/estado, reenviar acceso, archivar). El director
+  // queda acotado a SU equipo por la RLS de la migración 013 + el scope de
+  // las server actions. Ver migración 005 (manager) y 013 (director).
+  const canEdit =
+    viewerRole === "admin" ||
+    viewerRole === "reviews_manager" ||
+    viewerRole === "office_director";
+  // Borrado permanente reservado a admin/manager (el director solo archiva).
+  const canDelete = viewerRole === "admin" || viewerRole === "reviews_manager";
+  // Para el director, ficha y director responsable se fijan a SU oficina y a
+  // él mismo → bloqueamos esos selectores en el formulario de edición.
+  const isDirector = viewerRole === "office_director";
 
   const [salesRes, locsRes, dirRes] = await Promise.all([
     supabase
@@ -316,12 +325,15 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                   redirectTo={sales.status === "archived" ? undefined : "/comerciales"}
                   variant="prominent"
                 />
-                <DeleteSalesButton
-                  id={sales.id}
-                  name={sales.full_name}
-                  archived={sales.status === "archived"}
-                  redirectToList
-                />
+                {/* Borrado permanente solo admin/manager (no director). */}
+                {canDelete && (
+                  <DeleteSalesButton
+                    id={sales.id}
+                    name={sales.full_name}
+                    archived={sales.status === "archived"}
+                    redirectToList
+                  />
+                )}
               </>
             )}
             {canEdit && sales.role === "office_director" && (
@@ -400,6 +412,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
               joinedAt={sales.joined_at}
               locations={locations}
               directors={directors}
+              lockScope={isDirector}
               initial={{
                 locationId: sales.location_id,
                 directorId: sales.director_id,

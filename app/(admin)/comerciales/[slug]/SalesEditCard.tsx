@@ -23,6 +23,11 @@ export type SalesEditCardProps = {
   joinedAt: string;
   locations: { id: string; name: string }[];
   directors: { id: string; full_name: string; location_id: string | null }[];
+  /** Cuando es un office_director quien edita: ficha y director responsable
+   *  quedan fijados (a su oficina y a él mismo) — el backend lo fuerza
+   *  igualmente (mig 013 + updateSales), así que los mostramos read-only para
+   *  no ofrecer opciones que el guardado rechazaría. */
+  lockScope?: boolean;
   initial: {
     locationId: string | null;
     directorId: string | null;
@@ -46,6 +51,7 @@ export function SalesEditCard({
   joinedAt,
   locations,
   directors,
+  lockScope = false,
   initial,
 }: SalesEditCardProps) {
   const router = useRouter();
@@ -279,7 +285,10 @@ export function SalesEditCard({
         <div style={rowGrid}>
           <dt style={dtStyle}>Ficha asignada</dt>
           <dd style={{ margin: 0 }}>
-            {editing ? (
+            {editing && lockScope ? (
+              // Director: ficha fijada a su oficina (el backend la fuerza).
+              <span style={{ fontSize: 13.5 }}>{currentLocation?.name ?? "—"}</span>
+            ) : editing ? (
               <select
                 value={locationId}
                 onChange={(e) => {
@@ -314,7 +323,13 @@ export function SalesEditCard({
         <div style={rowGrid}>
           <dt style={dtStyle}>Director responsable</dt>
           <dd style={{ margin: 0 }}>
-            {editing ? (
+            {editing && lockScope ? (
+              // Director: el comercial sigue siendo de su equipo (no puede
+              // reasignarlo a otro director). Mostramos su propio nombre.
+              <span style={{ fontSize: 13.5, color: currentDirector ? "var(--ink)" : "var(--ink-4)" }}>
+                {currentDirector?.full_name ?? "—"}
+              </span>
+            ) : editing ? (
               <select
                 value={directorId}
                 onChange={(e) => setDirectorId(e.target.value)}

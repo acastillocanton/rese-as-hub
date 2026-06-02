@@ -173,10 +173,22 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
     if (dirRes.data) directors = dirRes.data;
   }
 
-  // Admin y reviews_manager comparten plenamente la administración de
-  // comerciales (invitar, editar, reenviar acceso, eliminar). Ver migración
-  // 005 para las políticas RLS y assertCanManageSales en actions.ts.
-  const canEdit = viewerRole === "admin" || viewerRole === "reviews_manager";
+  // Admin, reviews_manager y office_director gestionan comerciales. El
+  // office_director queda acotado a SU equipo (sales con director_id = él)
+  // por la RLS de la migración 013 + el scope de las server actions
+  // (assertSalesInScope + forzado de location/director). Ver migración 005
+  // (manager) y 013 (director).
+  const canEdit =
+    viewerRole === "admin" ||
+    viewerRole === "reviews_manager" ||
+    viewerRole === "office_director";
+  // El borrado PERMANENTE (deleteSales: borra profile + auth.user en cascada)
+  // queda reservado a admin/manager. El director archiva (soft-delete) pero
+  // no destruye historial.
+  const canDelete = viewerRole === "admin" || viewerRole === "reviews_manager";
+  // Para el director, ficha y director responsable se fijan a SU oficina y a
+  // él mismo (el backend lo fuerza igualmente) → bloqueamos esos selectores.
+  const isDirector = viewerRole === "office_director";
 
   // Lookup id → nombre del director para pintar la atribución en la fila
   // del comercial. Hacemos el merge en JS porque PostgREST a veces no
@@ -221,7 +233,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
         }
         breadcrumb={getBrandBreadcrumb(brand)}
         compact
-        right={canEdit && !showArchived ? <InviteSalesButton locations={locations} directors={directors} /> : undefined}
+        right={canEdit && !showArchived ? <InviteSalesButton locations={locations} directors={directors} lockScope={isDirector} /> : undefined}
       />
 
       <div className="m-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
@@ -332,7 +344,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
                       invites a alguien, te daremos un enlace de un solo uso que
                       puedes enviarle por WhatsApp o email.
                     </p>
-                    <InviteSalesButton locations={locations} directors={directors} />
+                    <InviteSalesButton locations={locations} directors={directors} lockScope={isDirector} />
                   </>
                 ) : (
                   !showArchived && (
@@ -391,6 +403,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
                       }
                       last={i === salesList.length - 1}
                       canEdit={canEdit}
+                      canDelete={canDelete}
                       archived={showArchived}
                     />
                   ))}
@@ -409,12 +422,14 @@ function SalesRow({
   directorName,
   last,
   canEdit,
+  canDelete,
   archived,
 }: {
   s: SalesRow;
   directorName: string | null;
   last: boolean;
   canEdit: boolean;
+  canDelete: boolean;
   archived: boolean;
 }) {
   const tone =
@@ -591,13 +606,14 @@ function SalesRow({
           ) : archived ? (
             <>
               <ArchiveSalesButton id={s.id} name={s.full_name} mode="restore" />
-              <DeleteSalesButton id={s.id} name={s.full_name} archived />
+              {/* Borrado permanente solo admin/manager (no director). */}
+              {canDelete && <DeleteSalesButton id={s.id} name={s.full_name} archived />}
             </>
           ) : (
             <>
               <ResendAccessButton id={s.id} name={s.full_name} action={resendSalesAccess} />
               <ArchiveSalesButton id={s.id} name={s.full_name} />
-              <DeleteSalesButton id={s.id} name={s.full_name} />
+              {canDelete && <DeleteSalesButton id={s.id} name={s.full_name} />}
             </>
           )}
         </div>

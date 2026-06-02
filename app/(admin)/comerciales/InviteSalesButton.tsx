@@ -17,9 +17,14 @@ type DirectorOption = {
 export function InviteSalesButton({
   locations,
   directors,
+  lockScope = false,
 }: {
   locations: LocationOption[];
   directors: DirectorOption[];
+  /** office_director: ficha fijada a su oficina (locations[0], única que ve
+   *  por RLS) y director responsable forzado a él mismo en el backend, así
+   *  que ocultamos ese selector. Ver migración 013 + inviteSales. */
+  lockScope?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -274,49 +279,64 @@ export function InviteSalesButton({
                       </select>
                     </Field>
                   )}
-                  <Field label="Ficha asignada" hint="Ficha de Google donde caen sus reseñas">
-                    <select
-                      name="locationId"
-                      required
-                      style={inputStyle}
-                      // `key` fuerza remount cuando cambia el departamento
-                      // para que el defaultValue tome efecto.
-                      key={`loc-${department}-${defaultLocationId}`}
-                      defaultValue={defaultLocationId}
-                      onChange={(e) => setLocationId(e.target.value)}
-                    >
-                      <option value="" disabled>
-                        Selecciona…
-                      </option>
-                      {locations.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.name}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  {/* Director responsable: opcional. Si se asigna, ese director
-                      gestionará al comercial; si se deja vacío, queda en el
-                      pool del admin/reviews_manager (sin director). Filtramos
-                      la lista por la ficha actual para no asignar un director
-                      de otra location por error. */}
-                  <Field
-                    label="Director responsable (opcional)"
-                    hint={
-                      eligibleDirectors.length === 0
-                        ? "No hay directores en esa ficha. Créalos en /directores."
-                        : "Solo se listan directores de la ficha seleccionada."
-                    }
-                  >
-                    <select name="directorId" style={inputStyle} defaultValue="">
-                      <option value="">— Sin director asignado —</option>
-                      {eligibleDirectors.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.full_name}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                  {lockScope ? (
+                    // Director: ficha fijada a su oficina (única que ve por RLS).
+                    // El director responsable lo fuerza el backend a él mismo,
+                    // así que no mostramos ese selector — solo el hidden vacío.
+                    <Field label="Ficha asignada" hint="Tu oficina (los comerciales que invitas son de tu equipo)">
+                      <div style={{ ...inputStyle, color: "var(--ink-3)", background: "var(--surface-2)" }}>
+                        {locations[0]?.name ?? "—"}
+                      </div>
+                      <input type="hidden" name="locationId" value={locations[0]?.id ?? ""} />
+                      <input type="hidden" name="directorId" value="" />
+                    </Field>
+                  ) : (
+                    <>
+                      <Field label="Ficha asignada" hint="Ficha de Google donde caen sus reseñas">
+                        <select
+                          name="locationId"
+                          required
+                          style={inputStyle}
+                          // `key` fuerza remount cuando cambia el departamento
+                          // para que el defaultValue tome efecto.
+                          key={`loc-${department}-${defaultLocationId}`}
+                          defaultValue={defaultLocationId}
+                          onChange={(e) => setLocationId(e.target.value)}
+                        >
+                          <option value="" disabled>
+                            Selecciona…
+                          </option>
+                          {locations.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      {/* Director responsable: opcional. Si se asigna, ese director
+                          gestionará al comercial; si se deja vacío, queda en el
+                          pool del admin/reviews_manager (sin director). Filtramos
+                          la lista por la ficha actual para no asignar un director
+                          de otra location por error. */}
+                      <Field
+                        label="Director responsable (opcional)"
+                        hint={
+                          eligibleDirectors.length === 0
+                            ? "No hay directores en esa ficha. Créalos en /directores."
+                            : "Solo se listan directores de la ficha seleccionada."
+                        }
+                      >
+                        <select name="directorId" style={inputStyle} defaultValue="">
+                          <option value="">— Sin director asignado —</option>
+                          {eligibleDirectors.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    </>
+                  )}
                   <Field label="Fecha de incorporación">
                     <input
                       name="joinedAt"
