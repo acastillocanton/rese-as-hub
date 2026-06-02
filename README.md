@@ -183,7 +183,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/c/:sales/:client`            | público           | Registra share_link y 302 a Google                               |
 | `/privacidad`, `/terminos`     | público           | Páginas legales (linkadas desde login)                           |
 | `/perfil`                      | admin + sales + manager | Foto + datos de cuenta + cerrar sesión                     |
-| `/ayuda`                       | admin + sales + manager | Manual del comercial (10 secciones + 9 capturas + lightbox) |
+| `/ayuda`                       | admin + sales + manager + director | Manual del comercial v2 (14 secciones + glosario + 15 capturas + lightbox) |
 | `/dashboard`                   | admin + manager   | KPIs reales: ≤2★/comerciales/fichas/reseñas + chart reseñas 6 meses + banner alertas + leaderboard |
 | `/comerciales`                 | admin + manager + office_director | Lista + invite + card "Exportar resultados" con RangePicker |
 | `/comerciales/:slug`           | admin + manager + office_director | Ficha editable: KPIs, clientes, reseñas + bot. "Descargar Excel" individual |

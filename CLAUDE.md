@@ -87,6 +87,9 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | v2 · 3 plantillas de mensaje por cliente + personalizables por comercial (mig 019) | ✅ (2026-06-01) |
 | v2 · Panel: bloque "Histórico, ranking e insignias" (barras 6 meses + últimas reseñas + posición en equipo + insignias derivadas, sin migración) | ✅ (2026-06-01) |
 | v2 · Periodo de comisión (20→20) protagonista en el panel del comercial + tarifa €/reseña por productor (mig 020) | ✅ (2026-06-01) |
+| v2 · Matcher: la mención del comercial en el texto cuenta en automático (counted), revisa §4.38 | ✅ (2026-06-02) |
+| v2 · Auto-vínculo de reseñas huérfanas casi-exactas (≥90) al crear cliente (§4.28) | ✅ (2026-06-02) |
+| v2 · Manual de Ayuda ampliado a 14 secciones + glosario (cubre todo v2) + botón "Sincronizar ahora" en el panel del comercial | ✅ (2026-06-02) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -134,7 +137,7 @@ Vía de respaldo para no depender de la aprobación de cuota de Business Profile
 - POST autenticado por cookie de sesión (no por CRON_SECRET).
 - Admin / reviews_manager sin body → todas las fichas; con `{ location_id }` → solo esa.
 - Sales → ignora body; sincroniza únicamente su `profiles.location_id`.
-- Botón [`<SyncNowButton />`](components/ui/SyncNowButton.tsx) reutilizable en `/fichas` (admin: global + por fila), `/manager/resenas` (gestor) y `/panel` (comercial).
+- Botón [`<SyncNowButton />`](components/ui/SyncNowButton.tsx) reutilizable en `/fichas` (admin: global + por fila), `/manager/resenas` (gestor) y `/panel/resenas` (comercial — añadido 2026-06-02; `/api/sync/now` ya soportaba el rol `sales` sincronizando su `location_id`).
 
 **Importador manual** ❌ ELIMINADO 2026-05-23: existía la pantalla `/manager/resenas/importar` para meter reseñas a mano, pero el cron horario + el botón "Sincronizar ahora" cubren el 99% de casos. Se eliminó para simplificar y evitar el riesgo de reseñas inventadas. El enum `review_source_enum` mantiene el valor `'manual'` por compatibilidad pero ya no entra ningún registro nuevo con esa fuente. Si en el futuro hace falta, está en el historial git de la rama `feature/places-fallback` (commit `6aaae66`).
 
@@ -150,11 +153,13 @@ Decisión: el gestor unifica vista con admin en lugar de un universo paralelo `/
 
 ### Centro de ayuda (`/ayuda`) — manual del comercial
 
-Pantalla [`app/(profile)/ayuda/page.tsx`](app/(profile)/ayuda/page.tsx) accesible a los **tres roles** desde el sidebar (item "Ayuda" abajo del todo, encima del avatar, icono LifeBuoy). Manual de 10 secciones con tabla de contenidos sticky, callouts azules/amarillos, FAQ desplegable y 9 capturas reales.
+Pantalla [`app/(profile)/ayuda/page.tsx`](app/(profile)/ayuda/page.tsx) accesible a los **cuatro roles** desde el sidebar (item "Ayuda" abajo del todo, encima del avatar, icono LifeBuoy). Pensada para comerciales con poca soltura informática: lenguaje muy simple, pasos numerados, callouts, glosario y capturas.
 
-- Capturas en [`public/help/`](public/help/) (`01-email-magic-link.png` ... `09-perfil.png`) — 6 generadas vía Playwright headless logueado como Comercial Demo en producción; `06-flujo-atribucion.png` es un diagrama generado con Pillow.
-- README en [`public/help/README.md`](public/help/README.md) con la lista exacta de archivos esperados.
-- Componente [`<HelpFigure />`](components/help/HelpFigure.tsx) con doble función: placeholder cuando la imagen no existe (para añadir capturas a posteriori) **y lightbox** al hacer click (overlay fullscreen, cierre con Esc, clic fuera o botón ×).
+**Reescrita y ampliada a v2 (2026-06-02)**: de 10 a **14 secciones** + glosario de 10 términos + ~12 FAQs. Cubre todo lo nuevo de v2 (antes solo login + panel básico). Orden pensado para que "lo que cobro" y "cómo conseguir que la reseña sea mía" lleguen pronto:
+1. Bienvenida · 2. Entrar por primera vez · 3. Cómo te mueves (móvil vs escritorio) · 4. Tu panel · 5. Periodo de comisión (20→19) · 6. Qué cuenta para cobrar (abonable/por verificar/duplicada) · 7. Dar de alta cliente · 8. Compartir enlace · 9. Tus 3 plantillas (editor) · 10. La clave: que la reseña sea TUYA (enlace personalizado + mención del comercial) · 11. Cuándo aparecen tus reseñas (+ botón "Sincronizar ahora") · 12. Reclamar huérfanas ("Es mía") · 13. Ranking/Excel/perfil · 14. FAQ + glosario.
+- Quitado lo desfasado: KPIs de "visitas" del panel y el botón inexistente "Buscar mis reseñas"; nombres propios neutralizados ("tu administrador" / "el gestor").
+- **Capturas en [`public/help/`](public/help/)** (`01`…`17`, faltan 13/14 por consolidación): 15 en total. Las 9 nuevas/regeneradas (`02`,`07`,`08`,`10`,`11`,`12`,`15`,`16`,`17`) se capturaron el 2026-06-02 desde la cuenta del comercial **Cornel Popescu** (autorizada por el admin) en local con el código v2, vía Chrome DevTools MCP + login `/login/manual?token=…`, ocultando el indicador de Next DevTools. Las 6 de v1 (`01`,`03`,`04`,`05`,`06`,`09`) se reutilizan. ⚠️ `public/` se sirve **sin auth**, así que las capturas muestran datos de un comercial real (decisión consciente del admin); ver aviso en [`public/help/README.md`](public/help/README.md).
+- Componente [`<HelpFigure />`](components/help/HelpFigure.tsx): placeholder cuando la imagen no existe + **lightbox** al click. Usa `maxWidth:100%` (no `width:100%`) para no AMPLIAR capturas estrechas; prop opcional `maxWidth` para topar el ancho de las verticales (móvil 300px, sidebar 240px) — sin él se verían enormes en el contenedor ancho (fix 2026-06-02).
 - Permitido en middleware (`/ayuda` siempre accesible). KPI "Ficha más activa" en `/manager/resenas` se sustituye dinámicamente por "% con comentario" cuando hay filtro de ficha aplicado (PR #7).
 
 **Importador manual ❌ eliminado 2026-05-23** (PR #9): existía `/manager/resenas/importar` para meter reseñas a mano, pero el cron diario + cron horario GitHub + botón "Sincronizar ahora" cubren todos los casos. Se eliminó para limpiar UI y evitar reseñas inventadas. El enum `review_source_enum` mantiene `'manual'` por compatibilidad pero ya no entran filas nuevas. Resucitable desde commit `6aaae66` si hace falta.

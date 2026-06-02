@@ -110,7 +110,7 @@ app/                              Next.js App Router
     ayuda/                        Centro de ayuda
     resenas/verificacion/         06 · Motor de verificación (mig 016: 4 roles con permisos por rol)
     perfil/                       Foto + datos + cerrar sesión
-    ayuda/                        Manual del comercial (10 secciones + capturas)
+    ayuda/                        Manual del comercial v2 (14 secciones + glosario + capturas)
   c/[salesSlug]/                  Landing pública (route handler, sin layout)
   c/[salesSlug]/[clientSlug]/     Landing pública con cliente identificado
   auth/                           callback (magic-link) + signout
