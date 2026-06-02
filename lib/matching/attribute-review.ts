@@ -35,28 +35,34 @@ export const AUTO_THRESHOLD = 75;
 export const PENDING_THRESHOLD = 40;
 
 /**
- * Rescate por mención del comercial (ver `rescueByCommercialMention`).
+ * Atribución por mención del comercial (ver `attributeByCommercialMention`).
  *
  * En este negocio la relación es PERSONAL con el comercial, así que la reseña
  * casi siempre nombra al comercial ("Tono es muy buen comercial"), mientras
  * que el nombre del autor en Google rara vez coincide con el que el comercial
- * dio de alta como cliente ("Maf" vs "Marta Ferrer"). Cuando la atribución
- * normal por nombre+tiempo se quedaría en `unmatched`, intentamos rescatarla
- * usando la mención del comercial en el texto.
+ * dio de alta como cliente ("Maf" vs "Marta Ferrer").
  *
- * Decisión de producto clave (anti-fraude): la mención NUNCA atribuye en
- * automático. Solo rescata a `pending` para que un humano (Bel) confirme. Por
- * eso ambas confianzas son < AUTO_THRESHOLD.
+ * Decisión de producto (2026-06-02 — revisa la anterior decisión anti-fraude
+ * de §4.38): si el cliente NOMBRA a su comercial en el texto, esa es la señal
+ * más fiable que tenemos y BASTA para contar en automático (`counted`). Antes
+ * la mención solo subía a `pending`. Racional: la comisión se atribuye por
+ * comercial × reseña, y la mención resuelve justo el "a qué comercial"; el
+ * cliente exacto es secundario (lo afina el humano/comercial después, ver
+ * §4.38). Por eso las confianzas aquí son >= AUTO_THRESHOLD.
+ *
+ * Guardrail duro que SE MANTIENE (es corrección, no criterio): si el texto
+ * nombra a MÁS DE UN comercial distinto, es ambiguo y NO contamos — no podemos
+ * saber a quién atribuirla.
  */
 /** Token mínimo del nombre del comercial que cuenta como mención (evita que
  *  partículas tipo "de"/"la" o iniciales sueltas disparen falsos positivos). */
 const MIN_MENTION_TOKEN_LEN = 3;
-/** Confianza del rescate cuando el comercial mencionado SÍ tiene un enlace
- *  abierto en la ventana temporal (hay cliente candidato). */
-const MENTION_RESCUE_CONFIDENCE = 60;
-/** Confianza del rescate cuando el comercial mencionado NO tiene enlace en
- *  ventana (más débil: pre-asignamos al comercial sin cliente). */
-const MENTION_RESCUE_NO_WINDOW_CONFIDENCE = 50;
+/** Confianza cuando el comercial mencionado SÍ tiene un enlace abierto en la
+ *  ventana temporal (hay cliente candidato). */
+const MENTION_COUNT_CONFIDENCE = 85;
+/** Confianza cuando el comercial mencionado NO tiene enlace en ventana pero
+ *  está en el roster de la ficha (se cuenta al comercial, sin cliente). */
+const MENTION_COUNT_NO_WINDOW_CONFIDENCE = 78;
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -211,10 +217,12 @@ export function mentionsCommercial(
  *
  * Estrategia en dos pasos:
  *   1. Atribución normal por nombre del cliente + ventana temporal
- *      (`primaryAttribution`). Es la única vía que puede dar `counted`.
- *   2. Si esa vía se quedaría en `unmatched`, intento de rescate por mención
- *      del comercial en el texto (`rescueByCommercialMention`). Solo puede dar
- *      `pending` — nunca atribuye en automático.
+ *      (`primaryAttribution`).
+ *   2. Atribución por mención del comercial en el texto
+ *      (`attributeByCommercialMention`). Si el texto nombra inequívocamente a
+ *      un comercial, manda y cuenta en automático (`counted`) — puede tanto
+ *      rescatar un `unmatched` como elevar un `pending` por nombre débil. Un
+ *      match por nombre ya sólido (`counted`) no se toca.
  */
 export function attributeReview(
   review: ReviewInput,
@@ -222,9 +230,13 @@ export function attributeReview(
   commercials: CommercialInfo[] = [],
 ): MatchResult {
   const primary = primaryAttribution(review, candidates);
-  if (primary.match_state !== "unmatched") return primary;
-  const rescued = rescueByCommercialMention(review, candidates, commercials);
-  return rescued ?? primary;
+  // Un match por nombre+tiempo ya sólido no se altera.
+  if (primary.match_state === "counted") return primary;
+  // En pending o unmatched, la mención del comercial manda: si es inequívoca,
+  // cuenta en automático. Si no hay mención (o es ambigua), nos quedamos con el
+  // resultado por nombre+tiempo.
+  const byMention = attributeByCommercialMention(review, candidates, commercials);
+  return byMention ?? primary;
 }
 
 /**
@@ -347,24 +359,24 @@ function primaryAttribution(
 }
 
 /**
- * Rescate por mención del comercial en el texto de la reseña.
+ * Atribución por mención del comercial en el texto de la reseña.
  *
- * Se invoca solo cuando la atribución normal se quedaría en `unmatched`.
- * Devuelve siempre `pending` (nunca `counted`) o `null` si no rescata.
+ * Se invoca cuando la atribución normal NO dio ya un `counted` sólido (es
+ * decir, quedó en `pending` o `unmatched`). Devuelve `counted` si el texto
+ * nombra inequívocamente a un comercial, o `null` si no hay mención clara.
  *
  * Dos niveles:
  *   - Tier 1 — el comercial mencionado tiene un enlace abierto en la ventana
- *     temporal: pre-asignamos a ese comercial + el cliente del mejor candidato
+ *     temporal: cuenta a ese comercial + el cliente del mejor candidato
  *     (mayor parecido de nombre; desempate por cercanía temporal).
  *   - Tier 2 — el comercial mencionado NO tiene enlace en ventana pero está en
- *     el roster de la ficha: pre-asignamos al comercial SIN cliente (decisión
- *     de producto: el comercial nombrado es señal suficiente para que un
- *     humano lo revise).
+ *     el roster de la ficha: cuenta al comercial SIN cliente (la comisión es
+ *     por comercial; el cliente exacto lo afina el humano/comercial luego).
  *
  * En ambos niveles, si el texto menciona a MÁS DE UN comercial distinto de
- * forma ambigua, no adivinamos → `null` (queda unmatched).
+ * forma ambigua, no adivinamos → `null` (no contamos).
  */
-function rescueByCommercialMention(
+function attributeByCommercialMention(
   review: ReviewInput,
   candidates: ShareLinkCandidate[],
   commercials: CommercialInfo[],
@@ -408,18 +420,19 @@ function rescueByCommercialMention(
       }
     }
     if (!best) return null;
-    // Confianza acotada estrictamente por debajo de AUTO_THRESHOLD: el
-    // rescate por mención jamás cuenta en automático.
+    // La mención del comercial cuenta en automático. Confianza alta, con
+    // pequeño bonus si además el nombre casa o la ventana es muy corta.
     const confidence = Math.min(
-      AUTO_THRESHOLD - 5,
-      MENTION_RESCUE_CONFIDENCE +
-        (best.hoursDelta <= TEMPORAL_BONUS_HOURS ? 8 : 0),
+      98,
+      MENTION_COUNT_CONFIDENCE +
+        (best.nameScore >= 55 ? 5 : 0) +
+        (best.hoursDelta <= TEMPORAL_BONUS_HOURS ? 5 : 0),
     );
     return {
-      match_state: "pending",
+      match_state: "counted",
       match_confidence: confidence,
       match_evidence: {
-        reason: "rescued_by_commercial_mention_in_window",
+        reason: "counted_by_commercial_mention_in_window",
         share_link_id: best.candidate.id,
         commercial_name: best.candidate.sales_full_name,
         client_full_name: best.candidate.client_full_name,
@@ -446,10 +459,10 @@ function rescueByCommercialMention(
   if (distinctRoster.size === 1) {
     const c = mentionedRoster[0]!;
     return {
-      match_state: "pending",
-      match_confidence: MENTION_RESCUE_NO_WINDOW_CONFIDENCE,
+      match_state: "counted",
+      match_confidence: MENTION_COUNT_NO_WINDOW_CONFIDENCE,
       match_evidence: {
-        reason: "rescued_by_commercial_mention_no_window",
+        reason: "counted_by_commercial_mention_no_window",
         commercial_name: c.full_name,
         review_author: review.author_name,
         candidates_considered: candidates.length,

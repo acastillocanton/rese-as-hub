@@ -236,10 +236,11 @@ describe("mentionsCommercial", () => {
   });
 });
 
-describe("attributeReview — rescate por mención del comercial", () => {
+describe("attributeReview — atribución por mención del comercial", () => {
   // Caso real: cliente "Marta Ferrer" deja reseña como "Maf" (sin parecido de
   // nombre) pero el texto menciona a "Tono", que tiene enlace en ventana.
-  it("Tier 1: nombre no casa pero el texto menciona al comercial con enlace en ventana → pending", () => {
+  // Decisión 2026-06-02: la mención inequívoca cuenta en automático (counted).
+  it("Tier 1: nombre no casa pero el texto menciona al comercial con enlace en ventana → counted", () => {
     const r = attributeReview(
       review({ author_name: "Maf", text: "Tono es muy buen comercial y simpático." }),
       [
@@ -251,18 +252,42 @@ describe("attributeReview — rescate por mención del comercial", () => {
         }),
       ],
     );
-    expect(r.match_state).toBe("pending");
-    expect(r.match_confidence).toBeGreaterThanOrEqual(PENDING_THRESHOLD);
-    expect(r.match_confidence).toBeLessThan(AUTO_THRESHOLD);
+    expect(r.match_state).toBe("counted");
+    expect(r.match_confidence).toBeGreaterThanOrEqual(AUTO_THRESHOLD);
     expect(r.sales_id).toBe("tono");
     expect(r.client_id).toBe("marta");
-    expect(r.match_evidence.reason).toBe("rescued_by_commercial_mention_in_window");
+    expect(r.match_evidence.reason).toBe("counted_by_commercial_mention_in_window");
+  });
+
+  // Caso de la captura (2026-06-02): cliente "MARTA VALLAS", autor "Marta
+  // Palenciano Cerro" (solo coincide el nombre de pila → name_score 55 →
+  // pending por nombre), pero el texto menciona a "Jefferson", dueño del
+  // enlace en ventana. La mención eleva el pending a counted.
+  it("eleva un pending por nombre débil a counted cuando el texto menciona al comercial", () => {
+    const r = attributeReview(
+      review({
+        author_name: "Marta Palenciano Cerro",
+        text: "Trato impecable. El trato y atención que he recibido merecen una mención especial, concretamente para Jefferson.",
+      }),
+      [
+        candidate({
+          sales_id: "jefferson",
+          client_id: "marta-vallas",
+          client_full_name: "Marta Vallas",
+          sales_full_name: "Jefferson Javier Piguave Garcia",
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.sales_id).toBe("jefferson");
+    expect(r.client_id).toBe("marta-vallas");
+    expect(r.match_evidence.reason).toBe("counted_by_commercial_mention_in_window");
   });
 
   it("Tier 1: elige el cliente con mejor parecido entre varios enlaces del MISMO comercial", () => {
     // Autor "María Ferrer": comparte apellido con "Marta Ferrer" (score 30,
-    // por debajo del umbral del matcher normal → unmatched → entra al rescate)
-    // y nada con "Pedro Pérez" (0). El rescate debe quedarse con Marta.
+    // por debajo del umbral del matcher normal → unmatched → entra la mención)
+    // y nada con "Pedro Pérez" (0). Debe quedarse con Marta y contar.
     const r = attributeReview(
       review({ author_name: "María Ferrer", text: "Gracias Tono!" }),
       [
@@ -282,12 +307,12 @@ describe("attributeReview — rescate por mención del comercial", () => {
         }),
       ],
     );
-    expect(r.match_state).toBe("pending");
+    expect(r.match_state).toBe("counted");
     expect(r.client_id).toBe("marta");
     expect(r.share_link_id).toBe("s-b");
   });
 
-  it("ambiguo: el texto menciona a DOS comerciales con enlace en ventana → unmatched", () => {
+  it("ambiguo: el texto menciona a DOS comerciales con enlace en ventana → unmatched (guardrail)", () => {
     const r = attributeReview(
       review({ author_name: "Random", text: "Gracias Tono y también Luis" }),
       [
@@ -298,7 +323,7 @@ describe("attributeReview — rescate por mención del comercial", () => {
     expect(r.match_state).toBe("unmatched");
   });
 
-  it("Tier 2: comercial mencionado SIN enlace en ventana pero en el roster → pending sin cliente", () => {
+  it("Tier 2: comercial mencionado SIN enlace en ventana pero en el roster → counted sin cliente", () => {
     const roster: CommercialInfo[] = [
       { sales_id: "tono", full_name: "Tono Sánchez Abadía" },
       { sales_id: "luis", full_name: "Luis Gómez" },
@@ -308,10 +333,10 @@ describe("attributeReview — rescate por mención del comercial", () => {
       [], // sin enlaces en ventana
       roster,
     );
-    expect(r.match_state).toBe("pending");
+    expect(r.match_state).toBe("counted");
     expect(r.sales_id).toBe("tono");
     expect(r.client_id).toBeUndefined();
-    expect(r.match_evidence.reason).toBe("rescued_by_commercial_mention_no_window");
+    expect(r.match_evidence.reason).toBe("counted_by_commercial_mention_no_window");
   });
 
   it("Tier 2 ambiguo: dos comerciales del roster mencionados → unmatched", () => {
