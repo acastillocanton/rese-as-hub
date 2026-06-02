@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import {
   deleteClientRecord,
@@ -33,12 +34,14 @@ export function ClientRowItem({
   brand,
   templates,
 }: ClientRowItemProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   // Estado del botón "Buscar reseñas" — abre el modal OrphanReviewsModal
   // con las candidatas detectadas. Útil para vincular reseñas antiguas
   // counted sin client_id que no se hayan detectado al crear el cliente.
   const [orphanCandidates, setOrphanCandidates] = useState<OrphanReviewCandidate[]>([]);
+  const [autoLinkedCount, setAutoLinkedCount] = useState(0);
   const [orphanOpen, setOrphanOpen] = useState(false);
   const [isSearchingOrphans, startOrphanSearch] = useTransition();
 
@@ -61,12 +64,21 @@ export function ClientRowItem({
         return;
       }
       if (r.candidates.length === 0) {
-        alert(
-          `No hay reseñas sin vincular que se parezcan a ${client.full_name}.`,
-        );
+        if (r.autoLinked > 0) {
+          // Las casi-exactas se vincularon solas; no quedan dudosas.
+          alert(
+            `Vinculé ${r.autoLinked} reseña${r.autoLinked > 1 ? "s" : ""} automáticamente a ${client.full_name}.`,
+          );
+          router.refresh();
+        } else {
+          alert(
+            `No hay reseñas sin vincular que se parezcan a ${client.full_name}.`,
+          );
+        }
         return;
       }
       setOrphanCandidates(r.candidates);
+      setAutoLinkedCount(r.autoLinked);
       setOrphanOpen(true);
     });
   }
@@ -272,10 +284,12 @@ export function ClientRowItem({
           onClose={() => {
             setOrphanOpen(false);
             setOrphanCandidates([]);
+            setAutoLinkedCount(0);
           }}
           clientId={client.id}
           clientName={client.full_name}
           candidates={orphanCandidates}
+          autoLinkedCount={autoLinkedCount}
         />
       )}
     </>

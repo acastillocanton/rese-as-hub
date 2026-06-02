@@ -24,12 +24,16 @@ export function OrphanReviewsModal({
   clientId,
   clientName,
   candidates,
+  autoLinkedCount = 0,
 }: {
   open: boolean;
   onClose: () => void;
   clientId: string;
   clientName: string;
   candidates: OrphanReviewCandidate[];
+  /** Nº de reseñas casi-exactas que ya se vincularon solas (≥90). Se informa
+   *  con un banner para que el usuario sepa qué pasó antes de ver las dudosas. */
+  autoLinkedCount?: number;
 }) {
   const router = useRouter();
   const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
@@ -99,6 +103,24 @@ export function OrphanReviewsModal({
             asignado cuyo autor se parece al nombre del cliente. Pulsa
             &ldquo;Vincular&rdquo; en las que sean suyas.
           </p>
+          {autoLinkedCount > 0 && (
+            <div
+              style={{
+                margin: "12px 0 0",
+                padding: "10px 12px",
+                background: "var(--ok-bg, rgba(0, 128, 0, 0.08))",
+                color: "var(--ok, #1f6f1f)",
+                borderRadius: 10,
+                fontSize: 12.5,
+                lineHeight: 1.5,
+              }}
+            >
+              {autoLinkedCount === 1
+                ? "1 reseña con nombre casi idéntico se vinculó automáticamente."
+                : `${autoLinkedCount} reseñas con nombre casi idéntico se vincularon automáticamente.`}{" "}
+              Las de abajo son menos seguras — revísalas tú.
+            </div>
+          )}
         </div>
 
         <div

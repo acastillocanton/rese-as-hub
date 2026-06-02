@@ -8,6 +8,7 @@ import { recordAudit } from "@/lib/audit";
 import { slugify } from "@/lib/utils";
 import {
   scoreOrphanCandidates,
+  partitionOrphanCandidates,
   type OrphanReviewCandidate,
   type OrphanReviewInput,
 } from "@/lib/clients/orphan-reviews";
@@ -297,15 +298,22 @@ async function resolveOrphanScope(
 }
 
 /**
- * Busca reseñas counted del mismo sales sin client_id que se parezcan en
- * nombre al cliente recién creado, y devuelve hasta 5 ordenadas por
- * similarity desc. Si la lista está vacía, el caller no debe mostrar el
- * modal de sugerencias.
+ * Resuelve las reseñas huérfanas (counted del sales, sin client_id) que se
+ * parecen en nombre al cliente:
+ *   - Las casi-exactas (similarity >= ORPHAN_AUTOLINK_THRESHOLD) se
+ *     **vinculan en automático** aquí mismo (sin clic humano).
+ *   - El resto (50-89) se devuelve en `candidates` para que el caller muestre
+ *     el modal de confirmación.
+ *
+ * Devuelve `autoLinked` (nº vinculadas solas) + `candidates` (las dudosas).
+ *
+ * ⚠️ Efecto secundario consciente: esta función ESCRIBE (auto-vincula). El
+ * nombre conserva "find" por compatibilidad con los 3 call sites.
  */
 export async function findOrphanReviewsForClient(
   clientId: string,
 ): Promise<
-  | { ok: true; candidates: OrphanReviewCandidate[] }
+  | { ok: true; autoLinked: number; candidates: OrphanReviewCandidate[] }
   | { ok: false; error: string }
 > {
   const res = await resolveOrphanScope(clientId);
@@ -332,8 +340,30 @@ export async function findOrphanReviewsForClient(
     return { ok: false, error: "No se pudieron buscar candidatas." };
   }
 
-  const candidates = scoreOrphanCandidates(scope.client.full_name, orphans ?? []);
-  return { ok: true, candidates };
+  // Scoreamos con límite alto (no recortamos a 5) para no dejar ninguna
+  // casi-exacta fuera del auto-vínculo; luego partimos en auto (>=90) y
+  // sugeridas (50-89).
+  const scored = scoreOrphanCandidates(scope.client.full_name, orphans ?? [], 50);
+  const { autoLink, suggest } = partitionOrphanCandidates(scored);
+
+  // Auto-vincular las casi-exactas, SECUENCIALMENTE (el anti-fraude de
+  // duplicados de cada una depende del estado de las anteriores).
+  let autoLinked = 0;
+  for (const cand of autoLink) {
+    const r = await linkOrphanCore(admin, scope, cand.id, clientId, true);
+    if (r.ok) autoLinked++;
+  }
+  // ⚠️ NO revalidar "/clientes" aquí: esta función se llama justo tras crear
+  // el cliente, con el diálogo a punto de montarse — revalidar /clientes lo
+  // desmontaría (ver §4.33). El refresco de /clientes lo hace el caller con
+  // router.refresh() al cerrar. Las demás rutas sí se revalidan.
+  if (autoLinked > 0) {
+    revalidatePath("/panel/resenas");
+    revalidatePath("/dashboard");
+    revalidatePath("/manager/resenas");
+  }
+
+  return { ok: true, autoLinked, candidates: suggest.slice(0, 5) };
 }
 
 const linkSchema = z.object({
@@ -342,37 +372,29 @@ const linkSchema = z.object({
 });
 
 /**
- * Vincula una reseña huérfana (counted del sales, client_id null) al
- * cliente. Aplica anti-fraude (mig 015): si el cliente ya tiene una
- * principal, la nueva entra como duplicada; si la nueva es más antigua,
- * demota la principal previa.
+ * Núcleo de la vinculación de una reseña huérfana a un cliente. SIN I/O de
+ * auth (recibe el `scope` ya resuelto) y SIN revalidación (la hace el caller).
+ * Lo comparten `linkOrphanReviewToClient` (vínculo manual desde el modal) y
+ * `findOrphanReviewsForClient` (auto-vínculo de casi-exactas).
  *
- * Race-safe: el UPDATE incluye `.is("client_id", null)` en el WHERE — si
- * otro actor la vinculó entre la lectura y la escritura, matchea 0
- * filas y devolvemos error UX.
+ * Valida que la reseña sea del mismo sales, counted, sin cliente y no removed.
+ * Aplica anti-fraude (mig 015): si el cliente ya tiene principal, la nueva
+ * entra como duplicada; si la nueva es más antigua, demota la principal previa.
+ * Race-safe: el UPDATE lleva `.is("client_id", null)` en el WHERE.
+ *
+ * `auto` distingue la traza de audit (`link_orphan_auto` vs `link_orphan`).
  */
-export async function linkOrphanReviewToClient(
-  input: z.input<typeof linkSchema>,
+async function linkOrphanCore(
+  admin: ReturnType<typeof createServiceClient>,
+  scope: FindOrphanScope,
+  reviewId: string,
+  clientId: string,
+  auto: boolean,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const parsed = linkSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Datos inválidos.",
-    };
-  }
-
-  const res = await resolveOrphanScope(parsed.data.clientId);
-  if (!res.ok) return { ok: false, error: res.error };
-  const { scope } = res;
-
-  // Cargar la reseña: debe pertenecer al mismo sales, estar counted, sin
-  // cliente y no removed. Lookup con service-client por consistencia.
-  const admin = createServiceClient();
   const { data: review } = await admin
     .from("reviews")
     .select("id, sales_id, match_state, client_id, removed_at, google_created_at")
-    .eq("id", parsed.data.reviewId)
+    .eq("id", reviewId)
     .maybeSingle<{
       id: string;
       sales_id: string | null;
@@ -397,7 +419,7 @@ export async function linkOrphanReviewToClient(
 
   // Anti-fraude mig 015: ¿hay otra principal del mismo client_id?
   const dup = await decideDuplicateForClient(admin, {
-    clientId: parsed.data.clientId,
+    clientId,
     incomingGoogleCreatedAt: review.google_created_at,
     excludeReviewId: review.id,
   });
@@ -406,7 +428,7 @@ export async function linkOrphanReviewToClient(
   const { data: updated, error: upErr } = await admin
     .from("reviews")
     .update({
-      client_id: parsed.data.clientId,
+      client_id: clientId,
       is_duplicate: dup.newIsDuplicate,
     } as never)
     .eq("id", review.id)
@@ -434,15 +456,48 @@ export async function linkOrphanReviewToClient(
   await recordAudit({
     entityType: "review",
     entityId: review.id,
-    action: "link_orphan",
+    action: auto ? "link_orphan_auto" : "link_orphan",
     payload: {
       linked_by: scope.userId,
       actor_role: scope.role,
-      client_id: parsed.data.clientId,
+      client_id: clientId,
       is_duplicate: dup.newIsDuplicate,
       demoted_review_id: dup.demotedReviewId,
     },
   });
+
+  return { ok: true };
+}
+
+/**
+ * Vincula una reseña huérfana (counted del sales, client_id null) al
+ * cliente desde el modal (clic humano "Vincular"). Wrapper de `linkOrphanCore`
+ * con auth + revalidación.
+ */
+export async function linkOrphanReviewToClient(
+  input: z.input<typeof linkSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = linkSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Datos inválidos.",
+    };
+  }
+
+  const res = await resolveOrphanScope(parsed.data.clientId);
+  if (!res.ok) return { ok: false, error: res.error };
+  const { scope } = res;
+
+  const admin = createServiceClient();
+  const core = await linkOrphanCore(
+    admin,
+    scope,
+    parsed.data.reviewId,
+    parsed.data.clientId,
+    false,
+  );
+  if (!core.ok) return core;
 
   revalidatePath("/clientes");
   revalidatePath("/panel/resenas");

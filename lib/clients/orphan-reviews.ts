@@ -33,6 +33,19 @@ export type OrphanReviewCandidate = {
  */
 export const ORPHAN_SUGGEST_THRESHOLD = 50;
 
+/**
+ * Umbral de score (0-100) por encima del cual una reseña huérfana se considera
+ * casi-segura del cliente y se **vincula en automático** al crear el cliente,
+ * sin pedir confirmación humana. Las candidatas entre `ORPHAN_SUGGEST_THRESHOLD`
+ * y este valor (50-89) siguen mostrándose en el modal para que el humano decida.
+ *
+ * 90 = todos los tokens del nombre del cliente aparecen en el autor (p.ej.
+ * cliente "Alba Aicart" vs autor "Alba Aicart" → 100; cliente "Salvador
+ * Sanchis" vs autor "Salvador Sanchis Plaus" → 90). Casos como "S. Sanchis"
+ * (30) o "Salvador López" (55, solo nombre de pila) NO se auto-vinculan.
+ */
+export const ORPHAN_AUTOLINK_THRESHOLD = 90;
+
 /** Máximo de candidatas mostradas en el modal. */
 const MAX_CANDIDATES = 5;
 
@@ -54,6 +67,7 @@ export type OrphanReviewInput = {
 export function scoreOrphanCandidates(
   clientName: string,
   reviews: OrphanReviewInput[],
+  limit: number = MAX_CANDIDATES,
 ): OrphanReviewCandidate[] {
   if (!clientName || reviews.length === 0) return [];
   const scored: OrphanReviewCandidate[] = [];
@@ -73,5 +87,25 @@ export function scoreOrphanCandidates(
     if (b.similarity !== a.similarity) return b.similarity - a.similarity;
     return b.google_created_at.localeCompare(a.google_created_at);
   });
-  return scored.slice(0, MAX_CANDIDATES);
+  return scored.slice(0, limit);
+}
+
+/**
+ * Divide candidatas ya scoreadas en:
+ *   - `autoLink`: similarity >= ORPHAN_AUTOLINK_THRESHOLD (casi-exactas) → se
+ *     vinculan solas, sin clic humano.
+ *   - `suggest`: el resto (50-89) → se muestran en el modal para confirmar.
+ * Función pura — el caller hace las escrituras.
+ */
+export function partitionOrphanCandidates(candidates: OrphanReviewCandidate[]): {
+  autoLink: OrphanReviewCandidate[];
+  suggest: OrphanReviewCandidate[];
+} {
+  const autoLink: OrphanReviewCandidate[] = [];
+  const suggest: OrphanReviewCandidate[] = [];
+  for (const c of candidates) {
+    if (c.similarity >= ORPHAN_AUTOLINK_THRESHOLD) autoLink.push(c);
+    else suggest.push(c);
+  }
+  return { autoLink, suggest };
 }

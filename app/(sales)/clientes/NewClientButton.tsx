@@ -29,6 +29,7 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<ClientRow | null>(null);
   const [orphanCandidates, setOrphanCandidates] = useState<OrphanReviewCandidate[]>([]);
+  const [autoLinkedCount, setAutoLinkedCount] = useState(0);
   const [showOrphans, setShowOrphans] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -41,6 +42,7 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
     setError(null);
     setCreated(null);
     setOrphanCandidates([]);
+    setAutoLinkedCount(0);
     setShowOrphans(false);
     if (createdClient) router.refresh();
   }
@@ -60,14 +62,16 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
       }
       setCreated(result.client);
 
-      // Buscar reseñas huérfanas del comercial que se parezcan al
-      // cliente recién creado. Si hay candidatas, abrimos el modal de
-      // sugerencias ANTES del ClientLinkDialog — vincular primero,
-      // compartir enlace después. Si no hay, ClientLinkDialog se abre
-      // directamente (created != null + showOrphans=false).
+      // Buscar reseñas huérfanas del comercial que se parezcan al cliente
+      // recién creado. Las casi-exactas (≥90) se vinculan solas dentro de
+      // findOrphanReviewsForClient; solo abrimos el modal si quedan dudosas
+      // (50-89) que el humano deba revisar. Si todo fue auto-vínculo (o no
+      // hubo nada), pasamos directo al ClientLinkDialog (compartir enlace) —
+      // sin fricción. Las auto-vinculadas se ven al refrescar al cerrar.
       const orphans = await findOrphanReviewsForClient(result.client.id);
       if (orphans.ok && orphans.candidates.length > 0) {
         setOrphanCandidates(orphans.candidates);
+        setAutoLinkedCount(orphans.autoLinked);
         setShowOrphans(true);
       }
     });
@@ -178,6 +182,7 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
           clientId={created.id}
           clientName={created.full_name}
           candidates={orphanCandidates}
+          autoLinkedCount={autoLinkedCount}
         />
       )}
 

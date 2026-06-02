@@ -297,6 +297,7 @@ function SalesRow({
   // detecta OTRAS reseñas suyas counted sin client_id que podrían ser
   // del mismo cliente (autor con nombre similar).
   const [orphanCandidates, setOrphanCandidates] = useState<OrphanReviewCandidate[]>([]);
+  const [orphanAutoLinked, setOrphanAutoLinked] = useState(0);
   const [orphanClient, setOrphanClient] = useState<{ id: string; name: string } | null>(null);
 
   // Como la página ya filtra salesOptions al propio profile cuando el viewer
@@ -336,6 +337,7 @@ function SalesRow({
         const orphans = await findOrphanReviewsForClient(r.clientId);
         if (orphans.ok && orphans.candidates.length > 0) {
           setOrphanCandidates(orphans.candidates);
+          setOrphanAutoLinked(orphans.autoLinked);
           setOrphanClient({ id: r.clientId, name: newName });
           return; // no refresh aún, el modal lo hará al cerrarse.
         }
@@ -520,11 +522,13 @@ function SalesRow({
           onClose={() => {
             setOrphanClient(null);
             setOrphanCandidates([]);
+            setOrphanAutoLinked(0);
             router.refresh();
           }}
           clientId={orphanClient.id}
           clientName={orphanClient.name}
           candidates={orphanCandidates}
+          autoLinkedCount={orphanAutoLinked}
         />
       )}
     </Card>

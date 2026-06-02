@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ORPHAN_SUGGEST_THRESHOLD,
+  ORPHAN_AUTOLINK_THRESHOLD,
   scoreOrphanCandidates,
+  partitionOrphanCandidates,
   type OrphanReviewInput,
 } from "@/lib/clients/orphan-reviews";
 
@@ -60,12 +62,20 @@ describe("scoreOrphanCandidates", () => {
     expect(out.map((c) => c.id)).toEqual(["r-new", "r-old"]);
   });
 
-  it("limita a top 5 candidatas", () => {
+  it("limita a top 5 candidatas por defecto", () => {
     const reviews = Array.from({ length: 10 }, (_, i) =>
       mkReview(`r${i}`, "Salvador Sanchis Plaus"),
     );
     const out = scoreOrphanCandidates("Salvador Sanchis", reviews);
     expect(out).toHaveLength(5);
+  });
+
+  it("respeta el parámetro limit cuando se pasa explícito", () => {
+    const reviews = Array.from({ length: 10 }, (_, i) =>
+      mkReview(`r${i}`, "Salvador Sanchis Plaus"),
+    );
+    const out = scoreOrphanCandidates("Salvador Sanchis", reviews, 50);
+    expect(out).toHaveLength(10);
   });
 
   it("conserva metadata de la reseña en el output", () => {
@@ -99,5 +109,55 @@ describe("scoreOrphanCandidates", () => {
     ]);
     expect(out).toHaveLength(1);
     expect(out[0]?.id).toBe("r-match");
+  });
+});
+
+describe("partitionOrphanCandidates", () => {
+  it("auto-vincula exacto (100) y tokens-contenidos (90), sugiere el resto", () => {
+    const scored = scoreOrphanCandidates(
+      "Salvador Sanchis",
+      [
+        mkReview("r-exact", "Salvador Sanchis"), // 100 → auto
+        mkReview("r-contained", "Salvador Sanchis Plaus"), // 90 → auto
+        mkReview("r-firstname", "Salvador López"), // 55 → suggest
+      ],
+      50,
+    );
+    const { autoLink, suggest } = partitionOrphanCandidates(scored);
+    expect(autoLink.map((c) => c.id).sort()).toEqual(["r-contained", "r-exact"]);
+    expect(suggest.map((c) => c.id)).toEqual(["r-firstname"]);
+  });
+
+  it("el caso Alba Aicart (exacto) cae en auto-vínculo", () => {
+    const scored = scoreOrphanCandidates(
+      "Alba Aicart",
+      [mkReview("r1", "Alba Aicart")],
+      50,
+    );
+    const { autoLink, suggest } = partitionOrphanCandidates(scored);
+    expect(autoLink).toHaveLength(1);
+    expect(autoLink[0]?.similarity).toBe(100);
+    expect(suggest).toHaveLength(0);
+  });
+
+  it("solo-nombre-de-pila (55) NO se auto-vincula, va a sugeridas", () => {
+    const scored = scoreOrphanCandidates(
+      "Salvador Sanchis",
+      [mkReview("r1", "Salvador López")],
+      50,
+    );
+    const { autoLink, suggest } = partitionOrphanCandidates(scored);
+    expect(autoLink).toHaveLength(0);
+    expect(suggest).toHaveLength(1);
+  });
+
+  it("el umbral de auto-vínculo es mayor que el de sugerencia", () => {
+    expect(ORPHAN_AUTOLINK_THRESHOLD).toBeGreaterThan(ORPHAN_SUGGEST_THRESHOLD);
+  });
+
+  it("lista vacía → ambas vacías", () => {
+    const { autoLink, suggest } = partitionOrphanCandidates([]);
+    expect(autoLink).toEqual([]);
+    expect(suggest).toEqual([]);
   });
 });
