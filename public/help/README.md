@@ -6,17 +6,25 @@ Las imágenes de esta carpeta se muestran en la página `/ayuda` (manual del com
 
 Hacer cada captura desde producción (https://resenas.marinadorconstrucciones.com) **logueado como el comercial de prueba** o cualquier comercial. Resolución mínima recomendada: **1400×900 px**. Formato **PNG**. Sin compresión agresiva — son ilustrativas.
 
-| Archivo | Qué tiene que mostrar |
-|---|---|
-| `01-email-magic-link.png` | Captura del email de invitación de Brevo con el botón "Acceder a ReseñaHub". Puedes capturar el preview del email desde Gmail o Outlook. |
-| `02-panel-sales.png` | El panel del comercial (`/panel`) con sus KPIs visibles (visitas, reseñas del mes, % objetivo, ring de progreso). |
-| `03-clientes-lista.png` | Pantalla `/clientes` con varios clientes ya dados de alta y el botón "+ Nuevo cliente" arriba a la derecha visible. |
-| `04-cliente-detalle-share.png` | Pantalla `/clientes/{slug}` con la URL personalizada, el QR y los tres botones (WhatsApp / Email / SMS) bien visibles. |
-| `05-qr-modal.png` | Pantalla `/panel/enlace` con URL del comercial, QR grande descargable, plantilla de mensaje y botones de compartir. |
-| `06-flujo-atribucion.png` | Diagrama del flujo: cliente abre enlace → escribe reseña en Google → cron → matcher → panel + email. Esta SÍ es ilustrativa, puedes hacerla en Figma/Canva con flechas y cajas. |
-| `07-mis-resenas.png` | Listado de `/panel/resenas` con 2-3 reseñas de ejemplo, mostrando autor, estrellas, texto y fecha. |
-| `08-boton-sincronizar.png` | Detalle del topbar de `/panel` mostrando el botón "Buscar mis reseñas" arriba a la derecha. Recorte zoom suficiente para que se vea bien. |
-| `09-perfil.png` | Pantalla `/perfil` con la foto del comercial, datos y el botón "Cerrar sesión". |
+> ⚠️ **Capturas DESFASADAS tras la reescritura de v2** (junio 2026): `02-panel-sales` (mostraba el panel viejo con "visitas") y `08-boton-sincronizar` (mostraba el botón viejo "Buscar mis reseñas") hay que **regenerarlas**. Las marcadas como NUEVAS no existen aún → salen como placeholder hasta que se suban.
+
+| Archivo | Estado | Qué tiene que mostrar |
+|---|---|---|
+| `01-email-magic-link.png` | OK | Email de invitación de Brevo con el botón "Acceder a ReseñaHub". Puedes capturar el preview desde Gmail/Outlook. |
+| `10-menu-movil-tabbar.png` | NUEVA | La barra de pestañas inferior en móvil (≤767px): Panel · Enlace · Reseñas · Ranking. Captura con el navegador en modo móvil. |
+| `11-menu-escritorio-sidebar.png` | NUEVA | El menú lateral izquierdo del comercial en escritorio (Mi panel, Mi enlace, Mis clientes, Mis reseñas, Verificación + avatar/Ayuda abajo). |
+| `02-panel-sales.png` | REGENERAR | El panel v2 (`/panel`): número grande de reseñas **abonables**, comisión estimada (€), "Por verificar", "Cierra el {día}", ring de objetivo. **Sin "visitas".** |
+| `12-periodo-comision.png` | NUEVA | Recorte del panel/topbar mostrando el periodo de comisión activo y el "Cierra el {día}" (o el selector con el atajo "Periodo de comisión"). |
+| `07-mis-resenas.png` | REGENERAR | `/panel/resenas`: arriba los KPIs (Abonables / Por verificar / Valoración media / Periodo) y abajo la lista con las etiquetas de estado (Contada / Por verificar / Duplicada). |
+| `03-clientes-lista.png` | OK (verificar) | `/clientes` con clientes dados de alta y, en cada fila, los botones "Ver enlace", "Buscar reseñas" y "Eliminar". Regenerar si no se ven los tres. |
+| `04-cliente-detalle-share.png` | OK | `/clientes/{slug}` con la URL personalizada, el QR y los botones WhatsApp / Email / SMS. |
+| `05-qr-modal.png` | OK | `/panel/enlace`: URL del comercial, QR descargable, plantilla y botones de compartir. |
+| `15-editor-plantillas.png` | NUEVA | `/panel/plantillas` (solo escritorio): editor de las 3 plantillas con nombre + texto + comodines `{nombre_cliente}` `{nombre_comercial}` `{url}`. |
+| `06-flujo-atribucion.png` | OK | Diagrama del flujo: cliente abre enlace → reseña en Google → sincronización → atribución (por nombre o por mención del comercial) → panel + email. Ilustrativo (Figma/Canva). |
+| `08-boton-sincronizar.png` | REGENERAR | Recorte del topbar de **`/panel/resenas`** mostrando el botón **"Sincronizar ahora"** (ya NO está en `/panel` ni se llama "Buscar mis reseñas"). |
+| `16-reclamar-huerfana.png` | NUEVA | `/resenas/verificacion` con la vista del comercial ("Reseñas huérfanas de tu ficha") y el botón "Es mía" en una reseña. |
+| `17-ranking.png` | NUEVA | `/panel/ranking`: las tarjetas del equipo con la del propio comercial destacada ("Tú"). |
+| `09-perfil.png` | OK | `/perfil` con la foto del comercial y el botón "Cerrar sesión". |
 
 ## Cómo añadir / actualizar una captura
 

@@ -9,6 +9,7 @@ import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
 import { RangePicker } from "@/components/ui/RangePicker";
+import { SyncNowButton } from "@/components/ui/SyncNowButton";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
@@ -150,6 +151,9 @@ export default async function MisResenasPage({
               label={range.label}
               shortcuts={shortcuts}
             />
+            {/* El comercial puede forzar la búsqueda de sus reseñas en Google
+                ahora mismo. Sin props: /api/sync/now sincroniza solo su ficha. */}
+            <SyncNowButton size="sm" variant="ghost" />
             <Link
               href={`/api/export/sales/${profile.id}?from=${range.from}&to=${range.to}`}
               style={{
