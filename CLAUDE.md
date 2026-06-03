@@ -142,12 +142,12 @@ Vía de respaldo para no depender de la aprobación de cuota de Business Profile
 - Sales → ignora body; sincroniza únicamente su `profiles.location_id`.
 - Botón [`<SyncNowButton />`](components/ui/SyncNowButton.tsx) reutilizable en `/fichas` (admin: global + por fila), `/manager/resenas` (gestor) y `/panel/resenas` (comercial — añadido 2026-06-02; `/api/sync/now` ya soportaba el rol `sales` sincronizando su `location_id`).
 
-**Importador manual** ❌ ELIMINADO 2026-05-23: existía la pantalla `/manager/resenas/importar` para meter reseñas a mano, pero el cron horario + el botón "Sincronizar ahora" cubren el 99% de casos. Se eliminó para simplificar y evitar el riesgo de reseñas inventadas. El enum `review_source_enum` mantiene el valor `'manual'` por compatibilidad pero ya no entra ningún registro nuevo con esa fuente. Si en el futuro hace falta, está en el historial git de la rama `feature/places-fallback` (commit `6aaae66`).
+**Importador manual** ❌ ELIMINADO 2026-05-23 (PR #9): existía la pantalla `/manager/resenas/importar` para meter reseñas a mano, pero el cron horario + el botón "Sincronizar ahora" cubren todos los casos. Se eliminó para simplificar y evitar el riesgo de reseñas inventadas. El enum `review_source_enum` mantiene el valor `'manual'` por compatibilidad pero ya no entra ningún registro nuevo con esa fuente. Resucitable desde el historial git de la rama `feature/places-fallback` (commit `6aaae66`).
 
 **Migración 009 — columna `source` enum**:
 - `business_profile` (default) | `places_api` | `manual` (legacy, ver arriba).
 - Prefijo en `google_review_id`: raw para Business Profile, `places:{id}` para Places. Evita colisiones del `unique (location_id, google_review_id)`.
-- ⚠️ **Duplicados conocidos**: la misma reseña puede entrar como `places_api` y luego como `business_profile` cuando llegue la cuota (los IDs no están garantizados a coincidir). Pendiente: script de dedup one-shot tras primer run exitoso de Business Profile (preferir `business_profile` autoritativo, borrar clones `places_api` por match de `author_name + rating + |google_created_at - X| < 1h`).
+- ⚠️ **Duplicados conocidos** al activar Business Profile (misma reseña con dos IDs distintos): resolución one-shot documentada en §4.26 Bloque B.
 
 **Tests**: 20 del cliente Places API (`lib/google/__tests__/places.test.ts`) + 5 del helper de reconciliación.
 
@@ -164,8 +164,6 @@ Pantalla [`app/(profile)/ayuda/page.tsx`](app/(profile)/ayuda/page.tsx) accesibl
 - **Capturas en [`public/help/`](public/help/)** (`01`…`17`, faltan 13/14 por consolidación): 15 en total. Las 9 nuevas/regeneradas (`02`,`07`,`08`,`10`,`11`,`12`,`15`,`16`,`17`) se capturaron el 2026-06-02 desde la cuenta del comercial **Cornel Popescu** (autorizada por el admin) en local con el código v2, vía Chrome DevTools MCP + login `/login/manual?token=…`, ocultando el indicador de Next DevTools. Las 6 de v1 (`01`,`03`,`04`,`05`,`06`,`09`) se reutilizan. ⚠️ `public/` se sirve **sin auth**, así que las capturas muestran datos de un comercial real (decisión consciente del admin); ver aviso en [`public/help/README.md`](public/help/README.md).
 - Componente [`<HelpFigure />`](components/help/HelpFigure.tsx): placeholder cuando la imagen no existe + **lightbox** al click. Usa `maxWidth:100%` (no `width:100%`) para no AMPLIAR capturas estrechas; prop opcional `maxWidth` para topar el ancho de las verticales (móvil 300px, sidebar 240px) — sin él se verían enormes en el contenedor ancho (fix 2026-06-02).
 - Permitido en middleware (`/ayuda` siempre accesible). KPI "Ficha más activa" en `/manager/resenas` se sustituye dinámicamente por "% con comentario" cuando hay filtro de ficha aplicado (PR #7).
-
-**Importador manual ❌ eliminado 2026-05-23** (PR #9): existía `/manager/resenas/importar` para meter reseñas a mano, pero el cron diario + cron horario GitHub + botón "Sincronizar ahora" cubren todos los casos. Se eliminó para limpiar UI y evitar reseñas inventadas. El enum `review_source_enum` mantiene `'manual'` por compatibilidad pero ya no entran filas nuevas. Resucitable desde commit `6aaae66` si hace falta.
 
 ### Fase 6 · Polish / hardening (auditoría 18 items, 2026-05-22)
 
@@ -302,7 +300,7 @@ Reglas:
 ### 4.17 Cron Places API — prefijo `places:` y duplicados al activar Business Profile
 [`/api/cron/sync-places-reviews`](app/api/cron/sync-places-reviews/route.ts) consume Google Places API (New) sin OAuth. El `google_review_id` se prefija con `places:` (extrayendo el último segmento de `places/{place_id}/reviews/{review_id}`) y la columna `source` se rellena con `places_api`. El importador manual hace lo mismo con `manual:{uuid}` y `source='manual'`.
 
-⚠️ **Duplicados conocidos**: cuando llegue la cuota de Business Profile, las mismas reseñas pueden entrar dos veces (una con `places:` y otra con el `reviewId` raw de Business Profile) porque los IDs de cada API no coinciden. El `unique (location_id, google_review_id)` impide colisión técnica, pero visualmente verás duplicados en `/manager/resenas`. Resolución: script one-shot tras el primer run exitoso de Business Profile que preferirá `business_profile` autoritativo y borrará los clones `places_api` por match de `author_name + rating + |google_created_at - X| < 1h`. No urgente — el sistema funciona con duplicados temporales.
+⚠️ **Duplicados conocidos** al activar Business Profile (misma reseña entra con `places:` y con el `reviewId` raw; el `unique` no colisiona pero se ven dobles en `/manager/resenas`): no urgente, resolución one-shot en §4.26 Bloque B.
 
 **Nunca quitar el prefijo `places:` ni `manual:`**: rompería la idempotencia y crearía colisiones reales al activar Business Profile.
 
@@ -352,11 +350,7 @@ Cuando llegue cuota BP y conectes una ficha por OAuth, la pill cambia sola a "Bu
 ⚠️ NO confundir con la columna `oauth_status` cruda de `locations`. Esa sigue siendo el estado OAuth de Business Profile (puede ser `connected`/`disconnected`/`error`). El "estado de sincronización" es derivado.
 
 ### 4.19 Cron horario externo via GitHub Actions
-Vercel Hobby solo permite cron diario. Places API no pagina → con 1 sync/día perdemos reseñas en fichas activas. Workflow [`.github/workflows/sync-places-hourly.yml`](.github/workflows/sync-places-hourly.yml) dispara `/api/cron/sync-places-reviews` cada hora (minuto 30, 06-23 UTC). Requiere dos secrets en repo GitHub:
-- `APP_URL` = `https://resenas.marinadorconstrucciones.com`
-- `CRON_SECRET` = mismo valor que en Vercel
-
-Si el endpoint devuelve != 200, el workflow falla y GitHub manda email al maintainer. Botón "Run workflow" disponible en la pestaña Actions para disparos a demanda.
+Detalle completo (workflow, schedule minuto 30, secrets `APP_URL` + `CRON_SECRET`, razón) en §4.b "Cron horario externo". Extra: si el endpoint devuelve != 200 el workflow falla y GitHub manda email al maintainer; hay botón "Run workflow" en la pestaña Actions para disparos a demanda.
 
 ### 4.22 Multi-marca por `locations.brand`
 La app sirve a dos marcas operativas del grupo Marina d'Or:
