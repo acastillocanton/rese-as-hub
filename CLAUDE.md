@@ -32,7 +32,7 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test               # Vitest unit tests (262 tests: matcher (incl. atribución por mención del comercial → counted) + date-range (incl. periodo comisión 20→20) + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + rls-self-update)
+npm test               # Vitest unit tests (270 tests: matcher (incl. atribución por mención del comercial → counted) + date-range (incl. periodo comisión 20→20) + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + rls-self-update + utils (transliteración cirílico→latino))
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright happy paths (login + admin nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo
@@ -90,6 +90,8 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | v2 · Matcher: la mención del comercial en el texto cuenta en automático (counted), revisa §4.38 | ✅ (2026-06-02) |
 | v2 · Auto-vínculo de reseñas huérfanas casi-exactas (≥90) al crear cliente (§4.28) | ✅ (2026-06-02) |
 | v2 · Manual de Ayuda ampliado a 14 secciones + glosario (cubre todo v2) + botón "Sincronizar ahora" en el panel del comercial | ✅ (2026-06-02) |
+| fix · Transliteración cirílico→latino en `slugify` + `full_name` del cliente (nombres de Europa del Este ya no rompen la creación de cliente/enlace, §4.39) | ✅ (2026-06-03) |
+| fix · Anillo del objetivo en `/panel` se quedaba al 75% al cumplir el 100% (`strokeDashoffset` sobrante en `Ring.tsx`) | ✅ (2026-06-03) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -806,6 +808,18 @@ Hallazgo de la auditoría: la policy `profiles_self_update` (mig 002) solo compr
 ⚠️ **La atribución de una reseña de Google a un cliente es heurística por construcción — no hay forma determinista.** Google es el dueño del dato: la reseña se escribe en SU formulario (nosotros solo hacemos 302 a la URL de "escribir reseña") y la API solo nos devuelve `reviewId · displayName · profilePhotoUrl · isAnonymous · starRating · comment · createTime · updateTime · reviewReply` (ver [business-profile.ts:283](lib/google/business-profile.ts#L283)). **Ningún campo es nuestro**: no podemos inyectar un código/parámetro que viaje al cliente y vuelva con la reseña (Google ignora cualquier querystring; no hay campo oculto). Evaluado y **descartado** (2026-06-01): (a) "código round-trip" — imposible; (b) página intermedia + alias del cliente — añade fricción sin aportar certeza nueva (sigue siendo la misma inferencia tiempo+identidad-del-clic). NO volver a proponer estas vías.
 
 **Replanteamiento aceptado**: separar atribución al **comercial** (resoluble — la mención del texto + tiempo lo cubren; es lo que importa para la comisión, que es por reseña × comercial) de atribución al **cliente exacto** (imposible-determinista; solo importa para anti-fraude de duplicados y CRM del comercial → se resuelve en la confirmación humana o lo reconoce el propio comercial). **El único lever sin fricción y compatible con políticas de Google** para mejorar la heurística es el **copy del mensaje** que el comercial manda al cliente: orientarlo a que el cliente **nombre a su comercial** refuerza la señal de mención (§4.31 plantillas). ⚠️ NO hacer "review gating" (recoger la reseña first-party y reenviar solo las buenas a Google) — viola las políticas de Google y arriesga la ficha.
+
+### 4.39 Transliteración cirílico→latino al crear/editar cliente
+
+**Problema (detectado en prod 2026-06-03)**: un comercial intentó dar de alta un cliente de Europa del Este con nombre en cirílico (p.ej. "Марина Кудраўцава"). `slugify()` solo conservaba `[a-z0-9]`, así que un nombre 100% no-latino quedaba en cadena vacía → `createClientRecord` abortaba con "No se pudo generar el identificador del cliente" (guard de slug vacío) y NO se creaba ni cliente ni enlace. Síntoma reportado: "me deja escribir el nombre pero no se genera el enlace".
+
+**Solución** (sin migración): nueva función pura [`transliterateCyrillic`](lib/utils.ts) (mapa cirílico→latino ruso+bielorruso+ucraniano, preserva caja `Ж→Zh`, deja intacto lo ya latino/acentos/ñ, ignora alfabetos no mapeados):
+- Integrada **dentro de `slugify`** (antes del filtro `[^a-z0-9]`). Beneficia a TODOS los que generan slug por nombre: clientes, comerciales, gestores y directores (el dpto. internacional también tiene nombres cirílicos). "Марина Кудраўцава" → slug `marina-kudrautsava`.
+- Aplicada también al **`full_name` guardado** del cliente en `createClientRecord` y `updateClient` ([app/(sales)/clientes/actions.ts](app/(sales)/clientes/actions.ts)), para que el comercial vea el nombre en latín en su lista/Excel y para que case mejor con el `author_name` de Google (que también viene transliterado). Los demás roles NO transliteran el nombre visible (lo teclea el admin, ya en latín); solo su slug.
+
+⚠️ La transliteración automática puede no coincidir **al 100%** con la grafía exacta de Google en algún nombre; el comercial puede editar el `full_name` a mano después (el slug es estable tras crearse, no se rompe el enlace). Para alfabetos **no mapeados** (chino, árabe…) el slug sigue saliendo vacío y se muestra el error claro en vez de crear un enlace roto — si hace falta, ampliar el mapa o añadir fallback genérico.
+
+**Tests** ([lib/__tests__/utils.test.ts](lib/__tests__/utils.test.ts)): 8 casos (transliteración con caja, signos blandos, latino/ñ intactos, alfabeto no mapeado, slug del caso real Kudrautsava).
 
 ---
 

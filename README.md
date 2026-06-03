@@ -299,7 +299,7 @@ lib/
   url-validation.ts     ─ isSafeNext / isValidSlug
   date-range.ts         ─ parseRange (+fallback), commissionPeriodRange (20→20), bucketByMonth, …
   __tests__/            ─ Tests Vitest: date-range, leaderboard, panel-badges, sales-schemas, rls-self-update, …
-  utils.ts              ─ cn, slugify, initials, avatarColor, formatEuro
+  utils.ts              ─ cn, slugify (translitera cirílico→latino), transliterateCyrillic, initials, avatarColor, formatEuro
 supabase/migrations/    ─ 001 schema, 002 RLS, 003 seed, 004 google_oauth,
                          005 manager_sales_admin, 006 profile_avatars,
                          007 reviews_composite_indices, 008 audit_log_insert_policy,

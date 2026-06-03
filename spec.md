@@ -135,7 +135,7 @@ lib/
   cron/                           process-reviews.ts (helper compartido)
   landing.ts                      Lógica del /c/* (service-role insert + redirect)
   url-validation.ts               isSafeNext, isValidSlug
-  utils.ts                        cn, slugify, initials, avatarColor
+  utils.ts                        cn, slugify (translitera cirílico→latino), transliterateCyrillic, initials, avatarColor
   demo-data.ts                    Datos placeholder (modo demo sin Supabase)
 
 supabase/
