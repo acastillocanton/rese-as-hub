@@ -27,7 +27,7 @@ export function Ring({ value, max, size = 120 }: RingProps) {
         stroke="#1D1D1F"
         strokeWidth="6"
         strokeDasharray={`${c * pct} ${c}`}
-        strokeDashoffset={c * 0.25}
+        strokeDashoffset={0}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
         style={{
           transform: `rotate(-90deg)`,
