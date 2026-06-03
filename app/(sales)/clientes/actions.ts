@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { recordAudit } from "@/lib/audit";
-import { slugify } from "@/lib/utils";
+import { slugify, transliterateCyrillic } from "@/lib/utils";
 import {
   scoreOrphanCandidates,
   partitionOrphanCandidates,
@@ -88,7 +88,7 @@ export async function createClientRecord(
     .from("clients")
     .insert({
       sales_id: user.id,
-      full_name: parsed.data.fullName.trim(),
+      full_name: transliterateCyrillic(parsed.data.fullName).trim(),
       slug,
       email: parsed.data.email,
       phone: parsed.data.phone,
@@ -153,7 +153,7 @@ export async function updateClientRecord(
   const { data, error } = await supabase
     .from("clients")
     .update({
-      full_name: parsed.data.fullName.trim(),
+      full_name: transliterateCyrillic(parsed.data.fullName).trim(),
       email: parsed.data.email,
       phone: parsed.data.phone,
     } as never)

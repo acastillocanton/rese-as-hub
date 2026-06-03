@@ -2,8 +2,43 @@ export function cn(...classes: Array<string | false | undefined | null>): string
   return classes.filter(Boolean).join(" ");
 }
 
+/**
+ * Mapa de transliteración cirílico → latino (ruso + bielorruso + ucraniano).
+ * Solo letras minúsculas; las mayúsculas se derivan en `transliterateCyrillic`.
+ */
+const CYRILLIC_TO_LATIN: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", ґ: "g", д: "d", е: "e", ё: "yo", є: "ye",
+  ж: "zh", з: "z", и: "i", і: "i", ї: "yi", й: "y", к: "k", л: "l", м: "m",
+  н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ў: "u", ф: "f",
+  х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "y", ь: "",
+  э: "e", ю: "yu", я: "ya",
+};
+
+/**
+ * Convierte caracteres cirílicos a su equivalente latino, preservando la
+ * caja (Ж → Zh, ж → zh). Cualquier carácter no cirílico se deja intacto, así
+ * que es seguro aplicarlo a nombres ya en latín (José → José). Permite que
+ * un nombre como "Марина Кудраўцава" se guarde y enlace como "Marina
+ * Kudrautsava" (ver §slug en CLAUDE.md / clientes/actions).
+ */
+export function transliterateCyrillic(input: string): string {
+  let out = "";
+  for (const ch of input) {
+    const lower = ch.toLowerCase();
+    const mapped = CYRILLIC_TO_LATIN[lower];
+    if (mapped === undefined) {
+      out += ch;
+    } else if (ch !== lower && mapped.length > 0) {
+      out += mapped.charAt(0).toUpperCase() + mapped.slice(1);
+    } else {
+      out += mapped;
+    }
+  }
+  return out;
+}
+
 export function slugify(input: string): string {
-  return input
+  return transliterateCyrillic(input)
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
