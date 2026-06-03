@@ -256,6 +256,9 @@ export const SALES_SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "panel", label: "Mi panel", href: "/panel", icon: LayoutDashboard },
       { id: "link", label: "Mi enlace", href: "/panel/enlace", icon: Link2 },
       { id: "clients", label: "Mis clientes", href: "/clientes", icon: Users },
+      // Ranking del equipo del comercial (mismo director_id). En móvil ya
+      // está como pestaña de la MobileTabBar; en desktop lo exponemos aquí.
+      { id: "ranking", label: "Ranking", href: "/panel/ranking", icon: Trophy },
     ],
   },
   {

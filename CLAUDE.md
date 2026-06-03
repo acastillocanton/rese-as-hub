@@ -66,7 +66,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | Multi-marca por `locations.brand` (Inseryal + Marina d'Or Construcciones) | ✅ (mig 014, ver §4.22) |
 | Director productor pleno (notificaciones, listados, Excel, verificación, /comerciales/[slug]) | ✅ |
 | Ranking: Top 10 en `/dashboard` + pantalla `/ranking` con lista completa | ✅ |
-| `/panel/ranking` mobile para el rol sales (ranking de su equipo) | ✅ (2026-05-26) |
+| `/panel/ranking` para el rol sales (ranking de su equipo) — pestaña en móvil + item "Ranking" en el sidebar desktop (`SALES_SIDEBAR_GROUPS`, añadido 2026-06-03) | ✅ (2026-05-26) |
 | Loading states (`loading.tsx` por route group + `<Skeleton>`) | ✅ (2026-05-26) |
 | A11y: `eslint-plugin-jsx-a11y` activo + arreglos puntuales | ✅ (2026-05-26) |
 | Tests E2E Playwright (setup + login + admin-nav specs) | ✅ (2026-05-26) |
