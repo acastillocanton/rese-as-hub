@@ -7,6 +7,7 @@ import { Stars } from "@/components/ui/Stars";
 import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
 import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
 import { Avatar } from "@/components/ui/Avatar";
+import { AvatarUploader } from "@/components/ui/AvatarUploader";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -15,7 +16,7 @@ import type { PauseReason, ProfileStatus, SalesDepartment } from "@/lib/supabase
 import { ArchiveSalesButton } from "../ArchiveSalesButton";
 import { DeleteSalesButton } from "../DeleteSalesButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
-import { resendSalesAccess } from "../actions";
+import { resendSalesAccess, uploadSalesAvatar, removeSalesAvatar } from "../actions";
 import { SalesEditCard } from "./SalesEditCard";
 
 const DEPARTMENT_LABELS: Record<SalesDepartment, string> = {
@@ -49,6 +50,7 @@ type SalesDetail = {
   location_id: string | null;
   director_id: string | null;
   role: "sales" | "office_director";
+  avatar_url: string | null;
   location: { id: string; name: string } | null;
   department: SalesDepartment | null;
   language: string | null;
@@ -139,7 +141,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, monthly_goal, commission_rate, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, role, location:locations(id, name)",
+        "id, full_name, slug, email, phone, monthly_goal, commission_rate, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, role, avatar_url, location:locations(id, name)",
       )
       .eq("slug", slug)
       .in("role", ["sales", "office_director"])
@@ -359,7 +361,8 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
           gap: 18,
         }}
       >
-        {/* Cabecera con avatar */}
+        {/* Cabecera con avatar (editable por admin/gestor/director si es un
+            comercial activo; read-only para directores-productor o archivados) */}
         <div
           style={{
             display: "flex",
@@ -368,7 +371,18 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
             padding: "4px 0 4px 4px",
           }}
         >
-          <Avatar name={sales.full_name} size={56} />
+          {canEdit && sales.role === "sales" && sales.status !== "archived" ? (
+            <AvatarUploader
+              name={sales.full_name}
+              initialAvatarUrl={sales.avatar_url}
+              upload={uploadSalesAvatar.bind(null, sales.id)}
+              remove={removeSalesAvatar.bind(null, sales.id)}
+              size={56}
+              hint="PNG, JPG o WebP. Máximo 4 MB."
+            />
+          ) : (
+            <Avatar name={sales.full_name} src={sales.avatar_url} size={56} />
+          )}
           <div>
             <div
               style={{

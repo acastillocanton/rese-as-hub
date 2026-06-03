@@ -92,6 +92,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | v2 · Manual de Ayuda ampliado a 14 secciones + glosario (cubre todo v2) + botón "Sincronizar ahora" en el panel del comercial | ✅ (2026-06-02) |
 | fix · Transliteración cirílico→latino en `slugify` + `full_name` del cliente (nombres de Europa del Este ya no rompen la creación de cliente/enlace, §4.39) | ✅ (2026-06-03) |
 | fix · Anillo del objetivo en `/panel` se quedaba al 75% al cumplir el 100% (`strokeDashoffset` sobrante en `Ring.tsx`) | ✅ (2026-06-03) |
+| feat · Foto de perfil gestionada por admin/gestor (comerciales + directores) y por director (sus comerciales) — §4.40 | ✅ (2026-06-03) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -820,6 +821,18 @@ Hallazgo de la auditoría: la policy `profiles_self_update` (mig 002) solo compr
 ⚠️ La transliteración automática puede no coincidir **al 100%** con la grafía exacta de Google en algún nombre; el comercial puede editar el `full_name` a mano después (el slug es estable tras crearse, no se rompe el enlace). Para alfabetos **no mapeados** (chino, árabe…) el slug sigue saliendo vacío y se muestra el error claro en vez de crear un enlace roto — si hace falta, ampliar el mapa o añadir fallback genérico.
 
 **Tests** ([lib/__tests__/utils.test.ts](lib/__tests__/utils.test.ts)): 8 casos (transliteración con caja, signos blandos, latino/ñ intactos, alfabeto no mapeado, slug del caso real Kudrautsava).
+
+### 4.40 Foto de perfil gestionada por admin/gestor/director
+
+Hasta ahora la foto (avatar) era solo **self-service** desde `/perfil`. Ahora un gestor puede subir/cambiar/quitar la foto de otros productores:
+- **Comercial** (`/comerciales/[slug]`): admin, reviews_manager y office_director. El director queda acotado a su equipo por la RLS de lectura (mig 013, solo ve el detalle de SU equipo) + `assertSalesInScope` en la acción.
+- **Director** (`/directores/[slug]`): SOLO admin + reviews_manager (la página ya redirige a otros roles; el office_director NO toca la foto de otro director).
+
+**Helper compartido** [lib/avatar.ts](lib/avatar.ts) (server-only, single source of truth del storage): `validateAvatarFile` (tipo PNG/JPG/WebP + máx 4 MB), `storeUserAvatar(targetId, file)` (sube a `${targetId}/avatar.${ext}` vía service-client + devuelve URL pública con cache-buster, NO toca `profiles`), `removeUserAvatarObjects(targetId)`. Lo consumen las 3 vías: [`(profile)/perfil/actions`](app/(profile)/perfil/actions.ts) (refactorizado, self), [`comerciales/actions`](app/(admin)/comerciales/actions.ts) (`uploadSalesAvatar`/`removeSalesAvatar`, role-guard `sales`) y [`directores/actions`](app/(admin)/directores/actions.ts) (`uploadDirectorAvatar`/`removeDirectorAvatar`, role-guard `office_director`). Las acciones de gestión usan **service-client + code-gating** y dejan `audit_log` (`update_avatar`/`remove_avatar`).
+
+**UI**: componente cliente reutilizable [components/ui/AvatarUploader.tsx](components/ui/AvatarUploader.tsx) (Avatar + Subir/Cambiar/Quitar). Recibe las server actions **ya bindeadas** al usuario destino (`uploadSalesAvatar.bind(null, id)`), así el cliente solo manda el `File`. [`PhotoUpload`](app/(profile)/perfil/PhotoUpload.tsx) pasó a ser un wrapper fino sobre `AvatarUploader`. Las páginas de detalle añaden `avatar_url` al `select` y pintan el avatar interactivo (editable) o `<Avatar src>` read-only (productor-director o archivado).
+
+⚠️ Sin migración ni cambio de BD (la columna `profiles.avatar_url` y el bucket `avatars` ya existían). El bucket es **público** (lectura sin auth), igual que con el self-service.
 
 ---
 

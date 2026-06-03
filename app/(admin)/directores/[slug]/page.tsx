@@ -3,12 +3,17 @@ import { notFound, redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
+import { AvatarUploader } from "@/components/ui/AvatarUploader";
 import { Pill } from "@/components/ui/Pill";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus, SalesDepartment } from "@/lib/supabase/types";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
-import { resendDirectorAccess } from "../actions";
+import {
+  resendDirectorAccess,
+  uploadDirectorAvatar,
+  removeDirectorAvatar,
+} from "../actions";
 import { ArchiveDirectorButton } from "../ArchiveDirectorButton";
 import { DeleteDirectorButton } from "../DeleteDirectorButton";
 import { DirectorEditCard } from "./DirectorEditCard";
@@ -28,6 +33,7 @@ type DirectorDetail = {
   monthly_goal: number;
   commission_rate: number | null;
   archived_at: string | null;
+  avatar_url: string | null;
 };
 
 type TeamSales = {
@@ -101,7 +107,7 @@ export default async function DirectorDetailPage({ params }: PageProps) {
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, status, joined_at, location_id, department, language, monthly_goal, commission_rate, archived_at, location:locations(id, name)",
+        "id, full_name, slug, email, phone, status, joined_at, location_id, department, language, monthly_goal, commission_rate, archived_at, avatar_url, location:locations(id, name)",
       )
       .eq("slug", slug)
       .eq("role", "office_director")
@@ -174,8 +180,24 @@ export default async function DirectorDetailPage({ params }: PageProps) {
           gap: 18,
         }}
       >
-        {/* Datos del director (editable) */}
-        {!isArchived ? (
+        {/* Columna izquierda: foto (editable por admin/gestor) + datos */}
+        <div style={{ display: "grid", gap: 18, alignContent: "start" }}>
+          {!isArchived && (
+            <Card>
+              <div style={sectionLabel}>Foto del director</div>
+              <div style={{ marginTop: 14 }}>
+                <AvatarUploader
+                  name={director.full_name}
+                  initialAvatarUrl={director.avatar_url}
+                  upload={uploadDirectorAvatar.bind(null, director.id)}
+                  remove={removeDirectorAvatar.bind(null, director.id)}
+                  size={72}
+                  hint="PNG, JPG o WebP. Máximo 4 MB. Se mostrará en su panel y en los listados."
+                />
+              </div>
+            </Card>
+          )}
+          {!isArchived ? (
           <DirectorEditCard
             id={director.id}
             email={director.email}
@@ -213,7 +235,8 @@ export default async function DirectorDetailPage({ params }: PageProps) {
               <Row label="Oficina" value={director.location?.name ?? "—"} />
             </dl>
           </Card>
-        )}
+          )}
+        </div>
 
         {/* Equipo del director */}
         <Card padding={0}>

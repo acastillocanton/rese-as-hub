@@ -8,6 +8,7 @@ import { createInvitedProfile } from "@/lib/invite";
 import { generateAccessLink } from "@/lib/auth/resend-link";
 import { slugify } from "@/lib/utils";
 import { recordAudit } from "@/lib/audit";
+import { storeUserAvatar, removeUserAvatarObjects } from "@/lib/avatar";
 import { commissionRateSchema, departmentSchema } from "@/lib/validation/sales-schemas";
 
 /**
@@ -305,6 +306,66 @@ export async function restoreDirector(id: string) {
   revalidatePath("/directores");
   revalidatePath(`/directores/${target.slug}`);
   revalidatePath(`/directores/${finalSlug}`);
+  return { ok: true };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Avatar del director (gestionado SOLO por admin / reviews_manager — el rol
+// office_director no puede tocar la foto de otro director). Service-client +
+// role-guard 'office_director'. `id` se bindea con .bind(null, id).
+// ──────────────────────────────────────────────────────────────────────────
+
+export async function uploadDirectorAvatar(
+  id: string,
+  formData: FormData,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  if (!id) return { ok: false, error: "Id inválido." };
+  const guard = await assertCanManageDirectors();
+  if (!guard.ok) return guard;
+
+  const stored = await storeUserAvatar(id, formData.get("file"));
+  if (!stored.ok) return stored;
+
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({ avatar_url: stored.url } as never)
+    .eq("id", id)
+    .eq("role", "office_director");
+  if (error) {
+    console.error("[directores] uploadDirectorAvatar failed:", error);
+    return { ok: false, error: error.message };
+  }
+
+  await recordAudit({ entityType: "profile", entityId: id, action: "update_avatar" });
+  revalidatePath("/directores");
+  revalidatePath(`/directores/${id}`);
+  return { ok: true, url: stored.url };
+}
+
+export async function removeDirectorAvatar(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!id) return { ok: false, error: "Id inválido." };
+  const guard = await assertCanManageDirectors();
+  if (!guard.ok) return guard;
+
+  await removeUserAvatarObjects(id);
+
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({ avatar_url: null } as never)
+    .eq("id", id)
+    .eq("role", "office_director");
+  if (error) {
+    console.error("[directores] removeDirectorAvatar failed:", error);
+    return { ok: false, error: error.message };
+  }
+
+  await recordAudit({ entityType: "profile", entityId: id, action: "remove_avatar" });
+  revalidatePath("/directores");
+  revalidatePath(`/directores/${id}`);
   return { ok: true };
 }
 

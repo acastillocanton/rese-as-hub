@@ -8,6 +8,7 @@ import { createInvitedProfile } from "@/lib/invite";
 import { generateAccessLink } from "@/lib/auth/resend-link";
 import { slugify } from "@/lib/utils";
 import { recordAudit } from "@/lib/audit";
+import { storeUserAvatar, removeUserAvatarObjects } from "@/lib/avatar";
 import type { Role } from "@/lib/supabase/types";
 import { canManageSales } from "@/lib/supabase/types";
 import {
@@ -529,6 +530,82 @@ export async function restoreSales(id: string) {
   revalidatePath("/comerciales");
   revalidatePath(`/comerciales/${target.slug}`);
   revalidatePath(`/comerciales/${finalSlug}`);
+  return { ok: true };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Avatar del comercial (gestionado por admin / reviews_manager / director)
+// El director queda acotado a SU oficina (assertSalesInScope, igual que
+// resendSalesAccess/archiveSales). Escritura por service-client + role-guard
+// 'sales' (el code-gating es la autoridad; ver §4.24). Se bindea `id` con
+// .bind(null, id) en el server component, así el client solo manda el File.
+// ──────────────────────────────────────────────────────────────────────────
+
+export async function uploadSalesAvatar(
+  id: string,
+  formData: FormData,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  if (!id) return { ok: false, error: "Id inválido." };
+  const auth = await assertCanManageSales();
+  if (!auth.ok) return auth;
+  const inScope = await assertSalesInScope(auth.actor, id);
+  if (!inScope.ok) return inScope;
+
+  const stored = await storeUserAvatar(id, formData.get("file"));
+  if (!stored.ok) return stored;
+
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({ avatar_url: stored.url } as never)
+    .eq("id", id)
+    .eq("role", "sales");
+  if (error) {
+    console.error("[comerciales] uploadSalesAvatar failed:", error);
+    return { ok: false, error: error.message };
+  }
+
+  await recordAudit({
+    entityType: "profile",
+    entityId: id,
+    action: "update_avatar",
+    payload: { actor_id: auth.actor.userId },
+  });
+  revalidatePath("/comerciales");
+  revalidatePath(`/comerciales/${id}`);
+  return { ok: true, url: stored.url };
+}
+
+export async function removeSalesAvatar(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!id) return { ok: false, error: "Id inválido." };
+  const auth = await assertCanManageSales();
+  if (!auth.ok) return auth;
+  const inScope = await assertSalesInScope(auth.actor, id);
+  if (!inScope.ok) return inScope;
+
+  await removeUserAvatarObjects(id);
+
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({ avatar_url: null } as never)
+    .eq("id", id)
+    .eq("role", "sales");
+  if (error) {
+    console.error("[comerciales] removeSalesAvatar failed:", error);
+    return { ok: false, error: error.message };
+  }
+
+  await recordAudit({
+    entityType: "profile",
+    entityId: id,
+    action: "remove_avatar",
+    payload: { actor_id: auth.actor.userId },
+  });
+  revalidatePath("/comerciales");
+  revalidatePath(`/comerciales/${id}`);
   return { ok: true };
 }
 
