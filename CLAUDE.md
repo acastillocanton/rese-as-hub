@@ -834,6 +834,8 @@ Hasta ahora la foto (avatar) era solo **self-service** desde `/perfil`. Ahora un
 
 ⚠️ Sin migración ni cambio de BD (la columna `profiles.avatar_url` y el bucket `avatars` ya existían). El bucket es **público** (lectura sin auth), igual que con el self-service.
 
+**Render de la foto en TODAS las superficies de listado** (2026-06-03): subir la foto no bastaba — los listados pintaban `<Avatar>` solo con iniciales (no seleccionaban `avatar_url` ni pasaban `src`). Corregido en: `/comerciales` (SalesRow), `/directores` (DirectorRow), `/directores/[slug]` (equipo), `/gestores` (ManagerRow), ranking `/ranking` + `/panel/ranking` (lib/leaderboard.ts gana `avatar_url`→`avatarUrl` en `LeaderboardSales`/`LeaderboardRow` + ambas queries; `LeaderboardTable`/`LeaderboardCardList` pasan `src`) y el top-10 del `/dashboard` (su query de productores). Regla: **cualquier listado nuevo de personas debe seleccionar `avatar_url` y pasar `src={...}` al `<Avatar>`** — si no, sale solo con iniciales aunque el usuario tenga foto.
+
 ---
 
 ## 5. Setup en otro Mac

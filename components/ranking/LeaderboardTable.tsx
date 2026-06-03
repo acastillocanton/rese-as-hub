@@ -74,7 +74,7 @@ export function LeaderboardTable({
             {(i + 1).toString().padStart(2, "0")}
           </span>
           <div role="cell" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <Avatar name={p.name} size={28} />
+            <Avatar name={p.name} src={p.avatarUrl} size={28} />
             <div style={{ minWidth: 0 }}>
               <div
                 style={{

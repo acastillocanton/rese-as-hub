@@ -28,6 +28,8 @@ export type LeaderboardSales = {
   monthly_goal: number;
   location_id: string | null;
   role: "sales" | "office_director";
+  /** Foto de perfil; opcional para no romper fixtures de tests. */
+  avatar_url?: string | null;
 };
 
 export type LeaderboardLocation = {
@@ -60,6 +62,8 @@ export type LeaderboardRow = {
   conv: number;
   goal: number;
   isDirector: boolean;
+  /** Foto de perfil del productor (o null → la card pinta iniciales). */
+  avatarUrl: string | null;
   /** Marca la fila correspondiente al usuario actual (rol sales viendo
    *  /panel/ranking). Lo usa LeaderboardCardList para destacar visualmente
    *  la card del propio comercial. */
@@ -124,6 +128,7 @@ export function computeLeaderboard(args: {
         conv,
         goal: s.monthly_goal,
         isDirector: s.role === "office_director",
+        avatarUrl: s.avatar_url ?? null,
         isSelf: currentUserId !== undefined && s.id === currentUserId,
       };
     })
@@ -165,7 +170,7 @@ export async function getLeaderboard(opts: {
     const svc = createServiceClient();
     const salesQuery = svc
       .from("profiles")
-      .select("id, full_name, slug, status, monthly_goal, location_id, role")
+      .select("id, full_name, slug, status, monthly_goal, location_id, role, avatar_url")
       .in("role", ["sales", "office_director"]);
     const filteredSales =
       opts.teamFilter.directorId === null
@@ -207,7 +212,7 @@ export async function getLeaderboard(opts: {
   const [salesRes, locationsRes, sharesRes, reviewsRes] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, full_name, slug, status, monthly_goal, location_id, role")
+      .select("id, full_name, slug, status, monthly_goal, location_id, role, avatar_url")
       .in("role", ["sales", "office_director"])
       .returns<LeaderboardSales[]>(),
     supabase

@@ -19,6 +19,7 @@ type ManagerRow = {
   phone: string | null;
   status: ProfileStatus;
   joined_at: string;
+  avatar_url: string | null;
 };
 
 export default async function GestoresPage() {
@@ -30,7 +31,7 @@ export default async function GestoresPage() {
     const supabase = await createClient();
     const res = await supabase
       .from("profiles")
-      .select("id, full_name, email, phone, status, joined_at")
+      .select("id, full_name, email, phone, status, joined_at, avatar_url")
       .eq("role", "reviews_manager")
       .order("joined_at", { ascending: false })
       .returns<ManagerRow[]>();
@@ -183,7 +184,7 @@ function ManagerRowView({ m, last }: { m: ManagerRow; last: boolean }) {
           minWidth: 0,
         }}
       >
-        <Avatar name={m.full_name} size={32} />
+        <Avatar name={m.full_name} src={m.avatar_url} size={32} />
         <div style={{ minWidth: 0 }}>
           <div
             style={{

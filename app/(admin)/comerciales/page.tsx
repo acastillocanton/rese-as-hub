@@ -45,6 +45,7 @@ type SalesRow = {
   language: string | null;
   director_id: string | null;
   role: "sales" | "office_director";
+  avatar_url: string | null;
   location: { id: string; name: string } | null;
 };
 
@@ -129,7 +130,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
     let baseQuery = supabase
       .from("profiles")
       .select(
-        "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, director_id, role, location:locations(id, name)",
+        "id, full_name, email, slug, monthly_goal, status, joined_at, department, language, director_id, role, avatar_url, location:locations(id, name)",
       )
       .in("role", ["sales", "office_director"])
       .order("joined_at", { ascending: false });
@@ -479,7 +480,7 @@ function SalesRow({
           color: "inherit",
         }}
       >
-        <Avatar name={s.full_name} size={32} />
+        <Avatar name={s.full_name} src={s.avatar_url} size={32} />
         <div style={{ minWidth: 0 }}>
           <div
             style={{

@@ -75,7 +75,7 @@ export function LeaderboardCardList({ rows }: { rows: LeaderboardRow[] }) {
               >
                 {(i + 1).toString().padStart(2, "0")}
               </span>
-              <Avatar name={p.name} size={36} />
+              <Avatar name={p.name} src={p.avatarUrl} size={36} />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{

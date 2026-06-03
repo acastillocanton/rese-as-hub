@@ -38,6 +38,7 @@ type SalesProfile = {
   /** "sales" o "office_director" — el director también produce y entra en
    *  el leaderboard. Lo usamos para etiquetar la fila con "★ Director". */
   role: "sales" | "office_director";
+  avatar_url: string | null;
 };
 
 type LocationRow = {
@@ -112,7 +113,7 @@ export default async function DashboardPage({
       .from("profiles")
       // Producers: sales + office_director. El director también vende y
       // entra en su propio leaderboard, junto con su equipo.
-      .select("id, full_name, slug, status, monthly_goal, location_id, role")
+      .select("id, full_name, slug, status, monthly_goal, location_id, role, avatar_url")
       .in("role", ["sales", "office_director"])
       .returns<SalesProfile[]>(),
     supabase

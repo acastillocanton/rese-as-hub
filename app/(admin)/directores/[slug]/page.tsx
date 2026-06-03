@@ -43,6 +43,7 @@ type TeamSales = {
   status: ProfileStatus;
   department: SalesDepartment | null;
   language: string | null;
+  avatar_url: string | null;
 };
 
 type PageProps = {
@@ -124,7 +125,7 @@ export default async function DirectorDetailPage({ params }: PageProps) {
   // archivados, para que el operador sepa el alcance histórico).
   const { data: teamRaw } = await supabase
     .from("profiles")
-    .select("id, full_name, slug, status, department, language")
+    .select("id, full_name, slug, status, department, language, avatar_url")
     .eq("role", "sales")
     .eq("director_id", director.id)
     .order("status", { ascending: true })
@@ -354,7 +355,7 @@ function TeamRow({ s, last }: { s: TeamSales; last: boolean }) {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        <Avatar name={s.full_name} size={28} />
+        <Avatar name={s.full_name} src={s.avatar_url} size={28} />
         <span
           style={{
             fontWeight: 500,
