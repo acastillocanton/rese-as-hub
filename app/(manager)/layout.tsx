@@ -101,7 +101,7 @@ export default async function ManagerLayout({
       </div>
       <main
         className={isDirector ? "m-main" : undefined}
-        style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}
+        style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: "100vh" }}
       >
         {children}
       </main>

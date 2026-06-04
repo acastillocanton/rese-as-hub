@@ -11,7 +11,11 @@ export function Frame({ children }: { children: ReactNode }) {
         display: "flex",
         fontFamily: "var(--font-text)",
         letterSpacing: "-0.01em",
-        overflow: "hidden",
+        // OJO: sin overflow aquí. Un overflow != visible convertiría a Frame en
+        // contenedor de scroll y rompería el `position: sticky` del sidebar
+        // (se anclaría a Frame, que no scrollea, en vez de al documento). El
+        // scroll horizontal de contenido ancho lo absorbe cada bloque (tablas
+        // con overflowX:auto) + `minWidth:0` en <main>.
       }}
     >
       {children}

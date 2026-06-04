@@ -87,7 +87,7 @@ export default async function SalesLayout({
       </div>
       <main
         className="m-main"
-        style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}
+        style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: "100vh" }}
       >
         {children}
       </main>
