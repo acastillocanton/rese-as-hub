@@ -57,7 +57,14 @@ export function Sidebar({ groups, user, supportUnread = 0 }: SidebarProps) {
         display: "flex",
         flexDirection: "column",
         gap: 22,
-        minHeight: "100vh",
+        // Columna pegada de altura de viewport: el footer (Soporte/Ayuda/perfil)
+        // queda siempre al fondo visible y el <nav> hace scroll interno si la
+        // navegación supera el alto del viewport. Evita que el aside se estire
+        // con el contenido del <main> (align-items: stretch del Frame).
+        height: "100vh",
+        position: "sticky",
+        top: 0,
+        overflow: "hidden",
       }}
     >
       <div
@@ -81,7 +88,18 @@ export function Sidebar({ groups, user, supportUnread = 0 }: SidebarProps) {
         </div>
       </div>
 
-      <nav style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <nav
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 18,
+          // Absorbe el espacio sobrante y hace scroll interno (minHeight:0 es
+          // necesario para que un hijo flex pueda scrollear) → footer fijo abajo.
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+        }}
+      >
         {groups.map((group) => (
           <div key={group.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {group.label && (
