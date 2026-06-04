@@ -59,16 +59,58 @@ async function getCurrentUser(): Promise<CurrentUser | null> {
   return { id: user.id, role: data.role, fullName: data.full_name, email: data.email };
 }
 
-/** Fetch active admin + reviews_manager emails for notification. */
+/** Fetch active admin + reviews_manager emails for notification.
+ *  Reads from profiles.email first; falls back to auth.users.email
+ *  (some admin profiles have NULL email in profiles but a real email
+ *  in auth.users because they were created outside the invite flow). */
 async function getResponderEmails(): Promise<string[]> {
   const srv = createServiceClient();
   const { data } = await srv
     .from("profiles")
-    .select("email")
+    .select("id, email")
     .in("role", ["admin", "reviews_manager"])
-    .eq("status", "active");
-  if (!data) return [];
-  return data.map((r) => r.email).filter((e): e is string => !!e);
+    .eq("status", "active")
+    .returns<{ id: string; email: string | null }[]>();
+  if (!data || data.length === 0) return [];
+
+  // Collect emails, falling back to auth.users for null profiles.email
+  const emails: string[] = [];
+  const missingIds: string[] = [];
+  for (const p of data) {
+    if (p.email) {
+      emails.push(p.email);
+    } else {
+      missingIds.push(p.id);
+    }
+  }
+
+  // Fallback: fetch auth.users email for profiles with null email
+  if (missingIds.length > 0) {
+    const { data: { users } } = await srv.auth.admin.listUsers({ perPage: 100 });
+    if (users) {
+      const authMap = new Map(users.map((u) => [u.id, u.email]));
+      for (const id of missingIds) {
+        const authEmail = authMap.get(id);
+        if (authEmail) emails.push(authEmail);
+      }
+    }
+  }
+
+  return emails;
+}
+
+/** Get a user's email, falling back to auth.users if profiles.email is null. */
+async function getProfileEmail(userId: string): Promise<string> {
+  const srv = createServiceClient();
+  const { data } = await srv
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle<{ email: string | null }>();
+  if (data?.email) return data.email;
+  // Fallback: auth.users
+  const { data: { user: authUser } } = await srv.auth.admin.getUserById(userId);
+  return authUser?.email ?? "";
 }
 
 function appBase(): string {
@@ -142,13 +184,14 @@ export async function createConversation(
   // Send email notification to responders (fire-and-forget)
   const brand = await getCurrentUserBrand();
   const responderEmails = await getResponderEmails();
+  const openerEmail = user.email || await getProfileEmail(user.id);
   notifySupportMessage({
     conversationId: convId,
     subject: parsed.data.subject,
     messagePreview: parsed.data.body.slice(0, 500),
     authorName: user.fullName,
     isFromOpener: true,
-    openerEmail: user.email ?? "",
+    openerEmail,
     responderEmails,
     appBase: appBase(),
     brand,
@@ -221,18 +264,10 @@ export async function sendMessage(
     const opener = convData as { opener_id: string; subject: string };
     const isFromOpener = opener.opener_id === user.id;
 
-    // Get opener email
-    let openerEmail = "";
-    if (!isFromOpener) {
-      const { data: openerProfile } = await srv
-        .from("profiles")
-        .select("email")
-        .eq("id", opener.opener_id)
-        .single();
-      openerEmail = (openerProfile as { email: string | null } | null)?.email ?? "";
-    } else {
-      openerEmail = user.email ?? "";
-    }
+    // Get opener email (with auth.users fallback)
+    const openerEmail = isFromOpener
+      ? (user.email || await getProfileEmail(user.id))
+      : await getProfileEmail(opener.opener_id);
 
     const brand = await getCurrentUserBrand();
     const responderEmails = await getResponderEmails();

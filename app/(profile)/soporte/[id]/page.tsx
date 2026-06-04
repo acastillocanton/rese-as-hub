@@ -5,6 +5,7 @@ import { MessageBubble } from "@/components/soporte/MessageBubble";
 import { MessageComposer } from "@/components/soporte/MessageComposer";
 import { ConversationActions } from "@/components/soporte/ConversationActions";
 import { CategoryPill } from "@/components/soporte/CategoryPill";
+import { AutoRefresh } from "@/components/soporte/AutoRefresh";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { markConversationRead } from "@/app/(profile)/soporte/actions";
@@ -157,6 +158,8 @@ export default async function ConversationDetailPage({ params }: PageProps) {
 
   return (
     <>
+      {/* Auto-refresh cada 15s para que ambas partes vean mensajes nuevos */}
+      <AutoRefresh intervalMs={15_000} />
       <Topbar
         title={conversation.subject}
         subtitle={openerProfile?.full_name ?? "Usuario"}
