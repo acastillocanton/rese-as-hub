@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
-import { Stat } from "@/components/ui/Stat";
 import { Stars } from "@/components/ui/Stars";
 import { DuplicateBadge } from "@/components/ui/DuplicateBadge";
 import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
@@ -11,13 +10,30 @@ import { AvatarUploader } from "@/components/ui/AvatarUploader";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { parseRange, defaultShortcuts, isFullNaturalMonth } from "@/lib/date-range";
+import {
+  parseRange,
+  isFullNaturalMonth,
+  isCommissionPeriod,
+  commissionPeriodRange,
+  previousCommissionPeriodRange,
+  commissionShortcuts,
+  lastMonthRange,
+  bucketByMonth,
+  type DateRange,
+} from "@/lib/date-range";
+import { getLeaderboard } from "@/lib/leaderboard";
+import { computePanelBadges } from "@/lib/panel-badges";
+import { MONTHS } from "@/lib/demo-data";
 import type { PauseReason, ProfileStatus, SalesDepartment } from "@/lib/supabase/types";
 import { ArchiveSalesButton } from "../ArchiveSalesButton";
 import { DeleteSalesButton } from "../DeleteSalesButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendSalesAccess, uploadSalesAvatar, removeSalesAvatar } from "../actions";
 import { SalesEditCard } from "./SalesEditCard";
+import { ProducerSummary } from "@/components/panel/ProducerSummary";
+
+// El render usa `new Date()` para el periodo de comisión y la proyección de días.
+export const dynamic = "force-dynamic";
 
 const DEPARTMENT_LABELS: Record<SalesDepartment, string> = {
   nacional: "Nacional",
@@ -81,12 +97,141 @@ type ReviewRow = {
   location: { id: string; name: string; google_place_id: string | null } | null;
 };
 
+type ProducerInsights = {
+  monthBuckets: number[];
+  monthLabels: string[];
+  lifetimeCounted: number;
+  fiveStarCount: number;
+  prevCounted: number | null;
+  rankIndex: number | null;
+  teamSize: number;
+};
+
+/** Etiquetas de los últimos 6 meses terminando en el mes en curso. */
+function lastSixMonthLabels(now: Date): string[] {
+  const labels: string[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    labels.push(MONTHS[d.getMonth()] ?? "");
+  }
+  return labels;
+}
+
+function parseFromYmd(ymd: string): Date {
+  const parts = ymd.split("-").map(Number);
+  return new Date(parts[0] ?? 1970, (parts[1] ?? 1) - 1, parts[2] ?? 1);
+}
+
+/** "19 jun" — día de cierre del periodo (el `to`, último día incluido). */
+function formatCloseDate(toYmd: string): string {
+  return parseFromYmd(toYmd).toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+/**
+ * Resumen productivo de un comercial para la ficha de gestión: evolución 6
+ * meses, totales históricos, comparativa con el periodo anterior y posición en
+ * el ranking del equipo. Espeja `loadPanelInsights` del panel pero parametrizado
+ * por el id del comercial visto. Corre con el cliente del viewer (RLS acota al
+ * director a su equipo); `getLeaderboard` usa service-role para el ranking.
+ */
+async function loadProducerInsights(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  salesId: string,
+  directorId: string | null,
+  range: DateRange,
+  now: Date,
+): Promise<ProducerInsights> {
+  const histStartIso = new Date(
+    now.getFullYear(),
+    now.getMonth() - 5,
+    1,
+  ).toISOString();
+  const prev = isCommissionPeriod(range, now)
+    ? previousCommissionPeriodRange(now)
+    : isFullNaturalMonth(range)
+      ? lastMonthRange(parseFromYmd(range.from))
+      : null;
+
+  const [historyRes, lifetimeRes, fiveStarRes, prevCountedRes, leaderboard] =
+    await Promise.all([
+      supabase
+        .from("reviews")
+        .select("google_created_at")
+        .eq("sales_id", salesId)
+        .eq("match_state", "counted")
+        .is("removed_at", null)
+        .eq("is_duplicate", false)
+        .gte("google_created_at", histStartIso)
+        .returns<{ google_created_at: string }[]>(),
+      supabase
+        .from("reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("sales_id", salesId)
+        .eq("match_state", "counted")
+        .is("removed_at", null)
+        .eq("is_duplicate", false),
+      supabase
+        .from("reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("sales_id", salesId)
+        .eq("match_state", "counted")
+        .is("removed_at", null)
+        .eq("is_duplicate", false)
+        .eq("rating", 5),
+      prev
+        ? supabase
+            .from("reviews")
+            .select("id", { count: "exact", head: true })
+            .eq("sales_id", salesId)
+            .eq("match_state", "counted")
+            .is("removed_at", null)
+            .eq("is_duplicate", false)
+            .gte("google_created_at", prev.startIso)
+            .lt("google_created_at", prev.endIso)
+        : Promise.resolve(null),
+      getLeaderboard({
+        startIso: range.startIso,
+        endIso: range.endIso,
+        teamFilter: { directorId },
+        currentUserId: salesId,
+        metric: "counted",
+      }),
+    ]);
+
+  const monthBuckets = bucketByMonth(
+    (historyRes.data ?? []).map((r) => r.google_created_at),
+    6,
+    now,
+  );
+  const selfIdx = leaderboard.findIndex((row) => row.isSelf);
+
+  return {
+    monthBuckets,
+    monthLabels: lastSixMonthLabels(now),
+    lifetimeCounted: lifetimeRes.count ?? 0,
+    fiveStarCount: fiveStarRes.count ?? 0,
+    prevCounted: prevCountedRes ? prevCountedRes.count ?? 0 : null,
+    rankIndex: selfIdx === -1 ? null : selfIdx,
+    teamSize: leaderboard.length,
+  };
+}
+
 export default async function ComercialDetallePage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = await searchParams;
-  const range = parseRange(sp.from, sp.to);
-  const isMonthRange = isFullNaturalMonth(range);
-  const shortcuts = defaultShortcuts();
+  // La ficha del comercial se alinea al PERIODO DE COMISIÓN (20→19), igual que
+  // el panel del comercial — así el gestor ve la misma foto que ve el comercial
+  // (y que cuadra con lo que cobra). El selector permite mes natural/pasado.
+  const now = new Date();
+  const range = parseRange(sp.from, sp.to, now, commissionPeriodRange);
+  const isCommission = isCommissionPeriod(range, now);
+  const isCurrentPeriod =
+    new Date(range.startIso).getTime() <= now.getTime() &&
+    now.getTime() < new Date(range.endIso).getTime();
+  const shortcuts = commissionShortcuts(now);
   let viewerRole: string | null = null;
 
   if (!isSupabaseConfigured()) {
@@ -167,8 +312,8 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     ? directors.find((d) => d.id === sales.director_id) ?? null
     : null;
 
-  // Carga clientes + share_links + reviews en paralelo y agrega en JS.
-  const [clientsRes, sharesRes, reviewsRes] = await Promise.all([
+  // Carga clientes + share_links + reviews + resumen productivo en paralelo.
+  const [clientsRes, sharesRes, reviewsRes, insights] = await Promise.all([
     supabase
       .from("clients")
       .select("id, full_name, slug, created_at")
@@ -197,6 +342,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
       .order("google_created_at", { ascending: false })
       .limit(1000)
       .returns<ReviewRow[]>(),
+    loadProducerInsights(supabase, sales.id, sales.director_id, range, now),
   ]);
 
   const clientsRaw = clientsRes.data ?? [];
@@ -237,25 +383,34 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
   const reviewsPending = reviews.filter(
     (r) => r.match_state === "pending" && !r.is_duplicate,
   ).length;
-  const reviewsUnmatched = reviews.filter((r) => r.match_state === "unmatched").length;
   const reviewsDuplicates = reviews.filter((r) => r.is_duplicate).length;
-  const conversion =
-    visitsInRange > 0 ? Math.round((reviewsCounted / visitsInRange) * 100) : null;
-  // Avg rating sin contar duplicadas (las duplicadas no son del comercial en
-  // términos de producción).
-  const ratingReviews = reviews.filter((r) => !r.is_duplicate);
-  const avgRating =
-    ratingReviews.length > 0
-      ? ratingReviews.reduce((s, r) => s + r.rating, 0) / ratingReviews.length
+  // Media de estrellas sobre abonables+potenciales no-duplicadas (misma base
+  // que usa el panel del comercial) para el resumen productivo.
+  const abonablesRows = reviews.filter(
+    (r) => (r.match_state === "counted" || r.match_state === "pending") && !r.is_duplicate,
+  );
+  const summaryAvg =
+    abonablesRows.length > 0
+      ? abonablesRows.reduce((s, r) => s + r.rating, 0) / abonablesRows.length
       : null;
-  const firstShare = shares[0];
-  const lastVisitISO = firstShare
-    ? shares.reduce((max, s) => (s.opened_at > max ? s.opened_at : max), firstShare.opened_at)
-    : null;
-  const meta = sales.monthly_goal;
-  // Solo tiene sentido comparar contra monthly_goal si el rango es un mes
-  // natural completo; si no, marcamos el ratio como null y avisamos en UI.
-  const pct = isMonthRange && meta > 0 ? Math.round((reviewsCounted / meta) * 100) : null;
+
+  // Cierre/días restantes del periodo (solo se muestran si el rango incluye hoy).
+  const dayMs = 86_400_000;
+  const daysLeft = Math.max(
+    Math.ceil((new Date(range.endIso).getTime() - now.getTime()) / dayMs),
+    0,
+  );
+  const closeDate = formatCloseDate(range.to);
+
+  const badges = computePanelBadges({
+    lifetimeCounted: insights.lifetimeCounted,
+    reviewsThisPeriod: reviewsCounted,
+    goal: sales.monthly_goal,
+    monthBuckets: insights.monthBuckets,
+    fiveStarCount: insights.fiveStarCount,
+    rankIndex: insights.rankIndex,
+    teamSize: insights.teamSize,
+  });
 
   // Querystring para los enlaces dependientes del rango (Excel, etc.).
   // El Excel individual usa el endpoint /api/export/sales/[id] con
@@ -407,73 +562,57 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
           </div>
         </div>
 
-        {/* Datos editables (admin) o read-only (gestor) + KPIs */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1.2fr)",
-            gap: 18,
-          }}
-        >
-          {canEdit && sales.status !== "archived" && sales.role === "sales" ? (
-            // Solo editamos en línea a los sales — para directores se pasa
-            // por /directores (sus server actions tienen otras validaciones).
-            <SalesEditCard
-              id={sales.id}
-              email={sales.email}
-              phone={sales.phone}
-              slug={sales.slug}
-              joinedAt={sales.joined_at}
-              locations={locations}
-              directors={directors}
-              lockScope={isDirector}
-              initial={{
-                locationId: sales.location_id,
-                directorId: sales.director_id,
-                monthlyGoal: sales.monthly_goal,
-                commissionRate: sales.commission_rate,
-                status: sales.status,
-                department: sales.department,
-                language: sales.language,
-                pausedReason: sales.paused_reason,
-                notes: sales.notes,
-              }}
-            />
-          ) : (
-            <SalesReadOnlyCard sales={sales} joinedAt={sales.joined_at} />
-          )}
+        {/* Resumen productivo — la misma foto que ve el comercial en su panel
+            (abonables, €, objetivo, estrellas, evolución, ranking, insignias),
+            en periodo de comisión. Ver CLAUDE.md §4.42. */}
+        <ProducerSummary
+          periodLabel={range.label}
+          isCommissionPeriod={isCommission}
+          isCurrentPeriod={isCurrentPeriod}
+          counted={reviewsCounted}
+          pending={reviewsPending}
+          prevCounted={insights.prevCounted}
+          avgRating={summaryAvg}
+          goal={sales.monthly_goal}
+          commissionRate={sales.commission_rate}
+          closeDate={closeDate}
+          daysLeft={daysLeft}
+          monthBuckets={insights.monthBuckets}
+          monthLabels={insights.monthLabels}
+          rankIndex={insights.rankIndex}
+          teamSize={insights.teamSize}
+          badges={badges}
+          rankingHref="/ranking"
+        />
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-            <Stat
-              label="Reseñas atribuidas"
-              value={
-                isMonthRange
-                  ? `${reviewsCounted}/${meta}`
-                  : reviewsCounted.toString()
-              }
-              sub={
-                reviewsCounted === 0
-                  ? `Sin reseñas en ${range.label}`
-                  : isMonthRange
-                    ? `${pct}% del objetivo · ${reviewsPending} pendientes`
-                    : `${reviewsPending} pendientes · ${reviewsUnmatched} sin atribuir`
-              }
-              deltaTone={
-                pct === null ? undefined : pct >= 100 ? "ok" : pct >= 60 ? "neutral" : "warn"
-              }
-              delta={pct !== null && pct > 0 ? `${pct}%` : undefined}
-            />
-            <Stat
-              label="Valoración media"
-              value={avgRating !== null ? avgRating.toFixed(2).replace(".", ",") : "—"}
-              sub={
-                avgRating === null
-                  ? "Sin reseñas en el rango"
-                  : `sobre 5 · ${reviews.length} reseñas`
-              }
-            />
-          </div>
-        </div>
+        {/* Datos editables (admin/gestor/director) o read-only */}
+        {canEdit && sales.status !== "archived" && sales.role === "sales" ? (
+          // Solo editamos en línea a los sales — para directores se pasa
+          // por /directores (sus server actions tienen otras validaciones).
+          <SalesEditCard
+            id={sales.id}
+            email={sales.email}
+            phone={sales.phone}
+            slug={sales.slug}
+            joinedAt={sales.joined_at}
+            locations={locations}
+            directors={directors}
+            lockScope={isDirector}
+            initial={{
+              locationId: sales.location_id,
+              directorId: sales.director_id,
+              monthlyGoal: sales.monthly_goal,
+              commissionRate: sales.commission_rate,
+              status: sales.status,
+              department: sales.department,
+              language: sales.language,
+              pausedReason: sales.paused_reason,
+              notes: sales.notes,
+            }}
+          />
+        ) : (
+          <SalesReadOnlyCard sales={sales} joinedAt={sales.joined_at} />
+        )}
 
         {/* Clientes */}
         <Card padding={0}>

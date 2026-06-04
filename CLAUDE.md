@@ -94,6 +94,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | fix · Anillo del objetivo en `/panel` se quedaba al 75% al cumplir el 100% (`strokeDashoffset` sobrante en `Ring.tsx`) | ✅ (2026-06-03) |
 | feat · Foto de perfil gestionada por admin/gestor (comerciales + directores) y por director (sus comerciales) — §4.40 | ✅ (2026-06-03) |
 | fix · Ediciones de reseña (Places) ya no crean falsos duplicados: fusión por autor en el sync + limpieza one-shot de 4 grupos — §4.41 | ✅ (2026-06-04) |
+| feat · Ficha del comercial (gestión) muestra el resumen productivo del panel (abonables/€/objetivo/evolución/ranking/insignias), alineada al periodo de comisión — §4.42 | ✅ (2026-06-04) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -850,6 +851,16 @@ Hasta ahora la foto (avatar) era solo **self-service** desde `/perfil`. Ahora un
 ⚠️ **Business Profile (cuota 0, §4.26):** BP tiene `reviewId` estable → una edición mantiene el id → se filtra como no-fresh → **no llega** a `processFreshReviews`, así que hoy el contenido editado **no se reflejaría** (gap latente distinto, NO el de duplicados). Cuando llegue cuota: añadir un "UPDATE si el reviewId ya existe y cambió `updateTime`/contenido" en el cron BP. La fusión por autor está acotada a `places_api` y no cruza fuentes.
 
 **Limpieza one-shot aplicada 2026-06-04** (service-role, count-first, `audit_log`): 4 grupos mismo-autor+ficha colapsados a 1 fila viva cada uno (la más reciente = principal counted; las viejas → `removed_at`): NURIA GARCIA BECERRA (5★ principal, 1★ removed → Cornel pasó de media 4,50 a 5,00), Marina Kudrautsava, Marta Fernandez llaneza, Peri Alesk. NO fue migración (one-shot, no idempotente).
+
+### 4.42 Resumen productivo en la ficha del comercial (gestión) — alineada al periodo de comisión
+
+Admin, reviews_manager y office_director ven en `/comerciales/[slug]` la **misma foto productiva** que el comercial ve en su `/panel`: abonables, € en comisión, objetivo (anillo), estrellas, "por verificar", cierre/días, comparativa "+N vs periodo anterior", evolución de 6 meses (barras), posición en el ranking del equipo e insignias. Antes solo había dos Stat pobres ("Reseñas atribuidas 0/5" + "Valoración media") en **mes natural**, lo que chocaba con lo que ve el comercial (incoherencia 8/100% vs 0/5).
+
+**Cambio clave:** la ficha pasa a **periodo de comisión (20→19)** por defecto (`parseRange(..., commissionPeriodRange)` + `commissionShortcuts`), igual que el panel. ⚠️ Es una **excepción consciente** a la regla de §4.35 ("management = mes natural"): esta ficha es la lectura "cómo va el comercial / cuánto cobra", así que se alinea a su realidad. El resto de management (dashboard, /ranking, /manager/*, Excel global) sigue en mes natural. Las tablas de abajo (clientes, reseñas, Excel individual) siguen el rango del selector.
+
+**Implementación (sin migración):** componente presentacional [components/panel/ProducerSummary.tsx](components/panel/ProducerSummary.tsx) — factual, copy en 3ª persona ("su equipo"), SIN los mensajes motivacionales del panel — que reutiliza las piezas puras `Ring`, `MonthBars`, `Badge`, `formatEuro` y `computePanelBadges`. La carga de datos vive en `loadProducerInsights(...)` dentro de [app/(admin)/comerciales/[slug]/page.tsx](app/(admin)/comerciales/[slug]/page.tsx), que espeja `loadPanelInsights` del panel pero parametrizada por el `sales_id` visto (corre con el cliente del viewer → RLS acota al director a su equipo; `getLeaderboard` con `teamFilter` usa service-role para el ranking). El € usa `commission_rate` (null → "sin tarifa"); abonables/€ cuadran con lo que ve el propio comercial. Verificado en navegador con Cornel (8 abonables, 100%, 160€, #1 líder) y Fidanka (0, empty states limpios).
+
+⚠️ NO se extrajo la hero motivacional del panel (mantiene su copy de ánimo intacto). Si en el futuro se quiere unificar, `ProducerSummary` es el candidato a compartir.
 
 ---
 
