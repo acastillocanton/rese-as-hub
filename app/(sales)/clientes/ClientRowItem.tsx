@@ -71,9 +71,16 @@ export function ClientRowItem({
           );
           router.refresh();
         } else {
-          alert(
-            `No hay reseñas sin vincular que se parezcan a ${client.full_name}.`,
+          // Vacío: el botón solo reasigna reseñas YA contadas para el comercial
+          // que quedaron sin cliente. Las reseñas sin dueño se reclaman en
+          // Verificación → ofrecemos ir allí (un alert no admite enlace).
+          const goVerify = window.confirm(
+            `No encontré reseñas verificadas sin cliente que se parezcan a ${client.full_name}.\n\n` +
+              `Este botón solo reasigna reseñas que ya cuentan para ti pero se quedaron sin cliente. ` +
+              `Las reseñas que aún no tienen dueño se reclaman en "Verificación".\n\n` +
+              `¿Quieres ir a Verificación para revisar las reseñas sin atribuir de tu ficha?`,
           );
+          if (goVerify) router.push("/resenas/verificacion?state=unmatched");
         }
         return;
       }
