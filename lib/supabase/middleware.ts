@@ -92,6 +92,7 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
   // datos personales; ayuda para el manual de uso (sales, admin, manager).
   if (pathname === "/perfil" || pathname.startsWith("/perfil/")) return true;
   if (pathname === "/ayuda" || pathname.startsWith("/ayuda/")) return true;
+  if (pathname === "/soporte" || pathname.startsWith("/soporte/")) return true;
   if (role === "admin") return true;
   if (role === "sales") {
     return (

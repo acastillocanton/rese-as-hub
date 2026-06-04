@@ -2,7 +2,7 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/service";
 
 type AuditInput = {
-  entityType: "review" | "client" | "share_link" | "location" | "profile";
+  entityType: "review" | "client" | "share_link" | "location" | "profile" | "conversation";
   entityId: string;
   action: string;
   payload?: Record<string, unknown>;

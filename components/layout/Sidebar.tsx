@@ -15,6 +15,7 @@ import {
   Link2,
   LifeBuoy,
   Trophy,
+  MessageCircle,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { pickActiveId } from "./active-item";
@@ -36,9 +37,11 @@ export type SidebarGroup = {
 type SidebarProps = {
   groups: SidebarGroup[];
   user: { name: string; subtitle: string; avatarUrl?: string | null };
+  /** Número de conversaciones de soporte sin leer. >0 muestra badge. */
+  supportUnread?: number;
 };
 
-export function Sidebar({ groups, user }: SidebarProps) {
+export function Sidebar({ groups, user, supportUnread = 0 }: SidebarProps) {
   const pathname = usePathname() ?? "";
   const allItems = useMemo(() => groups.flatMap((g) => g.items), [groups]);
   const activeId = useMemo(() => pickActiveId(allItems, pathname), [allItems, pathname]);
@@ -143,7 +146,56 @@ export function Sidebar({ groups, user }: SidebarProps) {
           gap: 4,
         }}
       >
-        {/* Centro de ayuda — accesible a los tres roles. Pintado justo
+        {/* Soporte — helpdesk interno accesible a los 4 roles. Pintado en
+            el footer del sidebar junto a Ayuda y el avatar del usuario. */}
+        <Link
+          href="/soporte"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "7px 10px",
+            borderRadius: 8,
+            background: pathname.startsWith("/soporte") ? "rgba(0,0,0,0.05)" : "transparent",
+            color: pathname.startsWith("/soporte") ? "var(--ink)" : "var(--ink-3)",
+            fontSize: 13.5,
+            fontWeight: pathname.startsWith("/soporte") ? 600 : 500,
+            textDecoration: "none",
+          }}
+        >
+          <MessageCircle
+            aria-hidden="true"
+            size={16}
+            strokeWidth={pathname.startsWith("/soporte") ? 2 : 1.75}
+            style={{
+              color: pathname.startsWith("/soporte") ? "var(--ink)" : "var(--ink-4)",
+              flexShrink: 0,
+            }}
+          />
+          <span>Soporte</span>
+          {supportUnread > 0 && (
+            <span
+              style={{
+                marginLeft: "auto",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 18,
+                height: 18,
+                padding: "0 5px",
+                borderRadius: 999,
+                background: "#2563eb",
+                color: "#fff",
+                fontSize: 10.5,
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+            >
+              {supportUnread > 99 ? "99+" : supportUnread}
+            </span>
+          )}
+        </Link>
+        {/* Centro de ayuda — accesible a los cuatro roles. Pintado justo
             encima del avatar de perfil para que esté visible siempre sin
             ocupar espacio de la navegación principal. */}
         <Link

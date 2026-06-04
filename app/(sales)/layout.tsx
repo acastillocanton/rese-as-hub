@@ -55,6 +55,14 @@ export default async function SalesLayout({
     }
   }
 
+  // Unread support count for sidebar badge
+  let supportUnread = 0;
+  if (isSupabaseConfigured()) {
+    const sb = await createClient();
+    const { data: unreadData } = await sb.rpc("support_unread_count");
+    if (typeof unreadData === "number") supportUnread = unreadData;
+  }
+
   const isDirector = profile?.role === "office_director";
   const groups = isDirector ? OFFICE_DIRECTOR_SIDEBAR_GROUPS : SALES_SIDEBAR_GROUPS;
   const tabs = isDirector ? DIRECTOR_MOBILE_TABS : SALES_MOBILE_TABS;
@@ -74,6 +82,7 @@ export default async function SalesLayout({
             subtitle,
             avatarUrl: profile?.avatar_url,
           }}
+          supportUnread={supportUnread}
         />
       </div>
       <main

@@ -73,6 +73,14 @@ export default async function ProfileLayout({
           ? OFFICE_DIRECTOR_SIDEBAR_GROUPS
           : SALES_SIDEBAR_GROUPS;
 
+  // Unread support count for sidebar badge
+  let supportUnread = 0;
+  if (isSupabaseConfigured()) {
+    const sb = await createClient();
+    const { data: unreadData } = await sb.rpc("support_unread_count");
+    if (typeof unreadData === "number") supportUnread = unreadData;
+  }
+
   const brand: Brand = profile?.locations?.brand ?? DEFAULT_BRAND;
   const brandLabel = getBrandLabel(brand);
   const subtitle =
@@ -100,6 +108,7 @@ export default async function ProfileLayout({
             subtitle,
             avatarUrl: profile?.avatar_url,
           }}
+          supportUnread={supportUnread}
         />
       </div>
       <main

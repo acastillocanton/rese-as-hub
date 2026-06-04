@@ -56,6 +56,14 @@ export default async function AdminLayout({
     }
   }
 
+  // Unread support count for sidebar badge
+  let supportUnread = 0;
+  if (isSupabaseConfigured()) {
+    const sb = await createClient();
+    const { data: unreadData } = await sb.rpc("support_unread_count");
+    if (typeof unreadData === "number") supportUnread = unreadData;
+  }
+
   const role = profile?.role ?? null;
   const brand: Brand = profile?.locations?.brand ?? DEFAULT_BRAND;
   const brandLabel = getBrandLabel(brand);
@@ -95,7 +103,7 @@ export default async function AdminLayout({
         className={isDirector ? "m-hide-mobile" : undefined}
         style={{ display: "contents" }}
       >
-        <Sidebar groups={groups} user={user} />
+        <Sidebar groups={groups} user={user} supportUnread={supportUnread} />
       </div>
       <main
         className={isDirector ? "m-main" : undefined}

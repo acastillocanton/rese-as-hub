@@ -38,6 +38,9 @@ export type Brand = "inseryal" | "marina_dor_construcciones";
 
 export type PauseReason = "vacaciones" | "baja_medica" | "permiso_laboral";
 
+export type SupportCategory = "general" | "review_question" | "technical" | "billing";
+export type SupportStatus = "open" | "closed";
+
 /** Lista cerrada de idiomas para comerciales internacionales. Si en el
  *  futuro hay que añadir uno (Francés, Alemán, Italiano…), basta con
  *  ampliar este array y la migración no necesita cambios — el campo en
@@ -276,9 +279,74 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["audit_log"]["Insert"]>;
         Relationships: [];
       };
+      support_conversations: {
+        Row: {
+          id: string;
+          subject: string;
+          category: SupportCategory;
+          status: SupportStatus;
+          opener_id: string;
+          linked_review_id: string | null;
+          linked_client_id: string | null;
+          created_at: string;
+          closed_at: string | null;
+          last_message_at: string;
+        };
+        Insert: {
+          id?: string;
+          subject: string;
+          category?: SupportCategory;
+          status?: SupportStatus;
+          opener_id: string;
+          linked_review_id?: string | null;
+          linked_client_id?: string | null;
+          created_at?: string;
+          closed_at?: string | null;
+          last_message_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["support_conversations"]["Insert"]>;
+        Relationships: [];
+      };
+      support_messages: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          author_id: string;
+          body: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          author_id: string;
+          body: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["support_messages"]["Insert"]>;
+        Relationships: [];
+      };
+      support_read_receipts: {
+        Row: {
+          user_id: string;
+          conversation_id: string;
+          last_read_at: string;
+        };
+        Insert: {
+          user_id: string;
+          conversation_id: string;
+          last_read_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["support_read_receipts"]["Insert"]>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      support_unread_count: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+    };
     Enums: {
       role_enum: Role;
       profile_status_enum: ProfileStatus;
