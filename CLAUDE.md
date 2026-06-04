@@ -99,6 +99,9 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat · El admin puede editar el perfil de los gestores (nombre/teléfono/estado/foto) desde /gestores — §4.44 | ✅ (2026-06-04) |
 | fix · Aviso de prefijo de país en el teléfono del cliente (alimenta wa.me/SMS) en alta + edición | ✅ (2026-06-04) |
 | feat · Sistema de soporte interno (helpdesk): productores preguntan, admin/gestor responden (mig 023) — §4.45 | ✅ (2026-06-04) |
+| fix · Footer del sidebar (Soporte/Ayuda/perfil) siempre fijo al hacer scroll: quitar `overflow:hidden` de `Frame` (rompía el `position:sticky`) + `minWidth:0` en los `main` — §4.45 | ✅ (2026-06-04) |
+| feat · Pestaña "Atribuidas" en Verificación para reasignar reseñas ya atribuidas (counted) al comercial equivocado — §4.46 | ✅ (2026-06-04) |
+| 🔜 fix · Acceso a Soporte en mobile (hoy el footer del sidebar no existe en mobile → Soporte inalcanzable). **Pendiente — retomar 2026-06-05, ver §8 punto 5** | ⏳ |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -907,7 +910,9 @@ Helpdesk interno tipo Intercom. Los **productores** (sales + office_director) ab
 - `/soporte/nueva` — formulario (subject + category + body + vincular reseña/cliente opcional).
 - `/soporte/[id]` — hilo de mensajes con burbujas diferenciadas asker vs respondedor, composer, botón cerrar/reabrir. **Auto-refresh cada 15s** via [`<AutoRefresh>`](components/soporte/AutoRefresh.tsx) (`router.refresh()` periódico; sin WebSockets).
 
-**Sidebar**: link "Soporte" con icono `MessageCircle` + badge azul de no-leídos en el footer del sidebar (entre la nav y "Ayuda"). El sidebar ahora usa `height:100vh` + `position:sticky` + `overflow:hidden` para que el footer quede siempre visible, con scroll interno en el `<nav>` (`flex:1 + overflowY:auto`).
+**Sidebar**: link "Soporte" con icono `MessageCircle` + badge azul de no-leídos en el footer del sidebar (entre la nav y "Ayuda"). El sidebar usa `height:100vh` + `position:sticky` + `overflow:hidden` para que el footer quede siempre visible, con scroll interno en el `<nav>` (`flex:1 + overflowY:auto`).
+
+⚠️ **Para que el `position:sticky` del sidebar funcione**, [`Frame`](components/layout/Frame.tsx) **NO debe tener `overflow:hidden`** (se quitó el 2026-06-04): un `overflow != visible` convierte a Frame en contenedor de scroll y ancla el sticky a Frame (que no scrollea) en vez de al documento → el footer "subía" al hacer scroll. El scroll horizontal de contenido ancho lo absorbe cada bloque (tablas con `overflowX:auto`) + `minWidth:0` en los `<main>` de los 4 layouts. NO volver a añadir `overflow` a Frame.
 
 **Email** ([`lib/email/notify-support.ts`](lib/email/notify-support.ts)):
 - Nueva conversación / mensaje del opener → email a admin + reviews_manager activos (BCC).
@@ -919,9 +924,21 @@ Helpdesk interno tipo Intercom. Los **productores** (sales + office_director) ab
 
 **Componentes**: [`components/soporte/`](components/soporte/) — `ConversationRow`, `MessageBubble`, `CategoryPill`, `MessageComposer`, `ConversationActions`, `NewConversationForm`, `AutoRefresh`.
 
-⚠️ **Mobile**: `/soporte` es responsive con clases `m-*` pero NO entra en la MobileTabBar (ya en 4 tabs). Se accede via URL directa o sidebar.
+⚠️ **Mobile (HUECO ABIERTO — retomar 2026-06-05, ver §8 punto 5)**: `/soporte` es responsive con clases `m-*` y, una vez dentro, la `MobileTabBar` permite navegar. PERO **no hay punto de entrada a Soporte en mobile**: el footer del sidebar (donde vive el link "Soporte") está oculto en mobile (`m-hide-mobile`) y la barra inferior ya tiene 4 tabs (no caben 5). Resultado: sales/office_director (los roles con vista mobile y justo los que ABREN consultas) no pueden llegar a Soporte salvo por URL directa. **Plan acordado**: añadir una tarjeta "Ayuda y soporte" (links a `/soporte` + `/ayuda`) en `/perfil` (la pantalla "cuenta/más" del mobile, accesible vía el avatar flotante `MobileProfileAvatar`) + opcional un punto de aviso en ese avatar cuando `support_unread_count() > 0`. `/perfil` no muestra el avatar flotante (ya estás en cuenta), así que el badge de no-leídos iría junto al link de Soporte dentro de la tarjeta.
 
 ⚠️ **No hay**: WebSockets, push notifications, asignación de conversaciones, notas internas, auto-cierre. Pendiente para fase 2 si el uso lo justifica.
+
+### 4.46 Pestaña "Atribuidas" en Verificación — reasignar reseñas ya atribuidas
+
+La bandeja de Verificación ([app/(profile)/resenas/verificacion/page.tsx](app/(profile)/resenas/verificacion/page.tsx)) solo listaba `pending` / `unmatched` / `removed`, así que una reseña ya atribuida (`counted`) al comercial equivocado **no se podía reasignar desde ninguna pantalla** (`/manager/resenas` es solo lectura: solo marcar eliminada/restaurar).
+
+Se añadió una pestaña **"Atribuidas"** (`?state=counted`) que lista las `counted` reutilizando el panel de reasignación que ya existía:
+- `reassignReview` ([verificacion/actions.ts](app/(profile)/resenas/verificacion/actions.ts)) **no tiene guardia por estado** — ya funcionaba sobre cualquier reseña (valida scope, cliente↔comercial, aplica anti-fraude mig 015). NO se tocó.
+- `FullRow` de [ReviewVerificationRow.tsx](app/(profile)/resenas/verificacion/ReviewVerificationRow.tsx) ya renderiza Reasignar/Rechazar para admin/manager/director sobre cualquier reseña. NO se tocó.
+- Cambio acotado a `page.tsx`: aceptar `state=counted`, contador `countedCount`, chip "Atribuidas (N)" (solo `!isSalesViewer`), **límite defensivo `.limit(500)`** (las counted pueden ser muchas; orden por `google_created_at desc` → la recién mal atribuida sale arriba) y textos del topbar/empty-state/ayuda.
+- **Sales**: la pestaña NO se renderiza (las chips solo se pintan para no-sales). Si fuerza `?state=counted`, `SalesRow` muestra "ya atribuida, no requiere acción" y la RLS solo le deja ver las suyas → inocuo.
+
+Sin migración, sin tocar RLS. Para corregir una atribución: Verificación → "Atribuidas" → localizar → "Reasignar" → elegir comercial (+ cliente) correcto.
 
 ---
 
@@ -970,6 +987,7 @@ Helpdesk interno tipo Intercom. Los **productores** (sales + office_director) ab
 - Quitar `turbopack.root` ni `outputFileTracingRoot` de `next.config.ts` (§4.5).
 - Usar clases `sales-*` fuera de `app/(sales)/` o `MobileTabBar.tsx` (§4.14).
 - Quitar los prefijos `places:` / `manual:` del `google_review_id` (§4.17) — rompería la idempotencia.
+- Añadir `overflow` (hidden/auto) a [`Frame`](components/layout/Frame.tsx) — rompe el `position:sticky` del sidebar y el footer (Soporte/Ayuda) deja de quedar fijo (§4.45).
 
 ---
 
@@ -1011,9 +1029,13 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
    - #6 Política de retención (¿borrar share_links >90 días? ¿reseñas archivadas?).
    - #7 Alertas tiempo real al admin sobre reseñas ≤3★.
    - #8 Encriptar `oauth_refresh_token` en reposo (Supabase Vault / pgcrypto).
-5. **Soporte interno — Fase 2** (si el uso lo justifica):
+5. **Soporte interno — pendientes**:
+   - 🔜 **PRÓXIMO (retomar 2026-06-05) — acceso a Soporte en mobile**. Hoy es inalcanzable en mobile (el link vive en el footer del sidebar, oculto en mobile; la MobileTabBar ya tiene 4 tabs). Crítico porque sales + office_director (roles con vista mobile) son justo los que ABREN consultas. **Plan acordado** (ver §4.45 ⚠️ Mobile):
+     - Añadir una tarjeta **"Ayuda y soporte"** en [`/perfil`](app/(profile)/perfil/page.tsx) con links a `/soporte` y `/ayuda` (Ayuda tampoco es alcanzable en mobile hoy — se arregla de paso). Es la pantalla "cuenta/más" del mobile, accesible vía el avatar flotante [`MobileProfileAvatar`](components/layout/MobileProfileAvatar.tsx).
+     - Badge de no-leídos junto al link de Soporte en esa tarjeta (`supabase.rpc("support_unread_count")` en el server component de `/perfil`).
+     - Opcional: punto de aviso en `MobileProfileAvatar` cuando hay no-leídos (requiere pasar `supportUnread` desde los layouts `(sales)`/`(admin)`/`(manager)` que ya lo calculan). `/perfil` NO monta ese avatar, así que el badge de la tarjeta es el indicador en esa pantalla.
+     - Verificar end-to-end con cuenta de comercial (login mobile → avatar → perfil → Soporte). NO hay datos de prueba: las conversaciones de Cornel se borraron (eran de prueba); crear una nueva para probar.
    - Filtros en la bandeja del respondedor (por categoría, estado, ficha).
-   - Entrada mobile dedicada (icono en MobileProfileAvatar o CTA en /panel).
    - Búsqueda en conversaciones.
    - Auto-cierre de conversaciones sin actividad (vía cron diario existente).
    - Notas internas visibles solo entre responders.
