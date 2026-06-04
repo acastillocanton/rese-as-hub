@@ -63,7 +63,9 @@ export default async function ResenasVerificacionPage({
         ? ("pending" as const)
         : params.state === "removed"
           ? ("removed" as const)
-          : null;
+          : params.state === "counted"
+            ? ("counted" as const)
+            : null;
 
   if (!isSupabaseConfigured()) {
     return (
@@ -91,7 +93,7 @@ export default async function ResenasVerificacionPage({
   const isSalesViewer = viewerRole === "sales";
 
   // Resolver state filter ahora que conocemos el rol.
-  const stateFilter: "pending" | "unmatched" | "removed" =
+  const stateFilter: "pending" | "unmatched" | "removed" | "counted" =
     explicitState ?? (isSalesViewer ? "unmatched" : "pending");
 
   const reviewsQueryBase = supabase
@@ -101,40 +103,57 @@ export default async function ResenasVerificacionPage({
     )
     .order("google_created_at", { ascending: false });
 
-  const reviewsQuery =
+  let reviewsQuery =
     stateFilter === "removed"
       ? reviewsQueryBase.not("removed_at", "is", null)
       : reviewsQueryBase.eq("match_state", stateFilter).is("removed_at", null);
+  // Las atribuidas (counted) pueden ser muchas — a diferencia de pending/
+  // unmatched que son conjuntos pequeños. Límite defensivo + orden por más
+  // reciente (ya aplicado en reviewsQueryBase) para que una reseña recién mal
+  // atribuida salga arriba.
+  if (stateFilter === "counted") reviewsQuery = reviewsQuery.limit(500);
 
-  const [reviewsRes, pendingCountRes, unmatchedCountRes, removedCountRes, salesWithClientsRes] =
-    await Promise.all([
-      reviewsQuery.returns<ReviewRow[]>(),
-      supabase
-        .from("reviews")
-        .select("id", { count: "exact", head: true })
-        .eq("match_state", "pending")
-        .is("removed_at", null),
-      supabase
-        .from("reviews")
-        .select("id", { count: "exact", head: true })
-        .eq("match_state", "unmatched")
-        .is("removed_at", null),
-      supabase
-        .from("reviews")
-        .select("id", { count: "exact", head: true })
-        .not("removed_at", "is", null),
-      supabase
-        .from("profiles")
-        .select("id, full_name, slug, role, director_id, clients:clients(id, full_name)")
-        .in("role", ["sales", "office_director"])
-        .order("full_name")
-        .returns<SalesOptionWithDirector[]>(),
-    ]);
+  const [
+    reviewsRes,
+    pendingCountRes,
+    unmatchedCountRes,
+    removedCountRes,
+    countedCountRes,
+    salesWithClientsRes,
+  ] = await Promise.all([
+    reviewsQuery.returns<ReviewRow[]>(),
+    supabase
+      .from("reviews")
+      .select("id", { count: "exact", head: true })
+      .eq("match_state", "pending")
+      .is("removed_at", null),
+    supabase
+      .from("reviews")
+      .select("id", { count: "exact", head: true })
+      .eq("match_state", "unmatched")
+      .is("removed_at", null),
+    supabase
+      .from("reviews")
+      .select("id", { count: "exact", head: true })
+      .not("removed_at", "is", null),
+    supabase
+      .from("reviews")
+      .select("id", { count: "exact", head: true })
+      .eq("match_state", "counted")
+      .is("removed_at", null),
+    supabase
+      .from("profiles")
+      .select("id, full_name, slug, role, director_id, clients:clients(id, full_name)")
+      .in("role", ["sales", "office_director"])
+      .order("full_name")
+      .returns<SalesOptionWithDirector[]>(),
+  ]);
 
   const reviews = reviewsRes.data ?? [];
   const pendingCount = pendingCountRes.count ?? 0;
   const unmatchedCount = unmatchedCountRes.count ?? 0;
   const removedCount = removedCountRes.count ?? 0;
+  const countedCount = countedCountRes.count ?? 0;
   const allSalesOptions = salesWithClientsRes.data ?? [];
 
   // Filtrado de salesOptions según rol del viewer:
@@ -169,7 +188,9 @@ export default async function ResenasVerificacionPage({
             ? `${pendingCount} pendientes`
             : stateFilter === "unmatched"
               ? `${unmatchedCount} sin atribuir`
-              : `${removedCount} eliminadas`
+              : stateFilter === "counted"
+                ? `${countedCount} atribuidas`
+                : `${removedCount} eliminadas`
         }
         breadcrumb={getBrandBreadcrumb(brand)}
         compact
@@ -213,7 +234,10 @@ export default async function ResenasVerificacionPage({
                 con confianza entre 40% y 75% — el algoritmo cree saber quién las
                 generó pero no se atreve a contabilizar sin tu confirmación. Las{" "}
                 <strong>Sin atribuir</strong> no encontraron candidato razonable;
-                úsalas para reasignar manualmente si reconoces al cliente.
+                úsalas para reasignar manualmente si reconoces al cliente. En{" "}
+                <strong>Atribuidas</strong> tienes las ya contabilizadas: entra ahí si
+                una se asignó al comercial equivocado y pulsa &ldquo;Reasignar&rdquo; para
+                moverla al correcto.
               </>
             )}
           </p>
@@ -238,6 +262,12 @@ export default async function ResenasVerificacionPage({
               tone="neutral"
             />
             <FilterChip
+              href="/resenas/verificacion?state=counted"
+              label={`Atribuidas (${countedCount})`}
+              active={stateFilter === "counted"}
+              tone="neutral"
+            />
+            <FilterChip
               href="/resenas/verificacion?state=removed"
               label={`Eliminadas (${removedCount})`}
               active={stateFilter === "removed"}
@@ -255,7 +285,9 @@ export default async function ResenasVerificacionPage({
                   ? isSalesViewer
                     ? "Sin huérfanas en tu ficha"
                     : "Sin reseñas no atribuidas"
-                  : "Sin reseñas eliminadas"}
+                  : stateFilter === "counted"
+                    ? "Sin reseñas atribuidas"
+                    : "Sin reseñas eliminadas"}
             </div>
             <div
               style={{
@@ -271,7 +303,9 @@ export default async function ResenasVerificacionPage({
                   ? isSalesViewer
                     ? "Nada que reclamar"
                     : "Cero reseñas huérfanas"
-                  : "Ninguna eliminación detectada"}
+                  : stateFilter === "counted"
+                    ? "Todavía nada atribuido"
+                    : "Ninguna eliminación detectada"}
             </div>
             <p
               style={{
@@ -290,7 +324,9 @@ export default async function ResenasVerificacionPage({
                     ? "Cuando el cron sincronice una reseña con confianza intermedia, aparecerá aquí para que decidas. Mientras tanto puedes revisar las reseñas "
                     : stateFilter === "unmatched"
                       ? "El matcher ha encontrado un candidato razonable para todas las reseñas sincronizadas. Si crees que hay alguna mal asignada, revisa la pestaña "
-                      : "Cuando el cron de Places API note que una reseña ya no aparece en Google, se marcará aquí automáticamente. También puedes marcarla a mano desde las pestañas "}
+                      : stateFilter === "counted"
+                        ? "Todavía no hay ninguna reseña atribuida. Cuando se contabilice alguna, aparecerá aquí y podrás reasignarla si fue al comercial equivocado. De momento revisa las "
+                        : "Cuando el cron de Places API note que una reseña ya no aparece en Google, se marcará aquí automáticamente. También puedes marcarla a mano desde las pestañas "}
                   <Link
                     href={
                       stateFilter === "pending"
