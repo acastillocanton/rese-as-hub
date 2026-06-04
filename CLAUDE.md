@@ -98,6 +98,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat · Selector de fecha unificado a "Periodo de comisión" por defecto en toda la app (+ "Último trimestre" en el set de atajos) — §4.43 | ✅ (2026-06-04) |
 | feat · El admin puede editar el perfil de los gestores (nombre/teléfono/estado/foto) desde /gestores — §4.44 | ✅ (2026-06-04) |
 | fix · Aviso de prefijo de país en el teléfono del cliente (alimenta wa.me/SMS) en alta + edición | ✅ (2026-06-04) |
+| feat · Sistema de soporte interno (helpdesk): productores preguntan, admin/gestor responden (mig 023) — §4.45 | ✅ (2026-06-04) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -886,6 +887,42 @@ Hasta ahora `/gestores` era solo lista (invitar + reenviar acceso + eliminar). A
 
 ⚠️ Es **solo-admin** por decisión: un gestor NO edita a otro gestor (no se añadió RLS para `reviews_manager`→`reviews_manager`). Si en el futuro se quiere, añadir una policy específica (ver nota en la exploración de §4.44).
 
+### 4.45 Sistema de soporte interno (helpdesk) — mig 023
+
+Helpdesk interno tipo Intercom. Los **productores** (sales + office_director) abren consultas cuando necesitan ayuda; los **respondedores** (admin + reviews_manager) las atienden. El director NO responde a consultas de su equipo — solo pregunta como un comercial más.
+
+**Schema** (migración 023 [`supabase/migrations/023_support_helpdesk.sql`](supabase/migrations/023_support_helpdesk.sql)):
+- `support_conversations` — subject, category (CHECK: `general`/`review_question`/`technical`/`billing`), status (`open`/`closed`), `opener_id`, vínculo opcional a `reviews.id` y `clients.id`, `last_message_at` denormalizado.
+- `support_messages` — `conversation_id`, `author_id`, `body`, `created_at`. Append-only (no DELETE).
+- `support_read_receipts` — PK `(user_id, conversation_id)`, `last_read_at`. UPSERT al abrir la conversación.
+- Función SQL `support_unread_count()` (`SECURITY DEFINER`): LEFT JOIN conversations ↔ receipts, scoped por rol. Llamada via `supabase.rpc("support_unread_count")` desde los 4 layouts.
+
+**RLS**:
+- `support_conversations`: admin/reviews_manager → ALL; sales/office_director → solo `opener_id = auth.uid()`.
+- `support_messages`: SELECT/INSERT via `EXISTS` contra conversations (hereda RLS). INSERT fuerza `author_id = auth.uid()`.
+- `support_read_receipts`: `for all` → `user_id = auth.uid()`.
+
+**Rutas**: vive en `app/(profile)/soporte/` (mismo grupo que `/ayuda`):
+- `/soporte` — lista de conversaciones con badge no-leído, pills de categoría/estado, tiempo relativo.
+- `/soporte/nueva` — formulario (subject + category + body + vincular reseña/cliente opcional).
+- `/soporte/[id]` — hilo de mensajes con burbujas diferenciadas asker vs respondedor, composer, botón cerrar/reabrir. **Auto-refresh cada 15s** via [`<AutoRefresh>`](components/soporte/AutoRefresh.tsx) (`router.refresh()` periódico; sin WebSockets).
+
+**Sidebar**: link "Soporte" con icono `MessageCircle` + badge azul de no-leídos en el footer del sidebar (entre la nav y "Ayuda"). El sidebar ahora usa `height:100vh` + `position:sticky` + `overflow:hidden` para que el footer quede siempre visible, con scroll interno en el `<nav>` (`flex:1 + overflowY:auto`).
+
+**Email** ([`lib/email/notify-support.ts`](lib/email/notify-support.ts)):
+- Nueva conversación / mensaje del opener → email a admin + reviews_manager activos (BCC).
+- Mensaje del respondedor → email al opener.
+- `getResponderEmails()` busca en `profiles.email` con fallback a `auth.users.email` (algunos admins tienen NULL en profiles).
+- `getProfileEmail(userId)` helper con el mismo fallback para el email del opener.
+
+**Fechas**: todas formateadas con `timeZone: "Europe/Madrid"` (Vercel corre en UTC).
+
+**Componentes**: [`components/soporte/`](components/soporte/) — `ConversationRow`, `MessageBubble`, `CategoryPill`, `MessageComposer`, `ConversationActions`, `NewConversationForm`, `AutoRefresh`.
+
+⚠️ **Mobile**: `/soporte` es responsive con clases `m-*` pero NO entra en la MobileTabBar (ya en 4 tabs). Se accede via URL directa o sidebar.
+
+⚠️ **No hay**: WebSockets, push notifications, asignación de conversaciones, notas internas, auto-cierre. Pendiente para fase 2 si el uso lo justifica.
+
 ---
 
 ## 5. Setup en otro Mac
@@ -938,7 +975,7 @@ Hasta ahora `/gestores` era solo lista (invitar + reenviar acceso + eliminar). A
 
 ## 7. Estado real de Supabase
 
-- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones **001-022 aplicadas** (021/022 verificadas empíricamente en prod 2026-06-01: un sales recibe 403 al intentar PATCH de columnas congeladas, 200 en campos no sensibles). **022 = addendum de 021**: congela también `department` y `language` en `profiles_self_update` (un sales podía auto-cambiarse el departamento por API → afecta a la hoja del Excel). Mismo patrón `is not distinct from`. **021 = blindaje de `profiles_self_update`** (auditoría): la policy original solo congelaba `role`, así que cualquier usuario podía editarse por API directa su propia `commission_rate`/`monthly_goal`/`status`/`location_id`/`director_id` (fraude de comisión). 021 reescribe el `WITH CHECK` congelando esas columnas (comparación `is not distinct from` contra el valor actual) y solo permite la transición `status` `invited→active` (el flip de `/auth/confirm`). No afecta a admin/manager/director (sus UPDATE pasan por sus policies permisivas en OR). Ver §4.36. **020 = tarifa de comisión por reseña**: `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS commission_rate numeric(8,2)` (nullable, sin default; €/reseña por productor para el importe estimado del periodo de comisión 20→20; sin RLS nueva — escritura por las policies de update de profiles existentes; ver §4.35). **019 = plantillas de mensaje personalizadas**: `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS message_templates jsonb` (JSONB nullable keyed por `MessageTemplateId`, shape anidado `{ [id]: { label?, body? } }` — el comercial personaliza nombre y/o cuerpo; sin RLS nueva, escritura server-only por service-client; ver §4.31). **018 = objetivo mensual por defecto bajado a 5**: `ALTER TABLE profiles ALTER COLUMN monthly_goal SET DEFAULT 5` + `UPDATE profiles SET monthly_goal = 5 WHERE monthly_goal = 50` (bulk update de los 51 perfiles existentes aplicado 2026-06-01). **017 = alertas tempranas ≤2★**: añade `reviews.low_rating_alerted_at timestamptz` + índice parcial `reviews_low_rating_pending_alert_idx` (ver §4.29). **016 = verificación abierta a todos los roles**: helper `current_user_location()` + policy SELECT permissive `reviews_unmatched_location_select` para que sales/director vean unmatched de su `profiles.location_id` + policy UPDATE estricta `reviews_sales_claim_update` con WITH CHECK que solo deja al sales pasar unmatched → counted con `sales_id = auth.uid()` (ver §4.24). **015 = anti-fraude**: añade `reviews.is_duplicate boolean` + backfill histórico marcando como duplicadas todas menos la primera por `google_created_at` dentro de cada `client_id` + índice parcial `reviews_active_principal_idx`. Las queries de KPI/Excel filtran `is_duplicate=false`; los listados muestran todas con badge "Duplicada" (ver §4.23). **014 = multi-marca**: enum `brand_enum` + columna `locations.brand` con default `'inseryal'` + backfill por `name ilike 'Marina d''Or Construcciones%'` (ver §4.22). 007 = índices compuestos en `reviews`. 008 = `actor_id` + policy `audit_log_self_insert`. 009 = enum `review_source_enum` (`business_profile`/`places_api`/`manual`) + columna `source` en `reviews`. 010 = columna `removed_at` + índice parcial + view `reviews_active`. **011 = añade valor `'office_director'` al enum `role_enum`** (aislado por la limitación 55P04 de Postgres: un nuevo valor de enum no puede usarse como literal en la misma transacción en que se añadió). **012 = resto del rol `office_director`**: constraint `role_requires_location`, helper `current_office_location()` y policies RLS para director sobre `locations`, `profiles` `role='sales'`, `reviews`, `clients`, `share_links`. **013 = el office_director pasa de scope por location a scope por equipo** (`profiles.director_id`): nueva columna auto-referencial + reescritura de policies de profiles/reviews/clients/share_links a `director_id = auth.uid()`. La policy de `locations` se mantiene por `location_id` (acceso a su ficha sigue por oficina). Permite varios directores en la misma ficha, cada uno con su equipo (p.ej. uno por idioma en Internacional).
+- **Proyecto**: `zejwmznusszqlwhevaqv.supabase.co`. Migraciones **001-023 aplicadas**. **023 = soporte interno (helpdesk)**: 3 tablas (`support_conversations`, `support_messages`, `support_read_receipts`) + RLS por rol + función `support_unread_count()` + índices (ver §4.45). Anteriores: **001-022 aplicadas** (021/022 verificadas empíricamente en prod 2026-06-01: un sales recibe 403 al intentar PATCH de columnas congeladas, 200 en campos no sensibles). **022 = addendum de 021**: congela también `department` y `language` en `profiles_self_update` (un sales podía auto-cambiarse el departamento por API → afecta a la hoja del Excel). Mismo patrón `is not distinct from`. **021 = blindaje de `profiles_self_update`** (auditoría): la policy original solo congelaba `role`, así que cualquier usuario podía editarse por API directa su propia `commission_rate`/`monthly_goal`/`status`/`location_id`/`director_id` (fraude de comisión). 021 reescribe el `WITH CHECK` congelando esas columnas (comparación `is not distinct from` contra el valor actual) y solo permite la transición `status` `invited→active` (el flip de `/auth/confirm`). No afecta a admin/manager/director (sus UPDATE pasan por sus policies permisivas en OR). Ver §4.36. **020 = tarifa de comisión por reseña**: `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS commission_rate numeric(8,2)` (nullable, sin default; €/reseña por productor para el importe estimado del periodo de comisión 20→20; sin RLS nueva — escritura por las policies de update de profiles existentes; ver §4.35). **019 = plantillas de mensaje personalizadas**: `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS message_templates jsonb` (JSONB nullable keyed por `MessageTemplateId`, shape anidado `{ [id]: { label?, body? } }` — el comercial personaliza nombre y/o cuerpo; sin RLS nueva, escritura server-only por service-client; ver §4.31). **018 = objetivo mensual por defecto bajado a 5**: `ALTER TABLE profiles ALTER COLUMN monthly_goal SET DEFAULT 5` + `UPDATE profiles SET monthly_goal = 5 WHERE monthly_goal = 50` (bulk update de los 51 perfiles existentes aplicado 2026-06-01). **017 = alertas tempranas ≤2★**: añade `reviews.low_rating_alerted_at timestamptz` + índice parcial `reviews_low_rating_pending_alert_idx` (ver §4.29). **016 = verificación abierta a todos los roles**: helper `current_user_location()` + policy SELECT permissive `reviews_unmatched_location_select` para que sales/director vean unmatched de su `profiles.location_id` + policy UPDATE estricta `reviews_sales_claim_update` con WITH CHECK que solo deja al sales pasar unmatched → counted con `sales_id = auth.uid()` (ver §4.24). **015 = anti-fraude**: añade `reviews.is_duplicate boolean` + backfill histórico marcando como duplicadas todas menos la primera por `google_created_at` dentro de cada `client_id` + índice parcial `reviews_active_principal_idx`. Las queries de KPI/Excel filtran `is_duplicate=false`; los listados muestran todas con badge "Duplicada" (ver §4.23). **014 = multi-marca**: enum `brand_enum` + columna `locations.brand` con default `'inseryal'` + backfill por `name ilike 'Marina d''Or Construcciones%'` (ver §4.22). 007 = índices compuestos en `reviews`. 008 = `actor_id` + policy `audit_log_self_insert`. 009 = enum `review_source_enum` (`business_profile`/`places_api`/`manual`) + columna `source` en `reviews`. 010 = columna `removed_at` + índice parcial + view `reviews_active`. **011 = añade valor `'office_director'` al enum `role_enum`** (aislado por la limitación 55P04 de Postgres: un nuevo valor de enum no puede usarse como literal en la misma transacción en que se añadió). **012 = resto del rol `office_director`**: constraint `role_requires_location`, helper `current_office_location()` y policies RLS para director sobre `locations`, `profiles` `role='sales'`, `reviews`, `clients`, `share_links`. **013 = el office_director pasa de scope por location a scope por equipo** (`profiles.director_id`): nueva columna auto-referencial + reescritura de policies de profiles/reviews/clients/share_links a `director_id = auth.uid()`. La policy de `locations` se mantiene por `location_id` (acceso a su ficha sigue por oficina). Permite varios directores en la misma ficha, cada uno con su equipo (p.ej. uno por idioma en Internacional).
 - **URL Configuration**: Site URL = `https://resenas.marinadorconstrucciones.com`; Redirect URLs incluyen `http://localhost:3000/**` + URL prod con `/**`.
 - **Email Templates**: Magic Link con `type=email`, Invite con `type=invite` (ver §4.1).
 - **Storage**: bucket público `avatars` con 3 policies (insert/update/delete propio en `{user_id}/`). Avatar upload vía server action con service-role en [`(profile)/perfil/actions.ts`](app/(profile)/perfil/actions.ts) (bypasea RLS por simplicidad).
@@ -974,6 +1011,14 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
    - #6 Política de retención (¿borrar share_links >90 días? ¿reseñas archivadas?).
    - #7 Alertas tiempo real al admin sobre reseñas ≤3★.
    - #8 Encriptar `oauth_refresh_token` en reposo (Supabase Vault / pgcrypto).
+5. **Soporte interno — Fase 2** (si el uso lo justifica):
+   - Filtros en la bandeja del respondedor (por categoría, estado, ficha).
+   - Entrada mobile dedicada (icono en MobileProfileAvatar o CTA en /panel).
+   - Búsqueda en conversaciones.
+   - Auto-cierre de conversaciones sin actividad (vía cron diario existente).
+   - Notas internas visibles solo entre responders.
+   - Respuestas predefinidas (templates para preguntas frecuentes).
+   - Asignación de conversaciones a un respondedor concreto (`assigned_to`).
 
 ---
 
