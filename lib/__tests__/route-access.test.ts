@@ -38,6 +38,9 @@ describe("pathAllowedForRole — sales", () => {
     // Autoservicio Excel propio desde /panel/resenas. El endpoint
     // valida en código que el sales solo descargue su propio id.
     expect(pathAllowedForRole("/api/export/sales/abc-123", "sales")).toBe(true);
+    // Botón "Sincronizar ahora" en /panel/resenas. El endpoint /api/sync/now
+    // sincroniza solo su propia location_id para el rol sales.
+    expect(pathAllowedForRole("/api/sync/now", "sales")).toBe(true);
   });
   it("NO entra a admin ni a manager", () => {
     expect(pathAllowedForRole("/dashboard", "sales")).toBe(false);

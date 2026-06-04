@@ -102,7 +102,12 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
       // Autoservicio: descarga del Excel propio desde /panel/resenas. El
       // endpoint /api/export/sales/[id] valida en código que el sales solo
       // pueda exportar su propio id (resto sigue siendo admin/manager/director).
-      pathname.startsWith("/api/export/sales")
+      pathname.startsWith("/api/export/sales") ||
+      // Botón "Sincronizar ahora" en /panel/resenas (añadido 2026-06-02). El
+      // endpoint /api/sync/now ignora el body para sales y sincroniza solo su
+      // propia location_id. Sin esto, el POST se redirige a /panel y el fetch
+      // recibe HTML → "Unexpected token '<'... is not valid JSON".
+      pathname.startsWith("/api/sync")
     );
   }
   if (role === "reviews_manager") {
