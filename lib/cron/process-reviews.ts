@@ -11,6 +11,7 @@ import {
 // módulos distintos.
 export type { CommercialInfo };
 import { decideDuplicateForClient } from "@/lib/cron/duplicate-detection";
+import { decideEditMerge } from "@/lib/cron/edit-merge";
 import { isLowRating, type LowRatingAlert } from "@/lib/cron/low-rating-alerts";
 import type { Brand } from "@/lib/supabase/types";
 
@@ -53,6 +54,10 @@ export type LocationSummary = {
   counted: number;
   pending: number;
   unmatched: number;
+  /** Reseñas frescas que resultaron ser una EDICIÓN de una existente (mismo
+   *  autor+ficha) y se fusionaron en vez de insertarse. Opcional para no
+   *  obligar a tocar todos los sitios que construyen el summary. Ver §4.41. */
+  merged?: number;
   error?: string;
 };
 
@@ -160,6 +165,124 @@ export async function processFreshReviews(
   const lowRatingAlerts: LowRatingAlert[] = [];
 
   for (const fr of fresh) {
+    // Fusión por autor: Google permite UNA reseña por persona y negocio, así
+    // que una reseña fresca cuyo author_name (no anónimo) ya existe en esta
+    // ficha es la MISMA reseña editada (Places sintetiza un id nuevo al cambiar
+    // el timestamp). En vez de insertar un duplicado fantasma, actualizamos la
+    // fila existente conservando su atribución. Ver CLAUDE.md §4.41.
+    // Solo el path de Places sufre el problema (id sintético que cambia al
+    // editar). Business Profile tiene reviewId estable → su edición se filtra
+    // como no-fresh y ni llega aquí (se tratará aparte, §4.26). Acotamos a
+    // incumbentes `places:%` para no cruzar fuentes.
+    if (source === "places_api" && fr.hasAuthorName) {
+      const { data: incRows } = await admin
+        .from("reviews")
+        .select(
+          "id, rating, removed_at, low_rating_alerted_at, match_state, sales_id, client_id",
+        )
+        .eq("location_id", location.id)
+        .like("google_review_id", "places:%")
+        .eq("author_name", fr.author_name)
+        .neq("google_review_id", fr.google_review_id)
+        .returns<
+          {
+            id: string;
+            rating: number;
+            removed_at: string | null;
+            low_rating_alerted_at: string | null;
+            match_state: "counted" | "pending" | "unmatched";
+            sales_id: string | null;
+            client_id: string | null;
+          }[]
+        >();
+
+      const incumbents = incRows ?? [];
+      const decision = decideEditMerge({
+        hasAuthorName: true,
+        incumbents: incumbents.map((r) => ({
+          id: r.id,
+          rating: r.rating,
+          removed_at: r.removed_at,
+          low_rating_alerted_at: r.low_rating_alerted_at,
+        })),
+        incomingRating: fr.rating,
+      });
+
+      if (decision.action === "merge") {
+        const inc = incumbents.find((r) => r.id === decision.incumbentId);
+        const update: Record<string, unknown> = {
+          google_review_id: fr.google_review_id,
+          rating: fr.rating,
+          text: fr.text,
+          google_created_at: fr.google_created_at,
+          fetched_at: new Date().toISOString(),
+        };
+        if (decision.clearRemovedAt) update.removed_at = null;
+        if (decision.reAlertLowRating) update.low_rating_alerted_at = null;
+
+        const { error: mergeErr } = await admin
+          .from("reviews")
+          .update(update as never)
+          .eq("id", decision.incumbentId);
+
+        if (mergeErr) {
+          console.error(
+            "[cron] edit-merge update failed:",
+            mergeErr,
+            fr.google_review_id,
+          );
+          await admin.from("audit_log").insert({
+            entity_type: "review",
+            entity_id: decision.incumbentId,
+            action: "review_edit_merge_failed",
+            payload: {
+              google_review_id: fr.google_review_id,
+              author_name: fr.author_name,
+              source,
+              error: mergeErr.message,
+            },
+          } as never);
+          // No insertamos fila nueva (evitamos el duplicado que queríamos
+          // prevenir). La reseña sigue siendo "fresca" → se reintenta en el
+          // siguiente sync.
+          continue;
+        }
+
+        summary.merged = (summary.merged ?? 0) + 1;
+        await admin.from("audit_log").insert({
+          entity_type: "review",
+          entity_id: decision.incumbentId,
+          action: "review_edit_merged",
+          payload: {
+            author_name: fr.author_name,
+            source,
+            new_google_review_id: fr.google_review_id,
+            new_rating: fr.rating,
+            old_rating: inc?.rating ?? null,
+            re_alert_low_rating: decision.reAlertLowRating,
+          },
+        } as never);
+
+        // Si la edición baja a ≤2★ por primera vez, re-alertar (el UPDATE ya
+        // limpió low_rating_alerted_at; flushLowRatingAlerts lo re-sella).
+        if (decision.reAlertLowRating && inc) {
+          lowRatingAlerts.push({
+            reviewId: inc.id,
+            rating: fr.rating,
+            authorName: fr.author_name,
+            reviewText: fr.text,
+            locationId: location.id,
+            locationName: location.name,
+            placeId: location.place_id,
+            matchState: inc.match_state,
+            salesId: inc.sales_id,
+            clientId: inc.client_id,
+          });
+        }
+        continue;
+      }
+    }
+
     const result = attributeReview(
       {
         google_review_id: fr.google_review_id,

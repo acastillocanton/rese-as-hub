@@ -93,6 +93,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | fix · Transliteración cirílico→latino en `slugify` + `full_name` del cliente (nombres de Europa del Este ya no rompen la creación de cliente/enlace, §4.39) | ✅ (2026-06-03) |
 | fix · Anillo del objetivo en `/panel` se quedaba al 75% al cumplir el 100% (`strokeDashoffset` sobrante en `Ring.tsx`) | ✅ (2026-06-03) |
 | feat · Foto de perfil gestionada por admin/gestor (comerciales + directores) y por director (sus comerciales) — §4.40 | ✅ (2026-06-03) |
+| fix · Ediciones de reseña (Places) ya no crean falsos duplicados: fusión por autor en el sync + limpieza one-shot de 4 grupos — §4.41 | ✅ (2026-06-04) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -829,6 +830,26 @@ Hasta ahora la foto (avatar) era solo **self-service** desde `/perfil`. Ahora un
 ⚠️ Sin migración ni cambio de BD (la columna `profiles.avatar_url` y el bucket `avatars` ya existían). El bucket es **público** (lectura sin auth), igual que con el self-service.
 
 **Render de la foto en TODAS las superficies de listado** (2026-06-03): subir la foto no bastaba — los listados pintaban `<Avatar>` solo con iniciales (no seleccionaban `avatar_url` ni pasaban `src`). Corregido en: `/comerciales` (SalesRow), `/directores` (DirectorRow), `/directores/[slug]` (equipo), `/gestores` (ManagerRow), ranking `/ranking` + `/panel/ranking` (lib/leaderboard.ts gana `avatar_url`→`avatarUrl` en `LeaderboardSales`/`LeaderboardRow` + ambas queries; `LeaderboardTable`/`LeaderboardCardList` pasan `src`) y el top-10 del `/dashboard` (su query de productores). Regla: **cualquier listado nuevo de personas debe seleccionar `avatar_url` y pasar `src={...}` al `<Avatar>`** — si no, sale solo con iniciales aunque el usuario tenga foto.
+
+### 4.41 Fusión por autor de ediciones de reseña (Places) — evita falsos duplicados
+
+**Problema (caso real 2026-06-04, Cornel):** un cliente dejó **1★**, el comercial habló con él y **editó la misma reseña a 5★**. En Google sigue habiendo UNA reseña, pero la plataforma mostraba **dos filas** (1★ contada como principal + 5★ marcada duplicada por mig 015) → media y conteo irreales.
+
+**Causa:** Places API legacy no da `reviewId` estable; sintetizamos `google_review_id = places:{place_id}_{unix_time}_{md5_8(autor)}` ([lib/google/places.ts](lib/google/places.ts)). Al editar, Google cambia el `time` → cambia el id sintético → el cron la trata como NUEVA e inserta otra fila. El anti-fraude por `client_id` (mig 015) deja como principal la más antigua → la stale 1★ cuenta.
+
+**Hecho clave:** Google permite **una reseña por persona y negocio** → dos filas con el mismo `author_name` (no anónimo) en la misma `location_id` son la **misma** reseña editada.
+
+**Solución (sin migración):** "fusión por autor" en [lib/cron/process-reviews.ts](lib/cron/process-reviews.ts) (`processFreshReviews`). Antes de `attributeReview`, **solo en el path `places_api`** y para autores no anónimos, busca incumbentes `places:%` con el mismo `author_name` en la ficha. Decisión en helper puro [lib/cron/edit-merge.ts](lib/cron/edit-merge.ts) `decideEditMerge` (tests en [lib/cron/__tests__/edit-merge.test.ts](lib/cron/__tests__/edit-merge.test.ts), 9 casos):
+- exactamente 1 incumbente → **merge**: `UPDATE` esa fila con `google_review_id, rating, text, google_created_at, fetched_at` (limpia `removed_at` si lo tenía; limpia `low_rating_alerted_at` y re-encola alerta si la edición baja a ≤2★ por primera vez). **Preserva** `sales_id, client_id, match_state, is_duplicate, share_link_id, match_confidence, match_evidence` (conserva la atribución humana). NO inserta, NO corre attribution ni `decideDuplicateForClient`. `audit_log action='review_edit_merged'`; contador `summary.merged`.
+- 0 incumbentes → insert normal. ≥2 (ambigüedad legacy) → insert normal (no adivina).
+
+**Ortogonal a mig 015**: familia/amigos compartiendo un enlace dejan reseñas con `author_name` DISTINTOS → no se fusionan → siguen gestionadas por el anti-fraude de `client_id` (§4.23).
+
+⚠️ **Casos límite (riesgo aceptado, documentado):** (a) **anónimos** no se fusionan (una edición anónima aún crearía fila fantasma, raro); (b) **homónimos** reales en la misma ficha → la 2ª se fusionaría con la 1ª (rarísimo; `review_edit_merged` lo hace auditable, se separa en Verificación); (c) un incumbente `unmatched` editado conserva `unmatched` (no re-atribuye).
+
+⚠️ **Business Profile (cuota 0, §4.26):** BP tiene `reviewId` estable → una edición mantiene el id → se filtra como no-fresh → **no llega** a `processFreshReviews`, así que hoy el contenido editado **no se reflejaría** (gap latente distinto, NO el de duplicados). Cuando llegue cuota: añadir un "UPDATE si el reviewId ya existe y cambió `updateTime`/contenido" en el cron BP. La fusión por autor está acotada a `places_api` y no cruza fuentes.
+
+**Limpieza one-shot aplicada 2026-06-04** (service-role, count-first, `audit_log`): 4 grupos mismo-autor+ficha colapsados a 1 fila viva cada uno (la más reciente = principal counted; las viejas → `removed_at`): NURIA GARCIA BECERRA (5★ principal, 1★ removed → Cornel pasó de media 4,50 a 5,00), Marina Kudrautsava, Marta Fernandez llaneza, Peri Alesk. NO fue migración (one-shot, no idempotente).
 
 ---
 
