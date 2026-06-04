@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MessageSquareText, Users } from "lucide-react";
+import { Info, MessageSquareText, Users } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
@@ -167,21 +167,21 @@ export default async function EnlacePage() {
           }}
         >
           <Stat
-            label="Visitas este mes (QR genérico)"
+            label="Aperturas del enlace este mes (QR genérico)"
             value={genericMonth.toString()}
             sub={
               lastVisit
                 ? `Última ${fmtRelative(lastVisit)}`
-                : "Aún sin visitas — comparte el enlace"
+                : "Aún sin aperturas — comparte el enlace"
             }
           />
           <Stat
-            label="Visitas totales (QR genérico)"
+            label="Aperturas totales (QR genérico)"
             value={genericTotal.toString()}
             sub="Histórico completo"
           />
           <Stat
-            label="Visitas por cliente (este mes)"
+            label="Aperturas por cliente (este mes)"
             value={personalizedMonth.toString()}
             sub={
               personalizedMonth === 0
@@ -189,6 +189,41 @@ export default async function EnlacePage() {
                 : "Enlaces personalizados"
             }
           />
+        </div>
+
+        {/* Nota aclaratoria: abrir el enlace no es dejar la reseña. Evita la
+            confusión de leer "aperturas" como si fueran reseñas garantizadas. */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "flex-start",
+            padding: "14px 16px",
+            background: "var(--surface-2)",
+            border: "1px solid var(--line)",
+            borderRadius: 12,
+          }}
+        >
+          <div
+            aria-hidden="true"
+            style={{ color: "var(--ink-3)", flexShrink: 0, marginTop: 1 }}
+          >
+            <Info size={18} strokeWidth={1.75} />
+          </div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12.5,
+              color: "var(--ink-3)",
+              lineHeight: 1.55,
+            }}
+          >
+            Una <strong style={{ color: "var(--ink-2)" }}>apertura</strong> significa que alguien
+            abrió tu enlace, <strong style={{ color: "var(--ink-2)" }}>no</strong> que dejara la
+            reseña. Es normal tener más aperturas que reseñas: el cliente puede abrir Google y no
+            llegar a escribir. Si ves aperturas pero no reseñas, recuérdale amablemente que la
+            complete.
+          </p>
         </div>
 
         {/* Arsenal */}

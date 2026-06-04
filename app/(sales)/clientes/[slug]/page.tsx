@@ -202,12 +202,12 @@ export default async function ClienteDetallePage({ params }: PageProps) {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
             <Stat
-              label="Visitas al enlace"
+              label="Aperturas del enlace"
               value={visits.length.toString()}
               sub={
                 lastVisit
                   ? `Última · ${fmtDateTime(lastVisit)}`
-                  : "Aún sin visitas"
+                  : "Aún sin aperturas"
               }
             />
             <Stat
@@ -280,8 +280,9 @@ export default async function ClienteDetallePage({ params }: PageProps) {
                     {" "}
                     Su enlace ya ha sido abierto{" "}
                     <strong style={{ color: "var(--ink)" }}>{visits.length}</strong>{" "}
-                    {visits.length === 1 ? "vez" : "veces"} — primera visita el{" "}
-                    {fmtDate(firstVisit)}.
+                    {visits.length === 1 ? "vez" : "veces"} — primera apertura el{" "}
+                    {fmtDate(firstVisit)}. Abrir el enlace no es dejar la reseña; quizá merezca
+                    un recordatorio.
                   </>
                 )}
               </p>
