@@ -7,6 +7,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { ProfileStatus } from "@/lib/supabase/types";
 import { InviteManagerButton } from "./InviteManagerButton";
 import { DeleteManagerButton } from "./DeleteManagerButton";
+import { ManagerEditButton } from "./ManagerEditButton";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendManagerAccess } from "./actions";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
@@ -129,7 +130,7 @@ export default async function GestoresPage() {
                     padding: "12px 22px",
                     borderBottom: "1px solid var(--line)",
                     display: "grid",
-                    gridTemplateColumns: "2fr 1.4fr 1fr 0.8fr 200px",
+                    gridTemplateColumns: "2fr 1.4fr 1fr 0.8fr 280px",
                     gap: 14,
                     fontSize: 11,
                     color: "var(--ink-4)",
@@ -235,7 +236,22 @@ function ManagerRowView({ m, last }: { m: ManagerRow; last: boolean }) {
           {label}
         </Pill>
       </span>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 6,
+          flexWrap: "wrap",
+        }}
+      >
+        <ManagerEditButton
+          id={m.id}
+          fullName={m.full_name}
+          email={m.email}
+          phone={m.phone}
+          status={m.status}
+          avatarUrl={m.avatar_url}
+        />
         <ResendAccessButton id={m.id} name={m.full_name} action={resendManagerAccess} />
         <DeleteManagerButton id={m.id} name={m.full_name} />
       </div>

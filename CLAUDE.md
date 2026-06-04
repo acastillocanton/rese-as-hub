@@ -96,6 +96,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | fix · Ediciones de reseña (Places) ya no crean falsos duplicados: fusión por autor en el sync + limpieza one-shot de 4 grupos — §4.41 | ✅ (2026-06-04) |
 | feat · Ficha del comercial (gestión) muestra el resumen productivo del panel (abonables/€/objetivo/evolución/ranking/insignias), alineada al periodo de comisión — §4.42 | ✅ (2026-06-04) |
 | feat · Selector de fecha unificado a "Periodo de comisión" por defecto en toda la app (+ "Último trimestre" en el set de atajos) — §4.43 | ✅ (2026-06-04) |
+| feat · El admin puede editar el perfil de los gestores (nombre/teléfono/estado/foto) desde /gestores — §4.44 | ✅ (2026-06-04) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -873,6 +874,16 @@ Antes el selector arrancaba en **periodo de comisión** solo en las pantallas de
 - **Endpoints Excel** ([/api/export/reviews](app/api/export/reviews/route.ts), [/api/export/sales/[id]](app/api/export/sales/[id]/route.ts)): `parseRange` fallback → `commissionPeriodRange` (solo afecta a llamadas sin params; los botones pasan rango explícito).
 
 ⚠️ El dashboard solo pinta el **% de objetivo al 100%** cuando el rango es un mes natural (`isMonthRange`); en periodo de comisión muestra el conteo + el aviso "selecciona un mes natural para verlos al 100%" (degradación intencional, no roto). Sin migración.
+
+### 4.44 Edición del perfil de gestores por el admin
+
+Hasta ahora `/gestores` era solo lista (invitar + reenviar acceso + eliminar). Ahora el **admin** puede **editar** el perfil de un gestor (`role='reviews_manager'`) desde un botón "Editar" por fila que abre un modal ([app/(admin)/gestores/ManagerEditButton.tsx](app/(admin)/gestores/ManagerEditButton.tsx)).
+
+- **Campos editables:** nombre, teléfono, estado (activo/pausado) y **foto**. El **email es read-only** (es el acceso/login; cambiarlo desincronizaría auth → para eso, reinvitar). El estado no se edita si el gestor está `invited` (la transición invited→active la hace el login).
+- **Acciones** en [app/(admin)/gestores/actions.ts](app/(admin)/gestores/actions.ts): `updateReviewsManager` (cookie-client; la RLS `profiles_admin_all` de mig 002 ya permite al admin el UPDATE; `.eq("role","reviews_manager")` como defensa) + `uploadManagerAvatar`/`removeManagerAvatar` (reutilizan el helper [lib/avatar.ts](lib/avatar.ts) y el componente [AvatarUploader](components/ui/AvatarUploader.tsx), igual que comerciales/directores en §4.40). Todas gated por `assertAdmin()` (solo admin global, no otro gestor) y con `audit_log` (`update_manager`/`update_avatar`/`remove_avatar`).
+- **Sin migración** (la columna `avatar_url` y el bucket `avatars` ya existían; `profiles_admin_all` ya cubría el UPDATE). Verificado en navegador (editar Bel: foto + nombre + teléfono + estado, guardado OK).
+
+⚠️ Es **solo-admin** por decisión: un gestor NO edita a otro gestor (no se añadió RLS para `reviews_manager`→`reviews_manager`). Si en el futuro se quiere, añadir una policy específica (ver nota en la exploración de §4.44).
 
 ---
 
