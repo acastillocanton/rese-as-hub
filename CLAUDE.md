@@ -97,6 +97,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat · Ficha del comercial (gestión) muestra el resumen productivo del panel (abonables/€/objetivo/evolución/ranking/insignias), alineada al periodo de comisión — §4.42 | ✅ (2026-06-04) |
 | feat · Selector de fecha unificado a "Periodo de comisión" por defecto en toda la app (+ "Último trimestre" en el set de atajos) — §4.43 | ✅ (2026-06-04) |
 | feat · El admin puede editar el perfil de los gestores (nombre/teléfono/estado/foto) desde /gestores — §4.44 | ✅ (2026-06-04) |
+| fix · Aviso de prefijo de país en el teléfono del cliente (alimenta wa.me/SMS) en alta + edición | ✅ (2026-06-04) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
