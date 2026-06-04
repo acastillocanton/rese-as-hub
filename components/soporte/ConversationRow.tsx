@@ -24,7 +24,7 @@ function relativeTime(dateStr: string): string {
   if (hrs < 24) return `hace ${hrs}h`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `hace ${days}d`;
-  return new Date(dateStr).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  return new Date(dateStr).toLocaleDateString("es-ES", { day: "numeric", month: "short", timeZone: "Europe/Madrid" });
 }
 
 export function ConversationRow(props: ConversationRowProps) {

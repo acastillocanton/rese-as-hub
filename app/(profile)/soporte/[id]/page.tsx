@@ -199,6 +199,7 @@ export default async function ConversationDetailPage({ params }: PageProps) {
               day: "numeric",
               month: "long",
               year: "numeric",
+              timeZone: "Europe/Madrid",
             })}
           </span>
         </div>
@@ -228,6 +229,7 @@ export default async function ConversationDetailPage({ params }: PageProps) {
               {new Date(linkedReview.google_created_at).toLocaleDateString("es-ES", {
                 day: "numeric",
                 month: "short",
+                timeZone: "Europe/Madrid",
               })}
             </span>
             {linkedReview.place_id && (

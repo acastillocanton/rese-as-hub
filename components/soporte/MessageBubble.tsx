@@ -23,16 +23,17 @@ function roleLabel(role: Role): string {
   }
 }
 
+const TZ = "Europe/Madrid";
+
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr);
   const now = new Date();
-  const isToday =
-    d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear();
-  const time = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const fmt = (dt: Date) =>
+    dt.toLocaleDateString("es-ES", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+  const isToday = fmt(d) === fmt(now);
+  const time = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
   if (isToday) return time;
-  return `${d.toLocaleDateString("es-ES", { day: "numeric", month: "short" })} ${time}`;
+  return `${d.toLocaleDateString("es-ES", { day: "numeric", month: "short", timeZone: TZ })} ${time}`;
 }
 
 export function MessageBubble(props: MessageBubbleProps) {

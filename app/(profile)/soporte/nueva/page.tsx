@@ -38,7 +38,7 @@ export default async function NuevaConsultaPage() {
   const mapReviews = (data: ReviewRow[]) =>
     data.map((r) => ({
       id: r.id,
-      label: `${r.author_name} · ${"★".repeat(r.rating)} · ${new Date(r.google_created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}`,
+      label: `${r.author_name} · ${"★".repeat(r.rating)} · ${new Date(r.google_created_at).toLocaleDateString("es-ES", { day: "numeric", month: "short", timeZone: "Europe/Madrid" })}`,
     }));
 
   if (isProducer(role)) {
