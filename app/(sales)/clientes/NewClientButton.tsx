@@ -127,8 +127,17 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
                     style={inputStyle}
                   />
                 </Field>
-                <Field label="Teléfono (opcional)" hint="Para WhatsApp y SMS pre-rellenados">
-                  <input name="phone" type="tel" maxLength={40} style={inputStyle} />
+                <Field
+                  label="Teléfono (opcional)"
+                  hint="Para WhatsApp y SMS. Escribe el prefijo del país (ej. +34 España, +40 Rumanía)."
+                >
+                  <input
+                    name="phone"
+                    type="tel"
+                    maxLength={40}
+                    placeholder="+34 666 123 456"
+                    style={inputStyle}
+                  />
                 </Field>
                 <Field label="Email (opcional)">
                   <input

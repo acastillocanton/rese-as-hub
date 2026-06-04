@@ -133,14 +133,19 @@ export function ClientEditCard({
           <dt style={dtStyle}>Teléfono</dt>
           <dd style={{ margin: 0 }}>
             {editing ? (
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+34 600 000 000"
-                style={inputStyle}
-                maxLength={40}
-              />
+              <>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+34 666 123 456"
+                  style={inputStyle}
+                  maxLength={40}
+                />
+                <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--ink-4)", lineHeight: 1.45 }}>
+                  Para WhatsApp y SMS. Escribe el prefijo del país (ej. +34 España, +40 Rumanía).
+                </p>
+              </>
             ) : (
               <span style={{ fontSize: 13.5, color: initial.phone ? "var(--ink)" : "var(--ink-4)" }}>
                 {initial.phone ?? "—"}
