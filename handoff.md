@@ -79,7 +79,7 @@ fbd3962 fix(seguridad+calidad): arreglos de la auditoria de codigo
 
 ## 5. Pendientes mayores del proyecto (contexto, no de esta sesión)
 
-- **Google Business Profile API** (caso `5-5855000041022`, cuota aún a 0): checklist completo en **CLAUDE.md §4.26** (16 items + el nuevo §4.37-H3 sobre truncado del primer sync >500 reseñas). Mientras tanto, Places API trae reseñas.
+- **Google Business Profile API** (caso `5-5855000041022`, cuota aún a 0 — re-verificado el 2026-06-04, re-check programado 2026-06-09): checklist completo en **CLAUDE.md §4.26** (16 items + el nuevo §4.37-H3 sobre truncado del primer sync >500 reseñas). Mientras tanto, Places API trae reseñas.
 - **Diferidos de auditoría (latentes, documentados en §4.37)**: H2 (lock de cron 60s a gran escala), M2 (reassign sin cliente).
 - **Backlog cosmético**: unificar `<ReviewCard>` (5 pantallas) e `<InviteModal>` — fuera por riesgo de regresión visual sin QA. ~10 ficheros aún con `inputStyle` local.
 - **Backlog v2 / open questions**: CLAUDE.md §8 + spec.md §9 (dominio, branding, CRM, retención, **cifrar `oauth_refresh_token`** #8).

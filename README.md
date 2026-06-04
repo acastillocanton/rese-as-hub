@@ -34,7 +34,7 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 
 ## Estado del producto
 
-🏁 **V1 cerrada el 2026-05-26**. Producto live y **trayendo reseñas reales desde 2026-05-23** vía Google Places API (vía de respaldo). El cron oficial de Business Profile sigue activo en paralelo esperando la aprobación de cuota (caso `5-5855000041022`, ETA ~2026-06-04); cuando llegue, retomará automáticamente sin redeploy.
+🏁 **V1 cerrada el 2026-05-26**. Producto live y **trayendo reseñas reales desde 2026-05-23** vía Google Places API (vía de respaldo). El cron oficial de Business Profile sigue activo en paralelo esperando la aprobación de cuota (caso `5-5855000041022`, ETA ~2026-06-04; verificado el 2026-06-04 que sigue a cuota 0, re-check 2026-06-09); cuando llegue, retomará automáticamente sin redeploy.
 
 Por fase:
 
