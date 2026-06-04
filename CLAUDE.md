@@ -95,6 +95,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat · Foto de perfil gestionada por admin/gestor (comerciales + directores) y por director (sus comerciales) — §4.40 | ✅ (2026-06-03) |
 | fix · Ediciones de reseña (Places) ya no crean falsos duplicados: fusión por autor en el sync + limpieza one-shot de 4 grupos — §4.41 | ✅ (2026-06-04) |
 | feat · Ficha del comercial (gestión) muestra el resumen productivo del panel (abonables/€/objetivo/evolución/ranking/insignias), alineada al periodo de comisión — §4.42 | ✅ (2026-06-04) |
+| feat · Selector de fecha unificado a "Periodo de comisión" por defecto en toda la app (+ "Último trimestre" en el set de atajos) — §4.43 | ✅ (2026-06-04) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -761,7 +762,7 @@ A los productores (sales + office_director) se les abona **comisión por cada re
 
 **Fechas** ([lib/date-range.ts](lib/date-range.ts)): `commissionPeriodRange(now)`, `previousCommissionPeriodRange(now)`, `commissionShortcuts(now)` (periodo actual/anterior + mes natural/pasado) e `isCommissionPeriod(range, now)`. `parseRange(from, to, now, fallback)` ganó un 4º parámetro `fallback` (default `thisMonthRange`); las pantallas `(sales)` pasan `commissionPeriodRange`. Tests en [lib/__tests__/date-range.test.ts](lib/__tests__/date-range.test.ts) (bordes 19/20/21, cruce de año, contigüidad).
 
-**Pantallas afectadas** (default range = periodo de comisión): [/panel](app/(sales)/panel/page.tsx), [/panel/resenas](app/(sales)/panel/resenas/page.tsx) (ambas compartidas con el **office_director** productor) y [/panel/ranking](app/(sales)/panel/ranking/page.tsx) (sales-only). `/dashboard`, `/ranking`, `/manager/*` y el Excel global siguen en **mes natural** (uso de gestión) — no se tocan.
+**Default range = periodo de comisión en TODA la app** (actualizado 2026-06-04, ver §4.43 — antes solo las pantallas del comercial; ahora también gestión). `parseRange(..., commissionPeriodRange)` + `commissionShortcuts(now)` (set único de 5 atajos: Periodo de comisión · Periodo anterior · Mes natural · Mes pasado · Último trimestre) en: [/panel](app/(sales)/panel/page.tsx), [/panel/resenas](app/(sales)/panel/resenas/page.tsx), [/panel/ranking](app/(sales)/panel/ranking/page.tsx), [/comerciales/[slug]](app/(admin)/comerciales/[slug]/page.tsx), `/dashboard`, `/ranking`, lista `/comerciales`, `/manager/resenas`, `/manager/export` (botón primario = comisión) y los endpoints de Excel (fallback comisión). El **mes natural / trimestre** sigue a un clic en el desplegable. `defaultShortcuts` queda sin uso.
 
 **Abonable = solo `counted`** (no-duplicada, no-eliminada). `pending` se muestra como "potenciales" (se abonará al verificarse). El hero de `/panel` se reformuló: número grande = abonables, € estimado = `counted × commission_rate`, desglose con "por verificar" y "cierre en N días" (proyección recalculada sobre los límites reales del periodo, no fin de mes natural). KPIs de `/panel/resenas`: "Abonables (verificadas)" + "Por verificar" con € en el subtexto.
 
@@ -856,11 +857,22 @@ Hasta ahora la foto (avatar) era solo **self-service** desde `/perfil`. Ahora un
 
 Admin, reviews_manager y office_director ven en `/comerciales/[slug]` la **misma foto productiva** que el comercial ve en su `/panel`: abonables, € en comisión, objetivo (anillo), estrellas, "por verificar", cierre/días, comparativa "+N vs periodo anterior", evolución de 6 meses (barras), posición en el ranking del equipo e insignias. Antes solo había dos Stat pobres ("Reseñas atribuidas 0/5" + "Valoración media") en **mes natural**, lo que chocaba con lo que ve el comercial (incoherencia 8/100% vs 0/5).
 
-**Cambio clave:** la ficha pasa a **periodo de comisión (20→19)** por defecto (`parseRange(..., commissionPeriodRange)` + `commissionShortcuts`), igual que el panel. ⚠️ Es una **excepción consciente** a la regla de §4.35 ("management = mes natural"): esta ficha es la lectura "cómo va el comercial / cuánto cobra", así que se alinea a su realidad. El resto de management (dashboard, /ranking, /manager/*, Excel global) sigue en mes natural. Las tablas de abajo (clientes, reseñas, Excel individual) siguen el rango del selector.
+**Cambio clave:** la ficha pasa a **periodo de comisión (20→19)** por defecto (`parseRange(..., commissionPeriodRange)` + `commissionShortcuts`), igual que el panel. Desde 2026-06-04 (§4.43) **TODA la app** arranca en periodo de comisión, así que ya no es una excepción. Las tablas de abajo (clientes, reseñas, Excel individual) siguen el rango del selector.
 
 **Implementación (sin migración):** componente presentacional [components/panel/ProducerSummary.tsx](components/panel/ProducerSummary.tsx) — factual, copy en 3ª persona ("su equipo"), SIN los mensajes motivacionales del panel — que reutiliza las piezas puras `Ring`, `MonthBars`, `Badge`, `formatEuro` y `computePanelBadges`. La carga de datos vive en `loadProducerInsights(...)` dentro de [app/(admin)/comerciales/[slug]/page.tsx](app/(admin)/comerciales/[slug]/page.tsx), que espeja `loadPanelInsights` del panel pero parametrizada por el `sales_id` visto (corre con el cliente del viewer → RLS acota al director a su equipo; `getLeaderboard` con `teamFilter` usa service-role para el ranking). El € usa `commission_rate` (null → "sin tarifa"); abonables/€ cuadran con lo que ve el propio comercial. Verificado en navegador con Cornel (8 abonables, 100%, 160€, #1 líder) y Fidanka (0, empty states limpios).
 
 ⚠️ NO se extrajo la hero motivacional del panel (mantiene su copy de ánimo intacto). Si en el futuro se quiere unificar, `ProducerSummary` es el candidato a compartir.
+
+### 4.43 Selector de fecha unificado a "Periodo de comisión" en toda la app
+
+Antes el selector arrancaba en **periodo de comisión** solo en las pantallas del comercial; gestión arrancaba en **mes natural** (decisión original de §4.35). Decisión de producto (2026-06-04): **toda la app arranca en periodo de comisión (20→19)**, con el resto de rangos a un clic. Da coherencia (el gestor ve lo mismo que el comercial y que cuadra con la liquidación).
+
+- **Set único de atajos:** `commissionShortcuts(now)` ([lib/date-range.ts](lib/date-range.ts)) ahora devuelve **5** entradas — Periodo de comisión · Periodo anterior · Mes natural · Mes pasado · **Último trimestre** (este último se añadió para no perder la auditoría trimestral de gestión). Es el ÚNICO set de la app; `defaultShortcuts` queda sin uso (no se borra).
+- **Pantallas migradas** (fallback `commissionPeriodRange` + `commissionShortcuts`): `/dashboard`, `/ranking`, lista `/comerciales` (card de export), `/manager/resenas`. Ya estaban: `/panel*` y `/comerciales/[slug]`.
+- **`/manager/export`** (parte oficial, usa botones no RangePicker): el botón **primario** pasa a "Periodo de comisión" + se añade "Periodo anterior"; se mantienen "Mes actual/Mes pasado/Último trimestre"; el formulario personalizado arranca en el periodo de comisión. El parte mensual sigue a un clic.
+- **Endpoints Excel** ([/api/export/reviews](app/api/export/reviews/route.ts), [/api/export/sales/[id]](app/api/export/sales/[id]/route.ts)): `parseRange` fallback → `commissionPeriodRange` (solo afecta a llamadas sin params; los botones pasan rango explícito).
+
+⚠️ El dashboard solo pinta el **% de objetivo al 100%** cuando el rango es un mes natural (`isMonthRange`); en periodo de comisión muestra el conteo + el aviso "selecciona un mes natural para verlos al 100%" (degradación intencional, no roto). Sin migración.
 
 ---
 

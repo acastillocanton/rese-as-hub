@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { parseRange, previousMonthRange, rangeYearMonth } from "@/lib/date-range";
+import {
+  parseRange,
+  previousMonthRange,
+  rangeYearMonth,
+  commissionPeriodRange,
+} from "@/lib/date-range";
 import { excelSafe } from "@/lib/reports/excel-safe";
 import type { PauseReason, SalesDepartment } from "@/lib/supabase/types";
 import {
@@ -128,7 +133,7 @@ export async function GET(request: NextRequest) {
   const salesIdFilter = url.searchParams.get("sales_id");
   let locationIdFilter = url.searchParams.get("location_id");
   const matchStateFilter = url.searchParams.get("match_state");
-  const range = parseRange(fromParam, toParam);
+  const range = parseRange(fromParam, toParam, new Date(), commissionPeriodRange);
   const previous = previousMonthRange(range);
   const ym = rangeYearMonth(range);
   const ymPrev = rangeYearMonth(previous);

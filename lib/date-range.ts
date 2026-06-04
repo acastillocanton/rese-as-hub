@@ -258,20 +258,23 @@ export function defaultShortcuts(now = new Date()): ShortcutDescriptor[] {
 }
 
 /**
- * Atajos para el `RangePicker` de las pantallas del comercial: el periodo de
- * comisión vigente y el anterior van primero (son los relevantes para la
- * liquidación), seguidos del mes natural por si lo necesita.
+ * Atajos UNIFICADOS del `RangePicker` de TODA la app (gestión + comercial): el
+ * periodo de comisión vigente y el anterior van primero (son los relevantes
+ * para la liquidación), seguidos del mes natural / mes pasado y del último
+ * trimestre (para auditorías de gestión). Ver CLAUDE.md §4.35.
  */
 export function commissionShortcuts(now = new Date()): ShortcutDescriptor[] {
   const cur = commissionPeriodRange(now);
   const prev = previousCommissionPeriodRange(now);
   const m = thisMonthRange(now);
   const lm = lastMonthRange(now);
+  const lq = lastQuarterRange(now);
   return [
     { key: "commission-current", label: "Periodo de comisión", from: cur.from, to: cur.to, rangeLabel: cur.label },
     { key: "commission-prev", label: "Periodo anterior", from: prev.from, to: prev.to, rangeLabel: prev.label },
     { key: "this-month", label: "Mes natural", from: m.from, to: m.to, rangeLabel: m.label },
     { key: "last-month", label: "Mes pasado", from: lm.from, to: lm.to, rangeLabel: lm.label },
+    { key: "last-quarter", label: "Último trimestre", from: lq.from, to: lq.to, rangeLabel: lq.label },
   ];
 }
 

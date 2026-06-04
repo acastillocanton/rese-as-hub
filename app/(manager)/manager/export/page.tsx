@@ -6,6 +6,8 @@ import {
   thisMonthRange,
   lastMonthRange,
   lastQuarterRange,
+  commissionPeriodRange,
+  previousCommissionPeriodRange,
   type DateRange,
 } from "@/lib/date-range";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
@@ -38,6 +40,8 @@ export default async function ManagerExportPage() {
     locations = locsRes.data ?? [];
   }
 
+  const commission = commissionPeriodRange();
+  const commissionPrev = previousCommissionPeriodRange();
   const thisMonth = thisMonthRange();
   const lastMonth = lastMonthRange();
   const lastQuarter = lastQuarterRange();
@@ -81,7 +85,9 @@ export default async function ManagerExportPage() {
             individuales del periodo.
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <QuickBtn range={thisMonth} primary label="Mes actual" sub={thisMonth.label} />
+            <QuickBtn range={commission} primary label="Periodo de comisión" sub={commission.label} />
+            <QuickBtn range={commissionPrev} label="Periodo anterior" sub={commissionPrev.label} />
+            <QuickBtn range={thisMonth} label="Mes actual" sub={thisMonth.label} />
             <QuickBtn range={lastMonth} label="Mes pasado" sub={lastMonth.label} />
             <QuickBtn range={lastQuarter} label="Último trimestre" sub={lastQuarter.label} />
           </div>
@@ -108,7 +114,7 @@ export default async function ManagerExportPage() {
               <input
                 type="date"
                 name="from"
-                defaultValue={thisMonth.from}
+                defaultValue={commission.from}
                 required
                 style={inputStyle}
               />
@@ -117,7 +123,7 @@ export default async function ManagerExportPage() {
               <input
                 type="date"
                 name="to"
-                defaultValue={thisMonth.to}
+                defaultValue={commission.to}
                 required
                 style={inputStyle}
               />

@@ -14,7 +14,12 @@ import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendSalesAccess } from "./actions";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
-import { defaultShortcuts, parseRange, type DateRange } from "@/lib/date-range";
+import {
+  commissionShortcuts,
+  commissionPeriodRange,
+  parseRange,
+  type DateRange,
+} from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { Download } from "lucide-react";
 
@@ -87,7 +92,7 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
   // Rango activo para la card de exportación (RangePicker en la card
   // actualiza los query params `from` y `to`, y el botón "Descargar
   // Excel" usa ese rango). Default: mes en curso.
-  const exportRange = parseRange(sp.from, sp.to);
+  const exportRange = parseRange(sp.from, sp.to, new Date(), commissionPeriodRange);
 
   // Para el componente cliente preservamos los valores originales tal cual,
   // sin el saneo interno (igualdad ?q=… queda visible en el input).
@@ -632,7 +637,7 @@ function SalesRow({
  * /manager/export que ya conserva la UI completa.
  */
 function ExportarResultadosCard({ range }: { range: DateRange }) {
-  const shortcuts = defaultShortcuts();
+  const shortcuts = commissionShortcuts();
   return (
     <div style={{ marginBottom: 16 }}>
       <Card>

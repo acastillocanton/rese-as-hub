@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/Card";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { LeaderboardTable } from "@/components/ranking/LeaderboardTable";
 import { getLeaderboard } from "@/lib/leaderboard";
-import { parseRange, defaultShortcuts } from "@/lib/date-range";
+import { parseRange, commissionShortcuts, commissionPeriodRange } from "@/lib/date-range";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
@@ -22,8 +22,8 @@ export default async function RankingPage({
 }) {
   const params = await searchParams;
   const now = new Date();
-  const range = parseRange(params.from, params.to, now);
-  const shortcuts = defaultShortcuts(now);
+  const range = parseRange(params.from, params.to, now, commissionPeriodRange);
+  const shortcuts = commissionShortcuts(now);
   const brand = await getCurrentUserBrand();
 
   if (!isSupabaseConfigured()) {

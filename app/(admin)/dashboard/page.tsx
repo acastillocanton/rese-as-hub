@@ -15,7 +15,8 @@ import { MONTHS } from "@/lib/demo-data";
 import { formatDateTime } from "@/lib/format";
 import {
   parseRange,
-  defaultShortcuts,
+  commissionShortcuts,
+  commissionPeriodRange,
   isFullNaturalMonth,
   bucketByMonth,
 } from "@/lib/date-range";
@@ -94,10 +95,10 @@ export default async function DashboardPage({
   const params = await searchParams;
   const supabase = await createClient();
   const now = new Date();
-  const range = parseRange(params.from, params.to, now);
+  const range = parseRange(params.from, params.to, now, commissionPeriodRange);
   const isMonthRange = isFullNaturalMonth(range);
   const start6Months = startOfMonthsAgoIso(5, now); // 6 buckets incluyendo el actual
-  const shortcuts = defaultShortcuts(now);
+  const shortcuts = commissionShortcuts(now);
 
   const [
     salesRes,

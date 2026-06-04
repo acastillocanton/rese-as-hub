@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { parseRange } from "@/lib/date-range";
+import { parseRange, commissionPeriodRange } from "@/lib/date-range";
 import {
   buildSalesReport,
   buildSalesReportFilename,
@@ -63,7 +63,12 @@ export async function GET(
   const salesId = parsed.data;
 
   const url = new URL(request.url);
-  const range = parseRange(url.searchParams.get("from"), url.searchParams.get("to"));
+  const range = parseRange(
+    url.searchParams.get("from"),
+    url.searchParams.get("to"),
+    new Date(),
+    commissionPeriodRange,
+  );
 
   // Auth: leer rol del usuario actual con cookie-client.
   const supabase = await createClient();
