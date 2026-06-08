@@ -417,19 +417,24 @@ describe("attributeReview — atribución temporal a un único comercial", () =>
   });
 
   it("dos comerciales con clic en ventana, sin nombre ni mención → unmatched (ambiguo)", () => {
+    // Ambos clics DENTRO de la ventana corta (5 min antes) para ejercitar el
+    // guardrail de ambigüedad, no el de fuera-de-ventana.
+    const opened = new Date(new Date(REVIEW_AT).getTime() - 5 * 60_000).toISOString();
     const r = attributeReview(
       review({ author_name: "Eduuu Bermejo" }),
       [
-        candidate({ id: "a", sales_id: "cornel" }),
-        candidate({ id: "b", sales_id: "fidanka" }),
+        candidate({ id: "a", sales_id: "cornel", opened_at: opened }),
+        candidate({ id: "b", sales_id: "fidanka", opened_at: opened }),
       ],
     );
     expect(r.match_state).toBe("unmatched");
   });
 
-  it("único comercial pero el clic fue >12h antes → unmatched (fuera de ventana corta)", () => {
+  it("único comercial pero el clic fue fuera de la ventana corta (45 min antes) → unmatched", () => {
+    // La ventana es de 30 min (§4.47, bajada de 12h tras el falso positivo de
+    // 3h). 45 min ya queda fuera → no se atribuye por proximidad.
     const opened = new Date(
-      new Date(REVIEW_AT).getTime() - 13 * 3_600_000,
+      new Date(REVIEW_AT).getTime() - 45 * 60_000,
     ).toISOString();
     const r = attributeReview(
       review({ author_name: "Eduuu Bermejo" }),

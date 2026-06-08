@@ -101,7 +101,8 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat · Sistema de soporte interno (helpdesk): productores preguntan, admin/gestor responden (mig 023) — §4.45 | ✅ (2026-06-04) |
 | fix · Footer del sidebar (Soporte/Ayuda/perfil) siempre fijo al hacer scroll: quitar `overflow:hidden` de `Frame` (rompía el `position:sticky`) + `minWidth:0` en los `main` — §4.45 | ✅ (2026-06-04) |
 | feat · Pestaña "Atribuidas" en Verificación para reasignar reseñas ya atribuidas (counted) al comercial equivocado — §4.46 | ✅ (2026-06-04) |
-| feat(matching) · Atribución por proximidad temporal a un único comercial: reseña sin nombre/mención que casen, tras un clic en el enlace personal de UN solo comercial (ventana ≤12h) → counted automático sin cliente — §4.47 | ✅ (2026-06-08) |
+| feat(matching) · Atribución por proximidad temporal a un único comercial: reseña sin nombre/mención que casen, tras un clic en el enlace personal de UN solo comercial (ventana ≤30 min) → counted automático sin cliente — §4.47 | ✅ (2026-06-08) |
+| fix(matching) · Ventana temporal de §4.47 bajada de 12h a 30 min tras falso positivo en prod (reseña orgánica atribuida por clic genérico 3h antes) + corrección de datos (Miroslava→unmatched, Esteban→counted) — §4.47 | ✅ (2026-06-08) |
 | 🔜 fix · Acceso a Soporte en mobile (hoy el footer del sidebar no existe en mobile → Soporte inalcanzable). **Pendiente — retomar 2026-06-05, ver §8 punto 5** | ⏳ |
 
 ### Vista mobile (Fase 3.b + extensión director)
@@ -947,13 +948,15 @@ Sin migración, sin tocar RLS. Para corregir una atribución: Verificación → 
 
 **Hueco cerrado** (en [lib/matching/attribute-review.ts](lib/matching/attribute-review.ts), `attributeBySingleCommercialInWindow`): tras fallar la atribución por nombre (`primaryAttribution`) y por mención (`attributeByCommercialMention`), si seguimos en `unmatched`, se mira la ventana corta: si en ella hubo clics de **EXACTAMENTE UN** comercial → se atribuye en automático (`counted`, confianza 70) a ese comercial, **sin cliente**.
 
-- **Ventana**: `SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS = 12` (cubre el escaneo al momento y el que reseña esa misma tarde). Más corto que la ventana general de 48h a propósito: Google no nos dice qué reseña vino de qué clic (§4.38) → ventana corta para no capturar reseñas orgánicas.
+- **Ventana**: `SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS = 0.5` (30 min). ⚠️ **Bajada de 12h a 0.5h el 2026-06-08** tras el **primer falso positivo en prod**: con la ventana de 12h, una reseña orgánica ("Miroslava Vucheva", 5★, "Es un lugar maravilloso") se atribuyó a Cornel solo porque él había clicado su enlace genérico **3h antes**. El flujo real "clic → reseña" ocurre en minutos (el caso Eduuu fueron 12s), no en horas; el único discriminador entre legítimo y orgánico es el tiempo, así que la ventana tiene que ser corta. Mucho más estrecha que la general de 48h a propósito: Google no nos dice qué reseña vino de qué clic (§4.38). Si reaparecen falsos positivos, bajarla más (p.ej. 0.25h = 15 min) o degradar el path a `pending` para que un humano confirme.
 - **Guarda dura**: si en la ventana hay clics de **>1 comercial distinto** → ambiguo → `null` (no adivina). Elige el clic más cercano en el tiempo solo para el `share_link_id` de evidencia.
 - **`client_id` siempre null**: si `primaryAttribution` no llegó a `PENDING_THRESHOLD`, ningún candidato tenía buen parecido de nombre → adivinar cliente sería arriesgado (anti-fraude mig 015 podría degradar la principal). Lo afina el humano/comercial al confirmar. ⚠️ Una `counted` con `client_id=null` cuenta en KPI pero no es dedupable (§4.37 M2, riesgo aceptado, idéntico a la mención Tier 2).
 - **Restringido a autores con nombre** (`hasAuthorName !== false`): los anónimos conservan su path dedicado (`primaryAttribution` modo temporal-only, §258-295) — cambio quirúrgico, no altera su comportamiento.
 - **`reason: "counted_by_single_commercial_temporal"`** en `match_evidence`. Reversible desde Verificación → "Atribuidas" (§4.46).
 
-Sin migración, sin cambios en el cron ni en BD: `loadCandidates` ([lib/cron/process-reviews.ts](lib/cron/process-reviews.ts)) ya carga todos los `share_links` de la ficha en ventana (incl. `client_id=null`), y la función solo usa `sales_id` + `opened_at`. **Solo aplica a reseñas nuevas** que entren por el cron — las ya en BD (como la de Eduuu) se reclaman a mano. Tests en [lib/matching/__tests__/attribute-review.test.ts](lib/matching/__tests__/attribute-review.test.ts) (6 casos nuevos, incl. el escenario real de Eduuu).
+Sin migración, sin cambios en el cron ni en BD: `loadCandidates` ([lib/cron/process-reviews.ts](lib/cron/process-reviews.ts)) ya carga todos los `share_links` de la ficha en ventana (incl. `client_id=null`), y la función solo usa `sales_id` + `opened_at`. **Solo aplica a reseñas nuevas** que entren por el cron — las ya en BD (como la de Eduuu) se reclaman a mano. Tests en [lib/matching/__tests__/attribute-review.test.ts](lib/matching/__tests__/attribute-review.test.ts) (6 casos nuevos, incl. el escenario real de Eduuu y el límite de los 30 min).
+
+**Falso positivo corregido (2026-06-08, datos de prod):** "Miroslava Vucheva" se revirtió a `unmatched` (audit `manual_unmatch_false_positive`) y la reseña legítima del cliente real de Cornel ("Esteban", de Esteban Abad Madrid, que estaba en `pending` 63% por nombre débil) se confirmó a `counted` (audit `manual_confirm`).
 
 ---
 

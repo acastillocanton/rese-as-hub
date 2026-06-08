@@ -86,8 +86,12 @@ const MENTION_COUNT_NO_WINDOW_CONFIDENCE = 78;
  * corta para no capturar reseñas orgánicas.
  */
 /** Ventana corta para la atribución por proximidad a un ÚNICO comercial
- *  (cuando ni el nombre ni la mención resuelven la reseña). */
-const SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS = 12;
+ *  (cuando ni el nombre ni la mención resuelven la reseña). 30 min: el flujo
+ *  real "clic → reseña" ocurre en minutos (el caso Eduuu fueron 12 s); una
+ *  ventana más ancha capturaba reseñas orgánicas como propias. Se bajó de 12h
+ *  a 0.5h el 2026-06-08 tras un falso positivo en prod (reseña orgánica
+ *  atribuida a Cornel por un clic genérico 3h antes). Ver §4.47. */
+const SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS = 0.5;
 /** Confianza de esa atribución temporal-only. Es la señal más débil de las que
  *  cuentan en automático (no hay nombre ni mención), pero el comercial está
  *  identificado con certeza por su propio enlace. */
