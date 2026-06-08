@@ -16,6 +16,7 @@
 import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
 import { excelSafe } from "@/lib/reports/excel-safe";
 import type { SalesDepartment } from "@/lib/supabase/types";
+import { formatEuro } from "@/lib/utils";
 
 /**
  * Labels legibles del departamento para el Excel individual.
@@ -36,6 +37,8 @@ export type SalesReportProfile = {
   department: SalesDepartment | null;
   location_name: string | null;
   role: "sales" | "office_director";
+  /** Tarifa €/reseña (mig 020). NULL = sin tarifa configurada → la comisión se muestra "—". */
+  commissionRate: number | null;
 };
 
 export type SalesReportReview = {
@@ -143,6 +146,8 @@ export async function buildSalesReport(
 
   const ws = wb.addWorksheet("Reseñas");
 
+  const rate = input.profile.commissionRate;
+
   // Anchos de columna (orientativo, Excel los respeta).
   ws.columns = [
     { width: 22 }, // A · Fecha o Label
@@ -150,19 +155,21 @@ export async function buildSalesReport(
     { width: 22 }, // C · Autor
     { width: 14 }, // D · Valoración
     { width: 22 }, // E · Enlace
+    { width: 16 }, // F · Comisión €
   ];
 
   const titleCell = ws.getCell("A1");
   titleCell.value = "Reseñas del comercial";
   titleCell.font = { name: "Calibri", size: 14, bold: true };
 
-  // Bloque cabecera (filas 3-7).
+  // Bloque cabecera (filas 3-8).
   const headerRows: Array<[string, string]> = [
     ["Comercial:", input.profile.full_name],
     ["Fecha incorporación:", formatJoinedAtForExcel(input.profile.joined_at)],
     ["Zona:", formatDepartmentForExcel(input.profile.department, input.profile.location_name)],
     ["Periodo:", input.range.label],
     ["Total reseñas:", String(input.reviews.length)],
+    ["Tarifa por reseña:", rate !== null ? formatEuro(rate) : "Sin tarifa configurada"],
   ];
   headerRows.forEach(([label, value], i) => {
     const rowIdx = 3 + i;
@@ -173,9 +180,9 @@ export async function buildSalesReport(
     valueCell.value = value;
   });
 
-  // Fila vacía (8) y tabla a partir de la 9.
-  const tableHeaderRow = 9;
-  const headers = ["Fecha", "Cliente", "Autor", "Valoración", "Enlace"];
+  // Fila vacía (9) y tabla a partir de la 10.
+  const tableHeaderRow = 10;
+  const headers = ["Fecha", "Cliente", "Autor", "Valoración", "Enlace", "Comisión €"];
   headers.forEach((label, col) => {
     const cell = ws.getCell(tableHeaderRow, col + 1);
     cell.value = label;
@@ -202,7 +209,7 @@ export async function buildSalesReport(
     const noteCell = ws.getCell(`A${noteRow}`);
     noteCell.value = "Sin reseñas atribuidas en este periodo.";
     noteCell.font = { italic: true, color: { argb: "FF888888" } };
-    ws.mergeCells(`A${noteRow}:E${noteRow}`);
+    ws.mergeCells(`A${noteRow}:F${noteRow}`);
   } else {
     sorted.forEach((r, i) => {
       const rowIdx = tableHeaderRow + 1 + i;
@@ -218,7 +225,22 @@ export async function buildSalesReport(
       } else {
         linkCell.value = "—";
       }
+      // Comisión por reseña abonable: cada fila es una `counted` → tarifa × 1.
+      ws.getCell(rowIdx, 6).value = rate !== null ? formatEuro(rate) : "—";
     });
+
+    // Fila de total de comisión al pie de la tabla.
+    const totalRow = tableHeaderRow + 1 + sorted.length;
+    const totalLabelCell = ws.getCell(totalRow, 5);
+    totalLabelCell.value = "TOTAL COMISIÓN";
+    totalLabelCell.font = { bold: true };
+    totalLabelCell.alignment = { horizontal: "right" };
+    const totalValueCell = ws.getCell(totalRow, 6);
+    totalValueCell.value = rate !== null ? formatEuro(rate * sorted.length) : "—";
+    totalValueCell.font = { bold: true };
+    totalValueCell.border = {
+      top: { style: "thin", color: { argb: "FFCCCCCC" } },
+    };
   }
 
   // exceljs devuelve un ArrayBuffer; Buffer.from cubre el tipo para

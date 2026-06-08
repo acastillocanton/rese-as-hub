@@ -40,6 +40,7 @@ type ProfileRow = {
   department: SalesDepartment | null;
   role: "sales" | "office_director";
   director_id: string | null;
+  commission_rate: number | null;
   location: { name: string } | null;
 };
 
@@ -105,7 +106,7 @@ export async function GET(
   const { data: target } = await admin
     .from("profiles")
     .select(
-      "id, full_name, joined_at, department, role, director_id, location:locations(name)",
+      "id, full_name, joined_at, department, role, director_id, commission_rate, location:locations(name)",
     )
     .eq("id", salesId)
     .in("role", ["sales", "office_director"])
@@ -161,6 +162,7 @@ export async function GET(
       department: target.department,
       location_name: target.location?.name ?? null,
       role: target.role,
+      commissionRate: target.commission_rate,
     },
     range,
     reviews,
