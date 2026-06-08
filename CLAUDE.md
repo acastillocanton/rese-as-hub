@@ -101,6 +101,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat · Sistema de soporte interno (helpdesk): productores preguntan, admin/gestor responden (mig 023) — §4.45 | ✅ (2026-06-04) |
 | fix · Footer del sidebar (Soporte/Ayuda/perfil) siempre fijo al hacer scroll: quitar `overflow:hidden` de `Frame` (rompía el `position:sticky`) + `minWidth:0` en los `main` — §4.45 | ✅ (2026-06-04) |
 | feat · Pestaña "Atribuidas" en Verificación para reasignar reseñas ya atribuidas (counted) al comercial equivocado — §4.46 | ✅ (2026-06-04) |
+| feat(matching) · Atribución por proximidad temporal a un único comercial: reseña sin nombre/mención que casen, tras un clic en el enlace personal de UN solo comercial (ventana ≤12h) → counted automático sin cliente — §4.47 | ✅ (2026-06-08) |
 | 🔜 fix · Acceso a Soporte en mobile (hoy el footer del sidebar no existe en mobile → Soporte inalcanzable). **Pendiente — retomar 2026-06-05, ver §8 punto 5** | ⏳ |
 
 ### Vista mobile (Fase 3.b + extensión director)
@@ -939,6 +940,20 @@ Se añadió una pestaña **"Atribuidas"** (`?state=counted`) que lista las `coun
 - **Sales**: la pestaña NO se renderiza (las chips solo se pintan para no-sales). Si fuerza `?state=counted`, `SalesRow` muestra "ya atribuida, no requiere acción" y la RLS solo le deja ver las suyas → inocuo.
 
 Sin migración, sin tocar RLS. Para corregir una atribución: Verificación → "Atribuidas" → localizar → "Reasignar" → elegir comercial (+ cliente) correcto.
+
+### 4.47 Atribución por proximidad temporal a un único comercial (matcher)
+
+**Caso real (Cornel, 2026-06-08):** un cliente abrió el **enlace personal** de Cornel (`/c/cornel-popescu`, QR de "Mi enlace" → `share_link` con `sales_id = Cornel`, `client_id = null`) y dejó una reseña **12 s después** (autor "Eduuu Bermejo", 5★, **sin texto**). Quedó `unmatched`: el nombre del autor no casaba con ningún cliente (`nameScore 0`) y sin texto no había mención que rescatar (§4.38). La identidad del **comercial** era inequívoca (es su enlace), pero el matcher no atribuía solo por proximidad temporal.
+
+**Hueco cerrado** (en [lib/matching/attribute-review.ts](lib/matching/attribute-review.ts), `attributeBySingleCommercialInWindow`): tras fallar la atribución por nombre (`primaryAttribution`) y por mención (`attributeByCommercialMention`), si seguimos en `unmatched`, se mira la ventana corta: si en ella hubo clics de **EXACTAMENTE UN** comercial → se atribuye en automático (`counted`, confianza 70) a ese comercial, **sin cliente**.
+
+- **Ventana**: `SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS = 12` (cubre el escaneo al momento y el que reseña esa misma tarde). Más corto que la ventana general de 48h a propósito: Google no nos dice qué reseña vino de qué clic (§4.38) → ventana corta para no capturar reseñas orgánicas.
+- **Guarda dura**: si en la ventana hay clics de **>1 comercial distinto** → ambiguo → `null` (no adivina). Elige el clic más cercano en el tiempo solo para el `share_link_id` de evidencia.
+- **`client_id` siempre null**: si `primaryAttribution` no llegó a `PENDING_THRESHOLD`, ningún candidato tenía buen parecido de nombre → adivinar cliente sería arriesgado (anti-fraude mig 015 podría degradar la principal). Lo afina el humano/comercial al confirmar. ⚠️ Una `counted` con `client_id=null` cuenta en KPI pero no es dedupable (§4.37 M2, riesgo aceptado, idéntico a la mención Tier 2).
+- **Restringido a autores con nombre** (`hasAuthorName !== false`): los anónimos conservan su path dedicado (`primaryAttribution` modo temporal-only, §258-295) — cambio quirúrgico, no altera su comportamiento.
+- **`reason: "counted_by_single_commercial_temporal"`** en `match_evidence`. Reversible desde Verificación → "Atribuidas" (§4.46).
+
+Sin migración, sin cambios en el cron ni en BD: `loadCandidates` ([lib/cron/process-reviews.ts](lib/cron/process-reviews.ts)) ya carga todos los `share_links` de la ficha en ventana (incl. `client_id=null`), y la función solo usa `sales_id` + `opened_at`. **Solo aplica a reseñas nuevas** que entren por el cron — las ya en BD (como la de Eduuu) se reclaman a mano. Tests en [lib/matching/__tests__/attribute-review.test.ts](lib/matching/__tests__/attribute-review.test.ts) (6 casos nuevos, incl. el escenario real de Eduuu).
 
 ---
 

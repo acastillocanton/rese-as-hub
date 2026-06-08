@@ -64,6 +64,35 @@ const MENTION_COUNT_CONFIDENCE = 85;
  *  está en el roster de la ficha (se cuenta al comercial, sin cliente). */
 const MENTION_COUNT_NO_WINDOW_CONFIDENCE = 78;
 
+/**
+ * Atribución por proximidad temporal a un ÚNICO comercial (ver
+ * `attributeBySingleCommercialInWindow`).
+ *
+ * Caso real (Cornel, 2026-06): un cliente abre el enlace PERSONAL del comercial
+ * (`/c/{slug}`, sin cliente concreto → `client_id = null`) y deja la reseña
+ * segundos después, pero el nombre del autor no casa con ningún cliente y la
+ * reseña no tiene texto que mencione al comercial. Hoy eso cae a `unmatched`
+ * aunque la `share_link` ya identifica al comercial con certeza.
+ *
+ * Decisión de producto (2026-06-08): si en una ventana corta hay clics de
+ * EXACTAMENTE UN comercial, la reseña se le atribuye en automático (`counted`),
+ * sin cliente. Racional: la comisión es por comercial × reseña y la identidad
+ * del comercial es inequívoca (es su propio enlace); el cliente exacto lo afina
+ * el humano luego. Reversible en Verificación.
+ *
+ * Guardrail duro (corrección, no criterio): si en la ventana hay clics de >1
+ * comercial distinto, es ambiguo y NO atribuimos. Google no nos dice qué reseña
+ * vino de qué clic — solo lo deducimos por tiempo (§4.38), de ahí la ventana
+ * corta para no capturar reseñas orgánicas.
+ */
+/** Ventana corta para la atribución por proximidad a un ÚNICO comercial
+ *  (cuando ni el nombre ni la mención resuelven la reseña). */
+const SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS = 12;
+/** Confianza de esa atribución temporal-only. Es la señal más débil de las que
+ *  cuentan en automático (no hay nombre ni mención), pero el comercial está
+ *  identificado con certeza por su propio enlace. */
+const SINGLE_COMMERCIAL_TEMPORAL_CONFIDENCE = 70;
+
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
 export type ShareLinkCandidate = {
@@ -236,7 +265,16 @@ export function attributeReview(
   // cuenta en automático. Si no hay mención (o es ambigua), nos quedamos con el
   // resultado por nombre+tiempo.
   const byMention = attributeByCommercialMention(review, candidates, commercials);
-  return byMention ?? primary;
+  if (byMention) return byMention;
+  // Último recurso: si seguimos en unmatched y en una ventana corta hubo clics
+  // de UN único comercial, atribuir a ese comercial por proximidad temporal.
+  // Solo para autores con nombre — los anónimos conservan su path dedicado
+  // (`primaryAttribution` modo temporal-only) para no alterar su comportamiento.
+  if (review.hasAuthorName !== false && primary.match_state === "unmatched") {
+    const byTemporal = attributeBySingleCommercialInWindow(review, candidates);
+    if (byTemporal) return byTemporal;
+  }
+  return primary;
 }
 
 /**
@@ -475,4 +513,67 @@ function attributeByCommercialMention(
   }
 
   return null;
+}
+
+/**
+ * Atribución por proximidad temporal a un ÚNICO comercial.
+ *
+ * Último recurso cuando ni el nombre del autor ni una mención en el texto han
+ * resuelto la reseña. Si en una ventana corta
+ * (`SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS`) hubo clics de EXACTAMENTE UN
+ * comercial, le atribuimos la reseña en automático (`counted`), SIN cliente:
+ * la `share_link` ya identifica al comercial con certeza (es su enlace personal)
+ * y la comisión es por comercial × reseña.
+ *
+ * Devuelve `null` si no hay clics en ventana o si hay clics de más de un
+ * comercial distinto (ambiguo → no adivinamos; ver §4.38). El caller solo la
+ * invoca para autores con nombre y cuando seguimos en `unmatched`.
+ */
+function attributeBySingleCommercialInWindow(
+  review: ReviewInput,
+  candidates: ShareLinkCandidate[],
+): MatchResult | null {
+  const reviewMs = new Date(review.google_created_at).getTime();
+
+  const inWindow = candidates.filter((c) => {
+    const openedMs = new Date(c.opened_at).getTime();
+    if (openedMs > reviewMs) return false; // enlace posterior a la reseña
+    const hoursDelta = (reviewMs - openedMs) / 3_600_000;
+    return hoursDelta <= SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS;
+  });
+
+  if (inWindow.length === 0) return null;
+  const distinctSales = new Set(inWindow.map((c) => c.sales_id));
+  if (distinctSales.size !== 1) return null; // ambiguo: varios comerciales
+
+  // Un único comercial. Elegimos el clic más cercano en el tiempo (mejor
+  // evidencia / para registrar el share_link_id).
+  let best = inWindow[0]!;
+  let bestDelta = (reviewMs - new Date(best.opened_at).getTime()) / 3_600_000;
+  for (const c of inWindow) {
+    const d = (reviewMs - new Date(c.opened_at).getTime()) / 3_600_000;
+    if (d < bestDelta) {
+      best = c;
+      bestDelta = d;
+    }
+  }
+
+  return {
+    match_state: "counted",
+    match_confidence: SINGLE_COMMERCIAL_TEMPORAL_CONFIDENCE,
+    match_evidence: {
+      reason: "counted_by_single_commercial_temporal",
+      share_link_id: best.id,
+      commercial_id: best.sales_id,
+      review_author: review.author_name,
+      hours_delta: Number(bestDelta.toFixed(2)),
+      candidates_considered: candidates.length,
+      window_hours: SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS,
+    },
+    sales_id: best.sales_id,
+    // client_id ausente a propósito: ningún candidato tenía buen parecido de
+    // nombre (primary < PENDING_THRESHOLD), así que adivinar cliente sería
+    // arriesgado (anti-fraude mig 015). Lo afina el humano al confirmar.
+    share_link_id: best.id,
+  };
 }

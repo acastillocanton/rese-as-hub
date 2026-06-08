@@ -108,10 +108,15 @@ describe("attributeReview — flujo con autor real", () => {
     expect(r.match_confidence).toBeLessThan(AUTO_THRESHOLD);
   });
 
-  it("nombre completamente distinto → unmatched", () => {
+  it("nombre distinto + varios comerciales en ventana → unmatched (ambiguo)", () => {
+    // Sin parecido de nombre y con clics de >1 comercial, no se puede atribuir
+    // ni por nombre ni por proximidad temporal (esta última es ambigua).
     const r = attributeReview(
       review({ author_name: "Persona Random" }),
-      [candidate({ client_full_name: "Antonio Ramírez" })],
+      [
+        candidate({ id: "a", client_full_name: "Antonio Ramírez" }),
+        candidate({ id: "b", sales_id: "sales-2", client_full_name: "Otro Cliente" }),
+      ],
     );
     expect(r.match_state).toBe("unmatched");
   });
@@ -352,11 +357,19 @@ describe("attributeReview — atribución por mención del comercial", () => {
     expect(r.match_state).toBe("unmatched");
   });
 
-  it("no rescata si la reseña no tiene texto", () => {
+  it("no rescata por mención si la reseña no tiene texto", () => {
+    // Dos comerciales distintos en ventana → la atribución temporal a un único
+    // comercial tampoco aplica (ambiguo), así aislamos el caso de la mención.
     const r = attributeReview(
       review({ author_name: "Maf" }),
-      [candidate({ sales_id: "tono", sales_full_name: "Tono Sánchez", client_full_name: "Marta Ferrer" })],
-      [{ sales_id: "tono", full_name: "Tono Sánchez" }],
+      [
+        candidate({ id: "a", sales_id: "tono", sales_full_name: "Tono Sánchez", client_full_name: "Marta Ferrer" }),
+        candidate({ id: "b", sales_id: "luis", sales_full_name: "Luis Gómez", client_full_name: "Otro" }),
+      ],
+      [
+        { sales_id: "tono", full_name: "Tono Sánchez" },
+        { sales_id: "luis", full_name: "Luis Gómez" },
+      ],
     );
     expect(r.match_state).toBe("unmatched");
   });
@@ -382,5 +395,88 @@ describe("attributeReview — atribución por mención del comercial", () => {
       [],
     );
     expect(r.match_state).toBe("unmatched");
+  });
+});
+
+describe("attributeReview — atribución temporal a un único comercial", () => {
+  // Caso real (Cornel, 2026-06): un cliente abre el enlace PERSONAL del comercial
+  // (sin cliente concreto → client_id null) y reseña segundos después, pero el
+  // nombre del autor no casa con ningún cliente y no hay texto. La identidad del
+  // comercial es inequívoca (es su enlace) → se atribuye en automático.
+  it("un único comercial con clic en ventana corta, sin nombre ni mención → counted al comercial", () => {
+    const opened = new Date(new Date(REVIEW_AT).getTime() - 12_000).toISOString(); // 12s antes
+    const r = attributeReview(
+      review({ author_name: "Eduuu Bermejo" }), // no casa con "Cliente Genérico"
+      [candidate({ sales_id: "cornel", opened_at: opened })],
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.match_confidence).toBe(70);
+    expect(r.sales_id).toBe("cornel");
+    expect(r.client_id).toBeUndefined();
+    expect(r.match_evidence.reason).toBe("counted_by_single_commercial_temporal");
+  });
+
+  it("dos comerciales con clic en ventana, sin nombre ni mención → unmatched (ambiguo)", () => {
+    const r = attributeReview(
+      review({ author_name: "Eduuu Bermejo" }),
+      [
+        candidate({ id: "a", sales_id: "cornel" }),
+        candidate({ id: "b", sales_id: "fidanka" }),
+      ],
+    );
+    expect(r.match_state).toBe("unmatched");
+  });
+
+  it("único comercial pero el clic fue >12h antes → unmatched (fuera de ventana corta)", () => {
+    const opened = new Date(
+      new Date(REVIEW_AT).getTime() - 13 * 3_600_000,
+    ).toISOString();
+    const r = attributeReview(
+      review({ author_name: "Eduuu Bermejo" }),
+      [candidate({ sales_id: "cornel", opened_at: opened })],
+    );
+    expect(r.match_state).toBe("unmatched");
+  });
+
+  it("único comercial con nombre que SÍ casa → counted por nombre (no por el path temporal)", () => {
+    const r = attributeReview(
+      review({ author_name: "Cliente Genérico" }),
+      [candidate({ sales_id: "cornel", client_full_name: "Cliente Genérico" })],
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.match_confidence).toBeGreaterThanOrEqual(AUTO_THRESHOLD);
+    expect(r.client_id).toBe("client-1");
+    expect(r.match_evidence.reason).not.toBe("counted_by_single_commercial_temporal");
+  });
+
+  it("anónimo con dos clics del mismo comercial → unmatched (el path temporal no aplica a anónimos)", () => {
+    const r = attributeReview(
+      review({ author_name: "Anónimo", hasAuthorName: false }),
+      [
+        candidate({ id: "a", sales_id: "cornel" }),
+        candidate({ id: "b", sales_id: "cornel" }),
+      ],
+    );
+    expect(r.match_state).toBe("unmatched");
+    expect(r.match_evidence.reason).toBe("anonymous_author_multiple_candidates (2)");
+  });
+
+  it("escenario real Eduuu Bermejo: 5 clics de Cornel, el más cercano 12s antes → counted a Cornel", () => {
+    const t = new Date(REVIEW_AT).getTime();
+    const clics = [
+      { id: "c1", opened_at: new Date(t - 12_000).toISOString() }, //  12s
+      { id: "c2", opened_at: new Date(t - 2 * 3_600_000).toISOString() }, //  2h
+      { id: "c3", opened_at: new Date(t - 5 * 3_600_000).toISOString() }, //  5h
+      { id: "c4", opened_at: new Date(t - 8 * 3_600_000).toISOString() }, //  8h
+      { id: "c5", opened_at: new Date(t - 11 * 3_600_000).toISOString() }, // 11h
+    ];
+    const r = attributeReview(
+      review({ author_name: "Eduuu Bermejo" }),
+      clics.map((c) => candidate({ ...c, sales_id: "cornel" })),
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.sales_id).toBe("cornel");
+    expect(r.client_id).toBeUndefined();
+    expect(r.share_link_id).toBe("c1"); // el clic más cercano
   });
 });
