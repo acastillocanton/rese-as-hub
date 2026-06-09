@@ -26,6 +26,10 @@ export type SidebarItem = {
   label: string;
   href: string;
   icon: LucideIcon;
+  /** Si true, el item se muestra atenuado y no es clicable (feature aún no
+   *  disponible). Tooltip opcional vía `disabledHint`. */
+  disabled?: boolean;
+  disabledHint?: string;
 };
 
 export type SidebarGroup = {
@@ -121,6 +125,50 @@ export function Sidebar({ groups, user, supportUnread = 0 }: SidebarProps) {
               {group.items.map((it) => {
                 const on = it.id === activeId;
                 const Icon = it.icon;
+                if (it.disabled) {
+                  return (
+                    <div
+                      key={it.id}
+                      title={it.disabledHint}
+                      aria-disabled="true"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "7px 10px",
+                        borderRadius: 8,
+                        color: "var(--ink-4)",
+                        fontSize: 13.5,
+                        fontWeight: 500,
+                        cursor: "not-allowed",
+                        opacity: 0.55,
+                      }}
+                    >
+                      <Icon
+                        aria-hidden="true"
+                        size={16}
+                        strokeWidth={1.75}
+                        style={{ color: "var(--ink-4)", flexShrink: 0 }}
+                      />
+                      <span>{it.label}</span>
+                      <span
+                        style={{
+                          marginLeft: "auto",
+                          fontSize: 9.5,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          color: "var(--ink-4)",
+                          border: "1px solid var(--line)",
+                          borderRadius: 5,
+                          padding: "1px 5px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Pronto
+                      </span>
+                    </div>
+                  );
+                }
                 return (
                   <Link
                     key={it.id}
@@ -291,9 +339,18 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
     id: "reviews",
     label: "Reseñas",
     items: [
-      { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
-      { id: "replies", label: "Respuestas", href: "/resenas/respuestas", icon: Reply },
       { id: "review-list", label: "Lista de reseñas", href: "/manager/resenas", icon: Star },
+      { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
+      // Respuestas deshabilitado hasta que llegue la cuota de la Google
+      // Business Profile API (caso 5-5855000041022, ver CLAUDE.md §4.26/§4.48).
+      {
+        id: "replies",
+        label: "Respuestas",
+        href: "/resenas/respuestas",
+        icon: Reply,
+        disabled: true,
+        disabledHint: "Disponible cuando se active la API de Google Business Profile.",
+      },
     ],
   },
   {
@@ -352,11 +409,20 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { id: "ranking", label: "Ranking", href: "/ranking", icon: Trophy },
       { id: "team", label: "Comerciales", href: "/comerciales", icon: Users },
+      { id: "reviews", label: "Lista de reseñas", href: "/manager/resenas", icon: Star },
       // Verificación: paridad con admin sobre matching manual de reseñas
       // (mig 016 abre /resenas/verificacion al gestor).
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
-      { id: "replies", label: "Respuestas", href: "/resenas/respuestas", icon: Reply },
-      { id: "reviews", label: "Reseñas", href: "/manager/resenas", icon: Star },
+      // Respuestas deshabilitado hasta que llegue la cuota de la Google
+      // Business Profile API (caso 5-5855000041022, ver CLAUDE.md §4.26/§4.48).
+      {
+        id: "replies",
+        label: "Respuestas",
+        href: "/resenas/respuestas",
+        icon: Reply,
+        disabled: true,
+        disabledHint: "Disponible cuando se active la API de Google Business Profile.",
+      },
     ],
   },
 ];
