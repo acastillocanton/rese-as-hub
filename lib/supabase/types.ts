@@ -238,6 +238,15 @@ export type Database = {
            *  por google_created_at queda principal (is_duplicate=false) y el
            *  resto se marca true para no contar en KPIs/Excel/ranking. */
           is_duplicate: boolean;
+          /** Migración 024. Respuesta del propietario (flujo asistido/API).
+           *  reply_text = texto; replied_at NULL = pendiente; reply_by = autor;
+           *  reply_via ∈ manual|api|google_detected; reply_synced_at = updateTime
+           *  del reviewReply de Google (fase API). Ver CLAUDE.md §4.48. */
+          reply_text: string | null;
+          replied_at: string | null;
+          reply_by: string | null;
+          reply_via: "manual" | "api" | "google_detected" | null;
+          reply_synced_at: string | null;
         };
         Insert: {
           id?: string;
@@ -255,6 +264,11 @@ export type Database = {
           match_state?: MatchState;
           match_evidence?: Record<string, unknown> | null;
           is_duplicate?: boolean;
+          reply_text?: string | null;
+          replied_at?: string | null;
+          reply_by?: string | null;
+          reply_via?: "manual" | "api" | "google_detected" | null;
+          reply_synced_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["reviews"]["Insert"]>;
         Relationships: [];

@@ -104,6 +104,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat(matching) · Atribución por proximidad temporal a un único comercial: reseña sin nombre/mención que casen, tras un clic en el enlace personal de UN solo comercial (ventana ≤30 min) → counted automático sin cliente — §4.47 | ✅ (2026-06-08) |
 | fix(matching) · Ventana temporal de §4.47 bajada de 12h a 30 min tras falso positivo en prod (reseña orgánica atribuida por clic genérico 3h antes) + corrección de datos (Miroslava→unmatched, Esteban→counted) — §4.47 | ✅ (2026-06-08) |
 | 🔜 fix · Acceso a Soporte en mobile (hoy el footer del sidebar no existe en mobile → Soporte inalcanzable). **Pendiente — retomar 2026-06-05, ver §8 punto 5** | ⏳ |
+| feat · Responder reseñas de Google desde la plataforma (bandeja `/resenas/respuestas`, admin+gestor): flujo asistido (redactar→copiar→Google→marcar) hoy + API lista para cuando llegue cuota BP (mig 024) — §4.48 | ✅ (2026-06-09) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -561,6 +562,15 @@ Hoy corren ambos crons en paralelo (`0 5 * * *` Places + `5 5 * * *` Business Pr
 
 16. **Consent screen en Testing → Production** en Google Cloud Console (§8 punto 3). Solo si hay testers externos al equipo actual. Si todo el equipo es `@inseryal.es` o `@marinadorconstrucciones.com`, mantener Testing está bien.
 
+#### Bloque G — Activar publicación de respuestas por API (§4.48)
+
+La bandeja `/resenas/respuestas` ya funciona en modo asistido (manual). Cuando llegue la cuota:
+
+17. **Cablear `publishReviewReply`** ([app/(profile)/resenas/respuestas/actions.ts](app/(profile)/resenas/respuestas/actions.ts)): la server action ya está escrita y valida `source==='business_profile'` + `google_review_id` no `places:`. Añadir en `ReviewReplyComposer.tsx` un botón "Publicar en Google" (visible solo cuando la reseña es de Business Profile) que la invoque, reemplazando/complementando el "Copiar + Abrir Google". El método `replyToReview` en [lib/google/business-profile.ts](lib/google/business-profile.ts) ya está listo (`fetchWithRetry`, scope `business.manage`).
+18. **Sync del `reviewReply` en el cron BP** ([app/api/cron/sync-google-reviews/route.ts](app/api/cron/sync-google-reviews/route.ts) + [lib/cron/process-reviews.ts](lib/cron/process-reviews.ts)): el `GoogleReview.reviewReply` ya viene en el type pero NO se persiste. Al insertar/actualizar una reseña BP con `reviewReply`, escribir `reply_text`, `replied_at` (= `reviewReply.updateTime`), `reply_via='google_detected'`, `reply_synced_at`. Esto auto-marca como respondidas las que el gestor ya contestó directamente en Google. Requiere que el cron BP procese también reseñas existentes (hoy filtra no-fresh — encaja con el gap de §4.41 "UPDATE si el reviewId existe y cambió updateTime").
+19. **Deep-link a reseña concreta** (punto 7 de arriba): el "Abrir en Google" del composer pasará a deep-link exacto vía `buildGoogleReviewUrl(placeId, googleReviewId, source)`.
+20. **Dedup (Bloque B)**: al migrar atribución del clone `places_api` al `business_profile`, migrar también `reply_text`/`replied_at`/`reply_via`/`reply_by`/`reply_synced_at` para no perder respuestas redactadas en el flujo asistido.
+
 #### Cómo coordinar el rollout
 
 - Crear branch `feat/business-profile-activation` ANTES de tocar producción.
@@ -957,6 +967,30 @@ Sin migración, sin tocar RLS. Para corregir una atribución: Verificación → 
 Sin migración, sin cambios en el cron ni en BD: `loadCandidates` ([lib/cron/process-reviews.ts](lib/cron/process-reviews.ts)) ya carga todos los `share_links` de la ficha en ventana (incl. `client_id=null`), y la función solo usa `sales_id` + `opened_at`. **Solo aplica a reseñas nuevas** que entren por el cron — las ya en BD (como la de Eduuu) se reclaman a mano. Tests en [lib/matching/__tests__/attribute-review.test.ts](lib/matching/__tests__/attribute-review.test.ts) (6 casos nuevos, incl. el escenario real de Eduuu y el límite de los 30 min).
 
 **Falso positivo corregido (2026-06-08, datos de prod):** "Miroslava Vucheva" se revirtió a `unmatched` (audit `manual_unmatch_false_positive`) y la reseña legítima del cliente real de Cornel ("Esteban", de Esteban Abad Madrid, que estaba en `pending` 63% por nombre débil) se confirmó a `counted` (audit `manual_confirm`).
+
+### 4.48 Responder reseñas de Google desde la plataforma (flujo asistido híbrido — mig 024)
+
+El gestor (José González, `reviews_manager`) responde a diario las reseñas de las 7 fichas. Antes no se podía desde ReseñaHub. Ahora hay una **bandeja de respuestas** en `/resenas/respuestas` para **admin + reviews_manager** (NO sales, NO office_director — decisión de producto).
+
+⚠️ **Blocker técnico de fondo:** responder en Google **solo** es posible vía Business Profile API (`PUT v4/{locationResource}/reviews/{reviewId}/reply`, scope `business.manage`), que sigue a **cuota 0** (§4.26). Además las reseñas de hoy entran por Places API, que no devuelve la respuesta del propietario y sintetiza el `google_review_id` (`places:...`, inútil para el endpoint reply). Por eso el enfoque es **HÍBRIDO**:
+- **HOY — flujo asistido:** el gestor redacta en la app, pulsa **Copiar texto** + **Abrir en Google**, pega la respuesta en la ficha y la publica manualmente, y al volver pulsa **Marcar respondida**. Se guarda en BD con `reply_via='manual'`.
+- **FUTURO (cuota BP, §4.26 Bloque G):** publicación directa por API (`reply_via='api'`) + auto-detección de respuestas puestas directamente en Google vía el `reviewReply` del cron BP (`reply_via='google_detected'`). Cero re-trabajo de esquema.
+
+**Migración 024** ([supabase/migrations/024_review_replies.sql](supabase/migrations/024_review_replies.sql)): añade a `reviews` las columnas `reply_text` (UTF-8 → emojis), `replied_at` (NULL = pendiente, pivota toda la UI/contadores), `reply_by` (FK profiles, quién respondió), `reply_via` (text+CHECK `manual|api|google_detected`), `reply_synced_at` (fase API). Índice parcial `reviews_pending_reply_idx` sobre `replied_at IS NULL AND removed_at IS NULL` para la cola/contador. **Sin RLS nueva**: admin/manager ya tienen UPDATE amplio; el gating "solo admin+manager" se hace en código.
+
+**Gating** ([lib/auth/reply-gating.ts](lib/auth/reply-gating.ts), módulo puro): `canReplyToReviews(role)` (admin/manager), `replyTextSchema` (trim, 1..4096 = tope Google, emojis intactos sin sanear), `isReplied()`.
+
+**Server actions** ([app/(profile)/resenas/respuestas/actions.ts](app/(profile)/resenas/respuestas/actions.ts)): `saveReviewReply` (marca respondida `manual`, rechaza eliminadas, audit `reply_saved`), `clearReviewReply` (revierte a pendiente, audit `reply_cleared`), `publishReviewReply` (**stub NO cableado en UI** — fase API; valida `business_profile` + no `places:`, usa `getValidAccessTokenForLocation` + `replyToReview`, audit `reply_published`). Patrón de `verificacion/actions.ts`: actor cookie-client + `getReplyActor` + `recordAudit` + `revalidatePath` (`/resenas/respuestas` + `/manager/resenas`).
+
+**Cliente Google** ([lib/google/business-profile.ts](lib/google/business-profile.ts)): método `replyToReview(accessToken, locationResource, reviewId, comment)` (PUT, `fetchWithRetry`) — listo pero hoy no invocable (cuota 0).
+
+**UI** ([app/(profile)/resenas/respuestas/page.tsx](app/(profile)/resenas/respuestas/page.tsx) + [ReviewReplyComposer.tsx](app/(profile)/resenas/respuestas/ReviewReplyComposer.tsx)): bandeja dedicada (NO se amplió `/manager/resenas`, que es vista de consulta). Vive en route group `(profile)` para que admin Y manager reciban su chrome correcto (`(profile)/layout.tsx` elige sidebar por rol). Pestañas `?tab=`: **Sin responder** (`replied_at IS NULL`, **antiguas primero** `google_created_at ASC` — responder primero lo más viejo) · **Respondidas** (`replied_at DESC`). Filtros opcionales: ficha (`location_id`) y `rating_lte=2` (priorizar ≤2★, §4.29). Composer client (patrón `RemovalControls`): textarea con emojis + contador n/4096 + **Marcar respondida** / **Copiar texto** / **Abrir en Google** (`GoogleReviewLink`); en Respondidas muestra texto + vía + autor + fecha con **Editar** / **Marcar como no respondida**.
+
+**Sidebar + middleware**: item "Respuestas" (icono `Reply`) en `ADMIN_SIDEBAR_GROUPS` (grupo reviews) y `MANAGER_SIDEBAR_GROUPS`. Middleware abre `/resenas/respuestas` a `reviews_manager` (admin pasa todo; sales/director NO). **Sin badge de no-leídos en sidebar** (el `(N)` va en la pestaña + topbar — evita un count por render de layout).
+
+**Tests**: [lib/auth/__tests__/reply-gating.test.ts](lib/auth/__tests__/reply-gating.test.ts) (gating + schema con emojis + bordes 4096/4097 + `isReplied`) y casos de `/resenas/respuestas` en [lib/__tests__/route-access.test.ts](lib/__tests__/route-access.test.ts).
+
+⚠️ **Consistencia con Google en fase asistida:** marcar "respondida" no prueba que se pegó en Google; `reply_via='manual'` lo deja explícito y `google_detected` reconciliará la verdad cuando llegue BP.
 
 ---
 

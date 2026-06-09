@@ -327,6 +327,39 @@ export async function listReviews(
   return { reviews: data.reviews ?? [], nextPageToken: data.nextPageToken };
 }
 
+/**
+ * Publica o actualiza la respuesta del propietario a una reseña.
+ *   PUT v4/{locationResource}/reviews/{reviewId}/reply  body { comment }
+ *
+ * `locationResource` = resource name completo ("accounts/123/locations/456").
+ * `reviewId` = el reviewId RAW de Business Profile (NO el sintético "places:..."
+ * de Places API, que no sirve para este endpoint — ver CLAUDE.md §4.17).
+ * Idempotente del lado de Google: un re-PUT sobrescribe la respuesta previa.
+ *
+ * ⚠️ HOY no se invoca en runtime (cuota Business Profile a 0 — caso
+ * 5-5855000041022, §4.26). Queda listo para el Bloque G de la activación.
+ */
+export async function replyToReview(
+  accessToken: string,
+  locationResource: string,
+  reviewId: string,
+  comment: string,
+): Promise<{ comment: string; updateTime: string }> {
+  const url = `https://mybusiness.googleapis.com/v4/${locationResource}/reviews/${reviewId}/reply`;
+  const res = await fetchWithRetry(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ comment }),
+  });
+  if (!res.ok) {
+    throw new Error(`replyToReview failed (${res.status}): ${await res.text()}`);
+  }
+  return (await res.json()) as { comment: string; updateTime: string };
+}
+
 const STAR_TO_INT: Record<GoogleStarRating, number> = {
   ONE: 1,
   TWO: 2,

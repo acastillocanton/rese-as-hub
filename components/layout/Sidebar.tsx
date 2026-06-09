@@ -12,6 +12,7 @@ import {
   MapPin,
   ListChecks,
   Star,
+  Reply,
   Link2,
   LifeBuoy,
   Trophy,
@@ -291,6 +292,7 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
     label: "Reseñas",
     items: [
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
+      { id: "replies", label: "Respuestas", href: "/resenas/respuestas", icon: Reply },
       { id: "review-list", label: "Lista de reseñas", href: "/manager/resenas", icon: Star },
     ],
   },
@@ -353,6 +355,7 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
       // Verificación: paridad con admin sobre matching manual de reseñas
       // (mig 016 abre /resenas/verificacion al gestor).
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
+      { id: "replies", label: "Respuestas", href: "/resenas/respuestas", icon: Reply },
       { id: "reviews", label: "Reseñas", href: "/manager/resenas", icon: Star },
     ],
   },

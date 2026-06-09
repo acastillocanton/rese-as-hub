@@ -122,6 +122,9 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
       pathname.startsWith("/ranking") ||
       pathname.startsWith("/manager") ||
       pathname.startsWith("/resenas/verificacion") ||
+      // Bandeja de respuestas a reseñas de Google (mig 024, §4.48). Solo
+      // admin + reviews_manager; sales/director NO (no se añade en sus ramas).
+      pathname.startsWith("/resenas/respuestas") ||
       pathname.startsWith("/api/export")
     );
   }

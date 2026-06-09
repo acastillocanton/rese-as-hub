@@ -14,6 +14,7 @@ describe("pathAllowedForRole — admin", () => {
       "/fichas",
       "/fichas/abc/conectar",
       "/resenas/verificacion",
+      "/resenas/respuestas",
       "/ajustes",
       "/manager/resenas",
       "/manager/export",
@@ -35,6 +36,8 @@ describe("pathAllowedForRole — sales", () => {
     expect(pathAllowedForRole("/ayuda", "sales")).toBe(true);
     // mig 016: el sales puede reclamar huérfanas de su ficha.
     expect(pathAllowedForRole("/resenas/verificacion", "sales")).toBe(true);
+    // mig 024: responder reseñas es solo admin+gestor — el sales NO.
+    expect(pathAllowedForRole("/resenas/respuestas", "sales")).toBe(false);
     // Autoservicio Excel propio desde /panel/resenas. El endpoint
     // valida en código que el sales solo descargue su propio id.
     expect(pathAllowedForRole("/api/export/sales/abc-123", "sales")).toBe(true);
@@ -66,6 +69,8 @@ describe("pathAllowedForRole — reviews_manager", () => {
     expect(pathAllowedForRole("/ayuda", "reviews_manager")).toBe(true);
     // mig 016: paridad con admin en verificación de reseñas.
     expect(pathAllowedForRole("/resenas/verificacion", "reviews_manager")).toBe(true);
+    // mig 024: bandeja de respuestas a reseñas de Google.
+    expect(pathAllowedForRole("/resenas/respuestas", "reviews_manager")).toBe(true);
   });
   it("NO entra a /fichas, /gestores, /ajustes", () => {
     expect(pathAllowedForRole("/fichas", "reviews_manager")).toBe(false);
@@ -103,6 +108,8 @@ describe("pathAllowedForRole — office_director (dualidad gestor + comercial)",
     expect(pathAllowedForRole("/ajustes", "office_director")).toBe(false);
     expect(pathAllowedForRole("/manager/resenas", "office_director")).toBe(false);
     expect(pathAllowedForRole("/manager/resenas/importar", "office_director")).toBe(false);
+    // mig 024: responder reseñas es solo admin+gestor — el director NO.
+    expect(pathAllowedForRole("/resenas/respuestas", "office_director")).toBe(false);
     expect(pathAllowedForRole("/api/admin/notify-failed", "office_director")).toBe(false);
   });
 });
