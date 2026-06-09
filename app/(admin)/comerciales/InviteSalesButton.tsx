@@ -138,6 +138,9 @@ export function InviteSalesButton({
             style={{
               width: 520,
               maxWidth: "100%",
+              maxHeight: "calc(100dvh - 48px)",
+              display: "flex",
+              flexDirection: "column",
               background: "var(--surface)",
               border: "1px solid var(--line)",
               borderRadius: 18,
@@ -150,6 +153,7 @@ export function InviteSalesButton({
               style={{
                 padding: "20px 22px 14px",
                 borderBottom: "1px solid var(--line)",
+                flexShrink: 0,
               }}
             >
               <div style={{ fontSize: 12.5, color: "var(--ink-3)", fontWeight: 500 }}>
@@ -220,13 +224,24 @@ export function InviteSalesButton({
                 </div>
               </div>
             ) : (
-              <form action={handleSubmit}>
+              <form
+                action={handleSubmit}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 0,
+                  flex: 1,
+                }}
+              >
                 <div
                   style={{
                     padding: "18px 22px",
                     display: "flex",
                     flexDirection: "column",
                     gap: 14,
+                    overflowY: "auto",
+                    flex: 1,
+                    minHeight: 0,
                   }}
                 >
                   <Field label="Nombre completo">
@@ -397,6 +412,8 @@ export function InviteSalesButton({
                     display: "flex",
                     justifyContent: "flex-end",
                     gap: 8,
+                    flexShrink: 0,
+                    background: "var(--surface)",
                   }}
                 >
                   <GhostBtn type="button" onClick={close} disabled={isPending}>
