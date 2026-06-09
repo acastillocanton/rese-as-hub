@@ -46,7 +46,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 
 > 🏁 **V1 cerrada el 2026-05-26**. Cubre todo el flujo end-to-end: alta de comerciales/directores/gestores, generación de enlaces, sincronización vía Places API (Business Profile esperando cuota), atribución automática, panel del comercial con mobile + ranking, export Excel del gestor, soft-delete, multi-marca, polish (loading states + a11y + E2E Playwright). Próxima iteración → v2 (sin features definidas todavía; ver §8 Backlog).
 >
-> Producto live y trayendo reseñas reales desde **2026-05-23** vía Google Places API (vía de respaldo mientras esperamos cuota de Business Profile API — caso `5-5855000041022`, ETA ~2026-06-04; **verificado el 2026-06-04 que sigue a cuota 0** — re-check programado 2026-06-09, ver §4.26). El cron oficial de Business Profile sigue activo en paralelo; cuando Google apruebe, retomará automáticamente sin redeploy.
+> Producto live y trayendo reseñas reales desde **2026-05-23** vía Google Places API (vía de respaldo mientras esperamos cuota de Business Profile API — caso `5-5855000041022`). **2026-06-09: descubierto que el allowlist anterior estaba RECHAZADO por dominio del solicitante (gmail) ≠ web; reenviado correctamente con cuentas de empresa `@inseryal.es`/`@marinadorconstrucciones.com` al proyecto `628454280082`, a esperar 7-10 días hábiles, re-check 2026-06-23 — ver §4.26.** El cron oficial de Business Profile sigue activo en paralelo; cuando Google apruebe, retomará automáticamente sin redeploy.
 
 | Fase | Estado |
 |---|---|
@@ -484,7 +484,13 @@ Cada listado de reseñas tiene un mini-link "Ver en Google" (icono `ExternalLink
 
 ### 4.26 Checklist completo "Cuando llegue Business Profile API"
 
-> **Caso en Google**: `5-5855000041022`. ETA original ~2026-06-04. **Verificado el 2026-06-04 que sigue a cuota 0** (OAuth E2E funciona y guarda token, pero `listAccounts` → `429 RESOURCE_EXHAUSTED` con `quota_limit_value: "0"`). **Re-check programado el 2026-06-09** (routine remota `trig_01N2M8Zkz5Qxh8aFHRveVqF5`). **Señal de que llegó**: abrir `/fichas/[id]/conectar` y ver el SELECTOR de fichas en vez del 429 (o `node scripts/check-bp-quota.mjs`, script local gitignored). Si no llega antes de fin de mes, dar un toque al caso.
+> **Caso en Google**: `5-5855000041022`. ETA original ~2026-06-04. **Verificado el 2026-06-04 que sigue a cuota 0** (OAuth E2E funciona y guarda token, pero `listAccounts` → `429 RESOURCE_EXHAUSTED` con `quota_limit_value: "0"`).
+>
+> **🔑 CAUSA RAÍZ encontrada el 2026-06-09 (no era "esperar", era RECHAZO):** el correo de `socialmedia.inseryal@gmail.com` tenía la respuesta de Google al allowlist anterior — **RECHAZADO** porque el dominio de la web del formulario no coincidía con el del correo solicitante (se envió con un `@gmail.com`). El allowlist de la Business Profile API es **por PROYECTO de Google Cloud (`628454280082`), NO por ficha**, y SOLO Google lo concede a mano vía el formulario `support.google.com/business/contact/api_default` (revisión 7-10 días hábiles). **NO hay ajuste en Cloud Console que suba la cuota** — IAM / usuarios de prueba del OAuth NO cuentan.
+>
+> **Acción 2026-06-09 — allowlist REENVIADO bien:** se crearon **cuentas de Google con email de empresa** (opción "usar mi dirección actual" en accounts.google.com/signup — gratis, NO es Workspace; esos correos se leen en Outlook, no son Google nativos) y se reenviaron dos solicitudes con dominios que **coinciden**: `@inseryal.es`+web `inseryal.es` y `@marinadorconstrucciones.com`+web `marinadorconstrucciones.com`, **ambas al proyecto `628454280082`** (una aprobación desbloquea las 7 fichas). Caso anterior fallido por gmail: `4-2768000041441`. **A esperar 7-10 días hábiles (≈ hacia 2026-06-23).**
+>
+> **Re-check programado el 2026-06-23** (routine remota `trig_01LnriLHvqFNWmjTv2xnj3MP` — solo recordatorio: el agente remoto NO puede correr el script por falta de secretos). **Señal de que llegó**: abrir `/fichas/[id]/conectar` y ver el SELECTOR de fichas en vez del 429 (o `node scripts/check-bp-quota.mjs` en local, script gitignored). Si pasados >10 días hábiles sigue a 429, responder al hilo del caso para dar un toque.
 >
 > Esta sección es el **índice central** de todo lo que hay que tocar cuando Google apruebe la cuota. El resto del CLAUDE.md y la spec referencian aquí. Los archivos de código tienen comentarios locales que apuntan a esta sección.
 
@@ -1070,7 +1076,7 @@ Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v
 
 > V1 cerrada (ver §3). Lo siguiente. Features concretas de v2 se irán definiendo conforme el negocio las pida; por ahora aquí quedan los pendientes técnicos y las open questions de spec.md que no se cerraron en v1.
 
-1. **Cuando llegue Google Business Profile API** (caso `5-5855000041022`, ETA ~2026-06-04 — verificado el 2026-06-04 aún a cuota 0, re-check 2026-06-09): ver el **checklist completo consolidado en §4.26** (16 items, bloques A-F: activación OAuth, dedup one-shot, reactivar soft-delete automático, deep-link a reseña concreta, estrategia de los dos crons, actualizaciones de docs/UI, verification de Google). Mientras tanto el cron de Places API (§4.b) sigue trayendo reseñas reales.
+1. **Cuando llegue Google Business Profile API** (caso `5-5855000041022`; allowlist **reenviado bien el 2026-06-09** tras descubrir que el anterior estaba rechazado por dominio del solicitante, re-check 2026-06-23 — ver §4.26): ver el **checklist completo consolidado en §4.26** (bloques A-G: activación OAuth, dedup one-shot, reactivar soft-delete automático, deep-link a reseña concreta, estrategia de los dos crons, actualizaciones de docs/UI, verification de Google, **Bloque G = activar publicación de respuestas por API §4.48**). Mientras tanto el cron de Places API (§4.b) sigue trayendo reseñas reales.
 2. **Polish técnico restante**:
    - Seed más realista para dev (los E2E specs usan datos de prueba reales contra Supabase; cuando crezca el cubrimiento, considerar un proyecto Supabase de pruebas).
    - Ampliar E2E: sales-flow (crear cliente, compartir enlace) cuando haya un comercial fijo de pruebas en BD; cron con fixture del Google API.
