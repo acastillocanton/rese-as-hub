@@ -171,12 +171,13 @@ export default async function RespuestasPage({
               maxWidth: 680,
             }}
           >
-            Redacta la respuesta (puedes usar emojis), pulsa{" "}
-            <strong>Copiar texto</strong> y luego <strong>Abrir en Google</strong>
-            : pega la respuesta en la ficha de Google y publícala. Al volver,
-            marca la reseña como <strong>respondida</strong> para sacarla de la
-            cola. Empieza por las más antiguas — son las que más tiempo llevan
-            sin contestar.
+            Redacta la respuesta (puedes usar emojis) y pulsa{" "}
+            <strong>Copiar texto</strong>. Luego <strong>Responder en Google</strong>
+            : abre tu panel de propietario (pestaña Reseñas), busca la reseña
+            —usa <strong>Ver reseña</strong> para localizarla por autor y
+            fecha—, pega la respuesta y publícala. Al volver, marca la reseña
+            como <strong>respondida</strong> para sacarla de la cola. Empieza
+            por las más antiguas: son las que más tiempo llevan sin contestar.
           </p>
         </Card>
 

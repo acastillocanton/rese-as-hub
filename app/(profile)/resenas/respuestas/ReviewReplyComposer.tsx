@@ -2,11 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Copy, Check } from "lucide-react";
+import { ExternalLink, Copy, Check, MessageSquareReply } from "lucide-react";
 import { saveReviewReply, clearReviewReply } from "./actions";
 import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
 
 const MAX_LEN = 4096;
+
+// Panel del propietario donde SÍ existe el botón "Responder" de Google. La
+// lista pública (buildGoogleReviewListUrl) solo sirve para LOCALIZAR la reseña
+// — no tiene caja de respuesta. No es deep-link por reseña (Google no lo
+// permite sin los IDs internos que solo da la Business Profile API): aterriza
+// en el gestor de reseñas; con varias fichas, eliges la ficha allí.
+const GBP_REVIEWS_URL = "https://business.google.com/reviews";
 
 /**
  * Composer de respuesta a una reseña (flujo asistido). Patrón de
@@ -228,10 +235,26 @@ export function ReviewReplyComposer({
           {copied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.75} />}
           {copied ? "Copiado" : "Copiar texto"}
         </button>
+        <a
+          href={GBP_REVIEWS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Abre tu panel de propietario de Google (pestaña Reseñas), donde puedes pegar y publicar la respuesta"
+          style={btn}
+        >
+          <MessageSquareReply size={13} strokeWidth={1.75} />
+          Responder en Google
+        </a>
         {googleUrl && (
-          <a href={googleUrl} target="_blank" rel="noopener noreferrer" style={btn}>
+          <a
+            href={googleUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Localiza la reseña en la lista pública (no permite responder)"
+            style={btn}
+          >
             <ExternalLink size={13} strokeWidth={1.75} />
-            Abrir en Google
+            Ver reseña
           </a>
         )}
         {editing && (
