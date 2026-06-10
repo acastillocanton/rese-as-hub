@@ -84,7 +84,11 @@ export async function createLocation(input: CreateLocationInput) {
 const linkSchema = z.object({
   locationId: z.string().uuid(),
   googleAccountId: z.string().min(1), // "accounts/123"
-  googleLocationResource: z.string().min(1), // "accounts/123/locations/456"
+  // El picker envía el `name` de la ficha tal cual lo da la Business
+  // Information API: "locations/456" (relativo a la cuenta). La API v4 de
+  // reseñas (mybusiness.googleapis.com/v4/.../reviews) exige el recurso
+  // COMPLETO "accounts/123/locations/456" → lo componemos abajo. Ver §4.26.
+  googleLocationResource: z.string().min(1), // "locations/456" o ya completo
   googlePlaceId: z.string().optional().nullable(),
 });
 
@@ -106,10 +110,18 @@ export async function linkGoogleLocation(input: z.input<typeof linkSchema>) {
   // Usamos service client para garantizar que el upsert pasa sin cuestiones
   // de RLS (este action solo se llama desde la página /fichas/[id]/conectar,
   // que ya es admin-only por middleware).
+  // Componemos el resource COMPLETO que exige la API v4 de reseñas:
+  // "accounts/123/locations/456". Si ya viene completo (empieza por
+  // "accounts/"), lo dejamos tal cual; si viene relativo ("locations/456"),
+  // le anteponemos la cuenta. Sin esto, v4/locations/456/reviews → 404.
+  const fullResource = parsed.data.googleLocationResource.startsWith("accounts/")
+    ? parsed.data.googleLocationResource
+    : `${parsed.data.googleAccountId}/${parsed.data.googleLocationResource}`;
+
   const admin = createServiceClient();
   const update: Record<string, unknown> = {
     google_account_id: parsed.data.googleAccountId,
-    google_location_resource: parsed.data.googleLocationResource,
+    google_location_resource: fullResource,
     oauth_status: "connected",
     oauth_last_sync_error: null,
   };
