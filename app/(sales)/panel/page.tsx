@@ -26,6 +26,7 @@ import {
 } from "@/lib/date-range";
 import { MONTHS } from "@/lib/demo-data";
 import { formatEuro } from "@/lib/utils";
+import { commissionEuro, isCapped, payableCount, pendingCommissionEuro } from "@/lib/commission";
 import { getLeaderboard } from "@/lib/leaderboard";
 import { computePanelBadges } from "@/lib/panel-badges";
 import type { SavedTemplates } from "@/lib/messaging";
@@ -57,6 +58,8 @@ type PanelData = {
   avgRating: number | null;
   /** Tarifa €/reseña del comercial (profiles.commission_rate). null = sin tarifa. */
   commissionRate: number | null;
+  /** Tope de reseñas bonificables/periodo (profiles.commission_cap). null = sin tope. */
+  commissionCap: number | null;
   insights: PanelInsights;
   /** Plantillas de mensaje personalizadas del comercial. */
   messageTemplates: SavedTemplates;
@@ -94,6 +97,7 @@ const DEMO_DATA: Omit<PanelData, "insights"> = {
   links: 96,
   avgRating: 4.8,
   commissionRate: 2.5,
+  commissionCap: 5,
   messageTemplates: null,
 };
 
@@ -158,7 +162,7 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
 
   const profileRes = await supabase
     .from("profiles")
-    .select("id, full_name, slug, monthly_goal, commission_rate, director_id, message_templates")
+    .select("id, full_name, slug, monthly_goal, commission_rate, commission_cap, director_id, message_templates")
     .eq("id", user.id)
     .maybeSingle<{
       id: string;
@@ -166,6 +170,7 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
       slug: string;
       monthly_goal: number;
       commission_rate: number | null;
+      commission_cap: number | null;
       director_id: string | null;
       message_templates: SavedTemplates;
     }>();
@@ -234,6 +239,7 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
     goal: profileRes.data.monthly_goal,
     avgRating,
     commissionRate: profileRes.data.commission_rate,
+    commissionCap: profileRes.data.commission_cap,
     insights,
     messageTemplates: profileRes.data.message_templates,
   };
@@ -454,11 +460,15 @@ export default async function PanelPage({
   });
   const dayOfWeek = now.getDay();
 
-  // Importe estimado de comisión: abonables × tarifa. null si el comercial no
-  // tiene tarifa configurada (la pone admin/gestor/director en su ficha).
+  // Importe estimado de comisión: se abona un MÁXIMO de `commissionCap`
+  // reseñas por periodo (mig 026). € = tarifa × min(abonables, tope). null si
+  // el comercial no tiene tarifa configurada (la pone admin/gestor/director).
   const rate = data.commissionRate;
-  const earnedEuro = rate !== null ? rate * data.counted : null;
-  const pendingEuro = rate !== null ? rate * data.pending : null;
+  const cap = data.commissionCap;
+  const earnedEuro = commissionEuro(data.counted, rate, cap);
+  const pendingEuro = pendingCommissionEuro(data.counted, data.pending, rate, cap);
+  const paid = payableCount(data.counted, cap);
+  const overCap = isCapped(data.counted, cap);
   const closeDate = formatCloseDate(range.to);
 
   const badges = computePanelBadges({
@@ -541,6 +551,18 @@ export default async function PanelPage({
                 {deltaPill(data.counted, data.prevCounted)}
               </div>
 
+              {/* Bonificables: cuántas de las abonables se pagan (tope mig 026). */}
+              {cap !== null && (
+                <div style={{ marginTop: 8, fontSize: 13, color: "var(--ink-3)" }}>
+                  <strong style={{ color: "var(--ink)" }}>{paid}</strong> de {cap} bonificadas
+                  {overCap && (
+                    <span style={{ color: "var(--ink-4)" }}>
+                      {" "}· máximo {cap} pagadas por periodo
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Importe estimado de comisión */}
               {earnedEuro !== null ? (
                 <div style={{ marginTop: 10, fontSize: 14, color: "var(--ink-2)" }}>
@@ -549,7 +571,7 @@ export default async function PanelPage({
                     {formatEuro(earnedEuro)}
                   </strong>{" "}
                   en comisión
-                  {data.pending > 0 && pendingEuro !== null && (
+                  {data.pending > 0 && pendingEuro !== null && pendingEuro > 0 && (
                     <span style={{ color: "var(--ink-4)" }}>
                       {" "}· +{formatEuro(pendingEuro)} si se verifican las {data.pending} pendientes
                     </span>

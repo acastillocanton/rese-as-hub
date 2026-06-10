@@ -9,7 +9,11 @@ import { generateAccessLink } from "@/lib/auth/resend-link";
 import { slugify } from "@/lib/utils";
 import { recordAudit } from "@/lib/audit";
 import { storeUserAvatar, removeUserAvatarObjects } from "@/lib/avatar";
-import { commissionRateSchema, departmentSchema } from "@/lib/validation/sales-schemas";
+import {
+  commissionCapSchema,
+  commissionRateSchema,
+  departmentSchema,
+} from "@/lib/validation/sales-schemas";
 
 /**
  * Asegura que el caller puede administrar directores. Admite admin global y
@@ -60,6 +64,7 @@ const inviteDirectorSchema = z
       .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
     commissionRate: commissionRateSchema,
+    commissionCap: commissionCapSchema,
   })
   .refine(
     (v) => (v.department === "internacional" ? !!v.language : !v.language),
@@ -97,6 +102,7 @@ export async function inviteOfficeDirector(input: InviteDirectorInput): Promise<
       language: parsed.data.language,
       monthly_goal: parsed.data.monthlyGoal,
       commission_rate: parsed.data.commissionRate,
+      commission_cap: parsed.data.commissionCap,
     },
     nextPath: "/dashboard",
     revalidate: ["/directores"],
@@ -149,6 +155,7 @@ const updateDirectorSchema = z
       .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
     commissionRate: commissionRateSchema,
+    commissionCap: commissionCapSchema,
     // 'archived' NO se gestiona aquí — solo desde archiveDirector/restoreDirector.
     status: z.enum(["invited", "active", "paused"]),
   })
@@ -187,6 +194,7 @@ export async function updateDirector(input: UpdateDirectorInput) {
       language: parsed.data.language,
       monthly_goal: parsed.data.monthlyGoal,
       commission_rate: parsed.data.commissionRate,
+      commission_cap: parsed.data.commissionCap,
       status: parsed.data.status,
     } as never)
     .eq("id", parsed.data.id)
@@ -201,7 +209,10 @@ export async function updateDirector(input: UpdateDirectorInput) {
     entityType: "profile",
     entityId: parsed.data.id,
     action: "update_commission_rate",
-    payload: { commission_rate: parsed.data.commissionRate },
+    payload: {
+      commission_rate: parsed.data.commissionRate,
+      commission_cap: parsed.data.commissionCap,
+    },
   });
   revalidatePath("/directores");
   revalidatePath(`/directores/${parsed.data.id}`);

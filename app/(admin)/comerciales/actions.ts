@@ -12,6 +12,7 @@ import { storeUserAvatar, removeUserAvatarObjects } from "@/lib/avatar";
 import type { Role } from "@/lib/supabase/types";
 import { canManageSales } from "@/lib/supabase/types";
 import {
+  commissionCapSchema,
   commissionRateSchema,
   departmentSchema,
   pauseReasonSchema,
@@ -144,6 +145,7 @@ const inviteSchema = z
       .transform((v) => v || null),
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
     commissionRate: commissionRateSchema,
+    commissionCap: commissionCapSchema,
     department: departmentSchema,
     language: z
       .string()
@@ -222,6 +224,7 @@ export async function inviteSales(input: InviteSalesInput): Promise<
       director_id: parsed.data.directorId,
       monthly_goal: parsed.data.monthlyGoal,
       commission_rate: parsed.data.commissionRate,
+      commission_cap: parsed.data.commissionCap,
       department: parsed.data.department,
       language: parsed.data.language,
       notes: parsed.data.notes,
@@ -243,6 +246,7 @@ const updateSchema = z
       .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
     commissionRate: commissionRateSchema,
+    commissionCap: commissionCapSchema,
     locationId: z.string().uuid("Selecciona una ficha."),
     directorId: z
       .string()
@@ -323,6 +327,7 @@ export async function updateSales(input: UpdateSalesInput) {
     phone: parsed.data.phone,
     monthly_goal: parsed.data.monthlyGoal,
     commission_rate: parsed.data.commissionRate,
+    commission_cap: parsed.data.commissionCap,
     location_id: parsed.data.locationId,
     director_id: parsed.data.directorId,
     status: parsed.data.status,
@@ -346,12 +351,16 @@ export async function updateSales(input: UpdateSalesInput) {
     return { ok: false as const, error: error.message };
   }
 
-  // Traza de la tarifa de comisión (campo que afecta a pagos).
+  // Traza de la tarifa y el tope de comisión (campos que afectan a pagos).
   await recordAudit({
     entityType: "profile",
     entityId: parsed.data.id,
     action: "update_commission_rate",
-    payload: { commission_rate: parsed.data.commissionRate, actor_id: auth.actor.userId },
+    payload: {
+      commission_rate: parsed.data.commissionRate,
+      commission_cap: parsed.data.commissionCap,
+      actor_id: auth.actor.userId,
+    },
   });
 
   revalidatePath("/comerciales");

@@ -85,6 +85,7 @@ export function InviteSalesButton({
         directorId: String(formData.get("directorId") ?? "") || null,
         monthlyGoal: String(formData.get("monthlyGoal") ?? "5"),
         commissionRate: String(formData.get("commissionRate") ?? ""),
+        commissionCap: String(formData.get("commissionCap") ?? "5"),
         department: dept,
         language:
           dept === "internacional" ? String(formData.get("language") ?? "") : null,
@@ -379,6 +380,18 @@ export function InviteSalesButton({
                       max={9999}
                       step="0.01"
                       placeholder="p.ej. 2,50"
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="Reseñas bonificables" hint="Máximo de reseñas que se pagan por periodo de comisión. Vacío = sin tope (paga todas).">
+                    <input
+                      name="commissionCap"
+                      type="number"
+                      min={0}
+                      max={9999}
+                      step="1"
+                      defaultValue={5}
+                      placeholder="Sin tope"
                       style={inputStyle}
                     />
                   </Field>

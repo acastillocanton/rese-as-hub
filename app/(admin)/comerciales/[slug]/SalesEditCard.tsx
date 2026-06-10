@@ -33,6 +33,7 @@ export type SalesEditCardProps = {
     directorId: string | null;
     monthlyGoal: number;
     commissionRate: number | null;
+    commissionCap: number | null;
     status: ProfileStatus;
     department: SalesDepartment | null;
     language: string | null;
@@ -68,6 +69,9 @@ export function SalesEditCard({
   const [commissionRate, setCommissionRate] = useState<string>(
     initial.commissionRate === null ? "" : String(initial.commissionRate),
   );
+  const [commissionCap, setCommissionCap] = useState<string>(
+    initial.commissionCap === null ? "" : String(initial.commissionCap),
+  );
   // initial.status puede ser 'archived' si llega aquí por error; en ese caso
   // colapsamos a 'invited' para que el select tenga un valor representable.
   // (La página de detalle muestra otro componente cuando el comercial está
@@ -98,6 +102,7 @@ export function SalesEditCard({
     setDirectorId(initial.directorId ?? "");
     setMonthlyGoal(initial.monthlyGoal);
     setCommissionRate(initial.commissionRate === null ? "" : String(initial.commissionRate));
+    setCommissionCap(initial.commissionCap === null ? "" : String(initial.commissionCap));
     setStatus(initialEditableStatus);
     setDepartment(initial.department ?? "");
     setLanguage(initial.language ?? "");
@@ -135,6 +140,7 @@ export function SalesEditCard({
       directorId: directorId || null,
       monthlyGoal,
       commissionRate: commissionRate.trim() === "" ? null : commissionRate.trim(),
+      commissionCap: commissionCap.trim() === "" ? null : commissionCap.trim(),
       status,
       department,
       language: department === "internacional" ? language : null,
@@ -394,6 +400,36 @@ export function SalesEditCard({
                 {initial.commissionRate === null
                   ? "Sin tarifa configurada"
                   : `${formatEuro(initial.commissionRate)} / reseña`}
+              </span>
+            )}
+          </dd>
+        </div>
+
+        {/* Reseñas bonificables (tope de comisión) */}
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Reseñas bonificables</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <input
+                type="number"
+                min={0}
+                max={9999}
+                step="1"
+                value={commissionCap}
+                onChange={(e) => setCommissionCap(e.target.value)}
+                placeholder="Sin tope"
+                style={{ ...inputStyle, width: 120 }}
+              />
+            ) : (
+              <span
+                style={{
+                  fontSize: 13.5,
+                  color: initial.commissionCap === null ? "var(--ink-4)" : "var(--ink)",
+                }}
+              >
+                {initial.commissionCap === null
+                  ? "Sin tope (paga todas)"
+                  : `máx. ${initial.commissionCap} / periodo`}
               </span>
             )}
           </dd>

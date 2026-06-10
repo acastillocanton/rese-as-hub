@@ -134,6 +134,9 @@ export type Database = {
           /** Comisión por reseña en € (numeric). NULL = tarifa no configurada.
            *  Migración 020. Aplica a productores (sales + office_director). */
           commission_rate: number | null;
+          /** Tope de reseñas bonificables por periodo. NULL = sin tope.
+           *  Migración 026. Aplica a productores (sales + office_director). */
+          commission_cap: number | null;
           status: ProfileStatus;
           avatar_url: string | null;
           joined_at: string;
@@ -158,6 +161,7 @@ export type Database = {
           phone?: string | null;
           monthly_goal?: number;
           commission_rate?: number | null;
+          commission_cap?: number | null;
           status?: ProfileStatus;
           avatar_url?: string | null;
           joined_at?: string;

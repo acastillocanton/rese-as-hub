@@ -310,6 +310,12 @@ export default async function AyudaPage() {
               Tu comisión estimada se calcula muy fácil:{" "}
               <strong>reseñas abonables × tu tarifa por reseña</strong>.
             </p>
+            <Callout tone="warn">
+              Cada periodo se paga un <strong>máximo de reseñas bonificables</strong>{" "}
+              (te lo indica tu responsable). Si consigues más, ¡genial! — siguen
+              sumando a tu producción y a tu ranking, pero la comisión se calcula
+              solo hasta ese tope. Tu panel te enseña cuántas van bonificadas.
+            </Callout>
             <Callout tone="info">
               El importe en euros es <strong>una estimación</strong> para que te
               orientes. La liquidación final la hace tu empresa.

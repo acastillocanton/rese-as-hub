@@ -61,6 +61,7 @@ type SalesDetail = {
   phone: string | null;
   monthly_goal: number;
   commission_rate: number | null;
+  commission_cap: number | null;
   status: ProfileStatus;
   joined_at: string;
   location_id: string | null;
@@ -286,7 +287,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, monthly_goal, commission_rate, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, role, avatar_url, location:locations(id, name)",
+        "id, full_name, slug, email, phone, monthly_goal, commission_rate, commission_cap, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, role, avatar_url, location:locations(id, name)",
       )
       .eq("slug", slug)
       .in("role", ["sales", "office_director"])
@@ -575,6 +576,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
           avgRating={summaryAvg}
           goal={sales.monthly_goal}
           commissionRate={sales.commission_rate}
+          commissionCap={sales.commission_cap}
           closeDate={closeDate}
           daysLeft={daysLeft}
           monthBuckets={insights.monthBuckets}
@@ -603,6 +605,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
               directorId: sales.director_id,
               monthlyGoal: sales.monthly_goal,
               commissionRate: sales.commission_rate,
+              commissionCap: sales.commission_cap,
               status: sales.status,
               department: sales.department,
               language: sales.language,
@@ -946,6 +949,10 @@ function SalesReadOnlyCard({
         )}
         <Term label="Ficha asignada" value={sales.location?.name ?? "—"} />
         <Term label="Objetivo mensual" value={String(sales.monthly_goal)} />
+        <Term
+          label="Reseñas bonificables"
+          value={sales.commission_cap === null ? "Sin tope" : `máx. ${sales.commission_cap} / periodo`}
+        />
         <Term label="Estado" value={statusLabel(sales.status)} />
         {sales.status === "paused" && sales.paused_reason && (
           <Term label="Motivo pausa" value={PAUSE_REASON_LABELS[sales.paused_reason]} />

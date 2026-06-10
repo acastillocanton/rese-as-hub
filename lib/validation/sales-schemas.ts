@@ -47,3 +47,29 @@ export const commissionRateSchema = z
     }
     return Math.round(Math.min(n, 9999) * 100) / 100;
   });
+
+/**
+ * Tope de reseñas BONIFICABLES por periodo (mig 026). Mismo patrón que
+ * commissionRateSchema pero ENTERO. Reglas:
+ *  - vacío / null / undefined → null (sin tope → paga todas las counted).
+ *  - entero ≥ 0; se acota a [0, 9999].
+ *  - una entrada NO vacía que no sea un entero válido ≥ 0 → ERROR de validación.
+ */
+export const commissionCapSchema = z
+  .union([z.string(), z.number()])
+  .optional()
+  .nullable()
+  .transform((v, ctx) => {
+    if (v === null || v === undefined) return null;
+    const s = typeof v === "number" ? String(v) : v.trim();
+    if (s === "") return null;
+    const n = Number(s);
+    if (!Number.isInteger(n) || n < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El tope de reseñas bonificables debe ser un número entero igual o mayor que 0.",
+      });
+      return z.NEVER;
+    }
+    return Math.min(n, 9999);
+  });

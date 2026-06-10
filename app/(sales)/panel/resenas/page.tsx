@@ -20,6 +20,7 @@ import {
   type DateRange,
 } from "@/lib/date-range";
 import { formatEuro } from "@/lib/utils";
+import { commissionEuro, isCapped, payableCount, pendingCommissionEuro } from "@/lib/commission";
 import { formatReviewDate, matchStateLabel, matchStateTone } from "@/lib/format";
 
 // `new Date()` + rango activo basado en "ahora" → forzamos dinámico.
@@ -30,6 +31,7 @@ type SalesProfile = {
   full_name: string;
   slug: string;
   commission_rate: number | null;
+  commission_cap: number | null;
 };
 
 type ReviewRow = {
@@ -88,7 +90,7 @@ export default async function MisResenasPage({
 
   const profileRes = await supabase
     .from("profiles")
-    .select("id, full_name, slug, commission_rate")
+    .select("id, full_name, slug, commission_rate, commission_cap")
     .eq("id", user.id)
     .maybeSingle<SalesProfile>();
 
@@ -129,10 +131,14 @@ export default async function MisResenasPage({
   const fiveStarsPct =
     scored.length > 0 ? Math.round((fiveStars / scored.length) * 100) : null;
 
-  // Comisión estimada del periodo: solo las abonables (counted) × tarifa.
+  // Comisión estimada del periodo: solo las abonables (counted) × tarifa, con
+  // tope de reseñas bonificables (mig 026).
   const rate = profile.commission_rate;
-  const earnedEuro = rate !== null ? rate * counted : null;
-  const pendingEuro = rate !== null ? rate * pending : null;
+  const cap = profile.commission_cap;
+  const earnedEuro = commissionEuro(counted, rate, cap);
+  const pendingEuro = pendingCommissionEuro(counted, pending, rate, cap);
+  const paid = payableCount(counted, cap);
+  const overCap = isCapped(counted, cap);
 
   return (
     <>
@@ -212,7 +218,13 @@ export default async function MisResenasPage({
             value={counted.toString()}
             sub={
               earnedEuro !== null
-                ? `≈ ${formatEuro(earnedEuro)} en comisión`
+                ? `≈ ${formatEuro(earnedEuro)} en comisión${
+                    cap !== null
+                      ? overCap
+                        ? ` · máx. ${cap} bonificadas`
+                        : ` · ${paid} de ${cap} bonificadas`
+                      : ""
+                  }`
                 : "Solo las verificadas se abonan"
             }
           />
@@ -222,9 +234,11 @@ export default async function MisResenasPage({
             sub={
               pending === 0
                 ? "Nada pendiente"
-                : pendingEuro !== null
+                : pendingEuro !== null && pendingEuro > 0
                   ? `+${formatEuro(pendingEuro)} si se confirman`
-                  : "Se abonarán al verificarse"
+                  : overCap
+                    ? "Tope de comisión ya alcanzado"
+                    : "Se abonarán al verificarse"
             }
           />
           <Stat

@@ -5,6 +5,7 @@ import { Ring } from "@/components/charts/Ring";
 import { MonthBars } from "@/components/charts/MonthBars";
 import { Badge } from "@/components/ui/Badge";
 import { formatEuro } from "@/lib/utils";
+import { commissionEuro, isCapped, payableCount, pendingCommissionEuro } from "@/lib/commission";
 import type { PanelBadge } from "@/lib/panel-badges";
 
 /**
@@ -39,6 +40,8 @@ export type ProducerSummaryProps = {
   goal: number;
   /** Tarifa €/reseña; null = sin tarifa configurada. */
   commissionRate: number | null;
+  /** Tope de reseñas bonificables/periodo; null = sin tope. */
+  commissionCap: number | null;
   /** "19 jun" — día de cierre del periodo (solo se usa si isCurrentPeriod). */
   closeDate: string;
   /** Días restantes hasta el cierre (solo si isCurrentPeriod). */
@@ -86,6 +89,7 @@ export function ProducerSummary(props: ProducerSummaryProps) {
     avgRating,
     goal,
     commissionRate,
+    commissionCap,
     closeDate,
     daysLeft,
     monthBuckets,
@@ -96,8 +100,10 @@ export function ProducerSummary(props: ProducerSummaryProps) {
     rankingHref,
   } = props;
 
-  const earnedEuro = commissionRate !== null ? commissionRate * counted : null;
-  const pendingEuro = commissionRate !== null ? commissionRate * pending : null;
+  const earnedEuro = commissionEuro(counted, commissionRate, commissionCap);
+  const pendingEuro = pendingCommissionEuro(counted, pending, commissionRate, commissionCap);
+  const paid = payableCount(counted, commissionCap);
+  const overCap = isCapped(counted, commissionCap);
 
   const monthTotal = monthBuckets.reduce((s, v) => s + v, 0);
 
@@ -149,6 +155,17 @@ export function ProducerSummary(props: ProducerSummaryProps) {
               {deltaPill(counted, prevCounted)}
             </div>
 
+            {commissionCap !== null && (
+              <div style={{ marginTop: 8, fontSize: 13, color: "var(--ink-3)" }}>
+                <strong style={{ color: "var(--ink)" }}>{paid}</strong> de {commissionCap} bonificadas
+                {overCap && (
+                  <span style={{ color: "var(--ink-4)" }}>
+                    {" "}· máximo {commissionCap} pagadas por periodo
+                  </span>
+                )}
+              </div>
+            )}
+
             {earnedEuro !== null ? (
               <div style={{ marginTop: 10, fontSize: 14, color: "var(--ink-2)" }}>
                 ≈{" "}
@@ -156,7 +173,7 @@ export function ProducerSummary(props: ProducerSummaryProps) {
                   {formatEuro(earnedEuro)}
                 </strong>{" "}
                 en comisión
-                {pending > 0 && pendingEuro !== null && (
+                {pending > 0 && pendingEuro !== null && pendingEuro > 0 && (
                   <span style={{ color: "var(--ink-4)" }}>
                     {" "}· +{formatEuro(pendingEuro)} si se verifican las {pending} pendientes
                   </span>

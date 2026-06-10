@@ -27,6 +27,7 @@ export type DirectorEditCardProps = {
     language: string | null;
     monthlyGoal: number;
     commissionRate: number | null;
+    commissionCap: number | null;
     status: ProfileStatus;
   };
 };
@@ -63,6 +64,9 @@ export function DirectorEditCard({
   const [commissionRate, setCommissionRate] = useState<string>(
     initial.commissionRate === null ? "" : String(initial.commissionRate),
   );
+  const [commissionCap, setCommissionCap] = useState<string>(
+    initial.commissionCap === null ? "" : String(initial.commissionCap),
+  );
   const initialEditableStatus: Exclude<ProfileStatus, "archived"> =
     initial.status === "archived" ? "invited" : initial.status;
   const [status, setStatus] = useState<Exclude<ProfileStatus, "archived">>(
@@ -80,6 +84,7 @@ export function DirectorEditCard({
     setLanguage(initial.language ?? "");
     setMonthlyGoal(initial.monthlyGoal);
     setCommissionRate(initial.commissionRate === null ? "" : String(initial.commissionRate));
+    setCommissionCap(initial.commissionCap === null ? "" : String(initial.commissionCap));
     setStatus(initialEditableStatus);
     setError(null);
     setEditing(false);
@@ -108,6 +113,7 @@ export function DirectorEditCard({
       language: department === "internacional" ? language : null,
       monthlyGoal,
       commissionRate: commissionRate.trim() === "" ? null : commissionRate.trim(),
+      commissionCap: commissionCap.trim() === "" ? null : commissionCap.trim(),
       status,
     };
     startTransition(async () => {
@@ -307,6 +313,35 @@ export function DirectorEditCard({
                 {initial.commissionRate === null
                   ? "Sin tarifa configurada"
                   : `${formatEuro(initial.commissionRate)} / reseña`}
+              </span>
+            )}
+          </dd>
+        </div>
+
+        <div style={rowGrid}>
+          <dt style={dtStyle}>Reseñas bonificables</dt>
+          <dd style={{ margin: 0 }}>
+            {editing ? (
+              <input
+                type="number"
+                min={0}
+                max={9999}
+                step="1"
+                value={commissionCap}
+                onChange={(e) => setCommissionCap(e.target.value)}
+                placeholder="Sin tope"
+                style={{ ...inputStyle, width: 120 }}
+              />
+            ) : (
+              <span
+                style={{
+                  fontSize: 13.5,
+                  color: initial.commissionCap === null ? "var(--ink-4)" : "var(--ink)",
+                }}
+              >
+                {initial.commissionCap === null
+                  ? "Sin tope (paga todas)"
+                  : `máx. ${initial.commissionCap} / periodo`}
               </span>
             )}
           </dd>

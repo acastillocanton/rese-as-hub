@@ -48,6 +48,7 @@ export function InviteDirectorButton({
           dept === "internacional" ? String(formData.get("language") ?? "") : null,
         monthlyGoal: String(formData.get("monthlyGoal") ?? "5"),
         commissionRate: String(formData.get("commissionRate") ?? ""),
+        commissionCap: String(formData.get("commissionCap") ?? "5"),
       };
       const result = await inviteOfficeDirector(input as never);
       if (!result.ok) {
@@ -309,6 +310,18 @@ export function InviteDirectorButton({
                       max={9999}
                       step="0.01"
                       placeholder="p.ej. 2,50"
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="Reseñas bonificables" hint="Máximo de reseñas que se pagan por periodo. Vacío = sin tope (paga todas).">
+                    <input
+                      name="commissionCap"
+                      type="number"
+                      min={0}
+                      max={9999}
+                      step="1"
+                      defaultValue={5}
+                      placeholder="Sin tope"
                       style={inputStyle}
                     />
                   </Field>

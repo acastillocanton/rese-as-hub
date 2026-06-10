@@ -15,6 +15,7 @@
 
 import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
 import { excelSafe } from "@/lib/reports/excel-safe";
+import { payableCount } from "@/lib/commission";
 import type { SalesDepartment } from "@/lib/supabase/types";
 import { formatEuro } from "@/lib/utils";
 
@@ -39,6 +40,8 @@ export type SalesReportProfile = {
   role: "sales" | "office_director";
   /** Tarifa €/reseña (mig 020). NULL = sin tarifa configurada → la comisión se muestra "—". */
   commissionRate: number | null;
+  /** Tope de reseñas bonificables/periodo (mig 026). NULL = sin tope (paga todas). */
+  commissionCap: number | null;
 };
 
 export type SalesReportReview = {
@@ -147,6 +150,7 @@ export async function buildSalesReport(
   const ws = wb.addWorksheet("Reseñas");
 
   const rate = input.profile.commissionRate;
+  const cap = input.profile.commissionCap;
 
   // Anchos de columna (orientativo, Excel los respeta).
   ws.columns = [
@@ -170,6 +174,7 @@ export async function buildSalesReport(
     ["Periodo:", input.range.label],
     ["Total reseñas:", String(input.reviews.length)],
     ["Tarifa por reseña:", rate !== null ? formatEuro(rate) : "Sin tarifa configurada"],
+    ["Reseñas bonificables (tope):", cap !== null ? String(cap) : "Sin tope (paga todas)"],
   ];
   headerRows.forEach(([label, value], i) => {
     const rowIdx = 3 + i;
@@ -180,8 +185,8 @@ export async function buildSalesReport(
     valueCell.value = value;
   });
 
-  // Fila vacía (9) y tabla a partir de la 10.
-  const tableHeaderRow = 10;
+  // Fila vacía (10) y tabla a partir de la 11.
+  const tableHeaderRow = 11;
   const headers = ["Fecha", "Cliente", "Autor", "Valoración", "Enlace", "Comisión €"];
   headers.forEach((label, col) => {
     const cell = ws.getCell(tableHeaderRow, col + 1);
@@ -211,6 +216,10 @@ export async function buildSalesReport(
     noteCell.font = { italic: true, color: { argb: "FF888888" } };
     ws.mergeCells(`A${noteRow}:F${noteRow}`);
   } else {
+    // Tope de reseñas bonificables (mig 026). Solo se abonan las primeras
+    // `paidCount` (las más recientes, por el orden desc); el excedente
+    // aparece como "0 € (tope)" para que la columna sume el total real.
+    const paidCount = payableCount(sorted.length, cap);
     sorted.forEach((r, i) => {
       const rowIdx = tableHeaderRow + 1 + i;
       ws.getCell(rowIdx, 1).value = formatReviewDateForExcel(r.google_created_at);
@@ -225,22 +234,33 @@ export async function buildSalesReport(
       } else {
         linkCell.value = "—";
       }
-      // Comisión por reseña abonable: cada fila es una `counted` → tarifa × 1.
-      ws.getCell(rowIdx, 6).value = rate !== null ? formatEuro(rate) : "—";
+      // Comisión por reseña: tarifa × 1 si está dentro del tope; el excedente
+      // (i >= paidCount) no se abona.
+      ws.getCell(rowIdx, 6).value =
+        rate === null ? "—" : i < paidCount ? formatEuro(rate) : "0 € (tope)";
     });
 
-    // Fila de total de comisión al pie de la tabla.
+    // Fila de total de comisión al pie de la tabla (capado a paidCount).
     const totalRow = tableHeaderRow + 1 + sorted.length;
     const totalLabelCell = ws.getCell(totalRow, 5);
     totalLabelCell.value = "TOTAL COMISIÓN";
     totalLabelCell.font = { bold: true };
     totalLabelCell.alignment = { horizontal: "right" };
     const totalValueCell = ws.getCell(totalRow, 6);
-    totalValueCell.value = rate !== null ? formatEuro(rate * sorted.length) : "—";
+    totalValueCell.value = rate !== null ? formatEuro(rate * paidCount) : "—";
     totalValueCell.font = { bold: true };
     totalValueCell.border = {
       top: { style: "thin", color: { argb: "FFCCCCCC" } },
     };
+
+    // Nota explicativa cuando hay excedente sobre el tope.
+    if (cap !== null && sorted.length > cap) {
+      const noteRow = totalRow + 1;
+      const noteCell = ws.getCell(`A${noteRow}`);
+      noteCell.value = `Se abonan un máximo de ${cap} reseñas por periodo. El resto no genera comisión.`;
+      noteCell.font = { italic: true, color: { argb: "FF888888" } };
+      ws.mergeCells(`A${noteRow}:F${noteRow}`);
+    }
   }
 
   // exceljs devuelve un ArrayBuffer; Buffer.from cubre el tipo para
