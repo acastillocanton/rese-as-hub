@@ -4,7 +4,7 @@
 >
 > **Fuentes de verdad permanentes**: [`CLAUDE.md`](CLAUDE.md) (estado + workarounds) y [`spec.md`](spec.md) (producto). Este archivo resume la **última tanda de trabajo** y el estado operativo para retomar rápido. Las memorias locales (`~/.claude/projects/.../memory/`) NO viajan entre máquinas — la continuidad cross-máquina es CLAUDE.md + spec.md + este handoff.
 
-**Última actualización**: 2026-06-10 · **Rama**: `main` · **HEAD**: docs de esta sesión (tras `af8ca49`)
+**Última actualización**: 2026-06-10 · **Rama**: `main` · **HEAD**: post-activación BP (tras `66f5701`) — strip de traducción + sync de respuestas (`google_detected`) + verificación E2E de respuestas
 
 ---
 
@@ -32,6 +32,18 @@ Google aprobó la cuota. Se activó **going-forward, fuente única**:
 ### D. Matcher: desempate comercial>director (§4.38)
 A petición del usuario: si el texto nombra a un **comercial (sales) Y a un director (office_director)**, se atribuye al **comercial** (es quien produce). Solo si queda exactamente 1 `sales`; con 0 ó ≥2 sigue ambiguo. `CommercialInfo` gana `role`; helper `resolveMentionBySalesPreference`; ambos crons cargan `role`. Caso real: clientes internacionales que agradecen a "Katalin y Pavel". Commit `af8ca49`. Detalle: **CLAUDE.md §4.38**.
 
+### E. Fix: guardar solo el texto original, sin la traducción de Google (§4.51)
+La API v4 de BP incrusta una traducción automática en el `comment` cuando el idioma de la reseña ≠ locale de la cuenta (`<original>\n\n(Translated by Google)\n<traducción>`). Se guardaba verbatim → en la plataforma se veía original + traducción pegados (caso Mercedes García). Fix: helper puro `stripGoogleTranslation` ([lib/google/strip-translation.ts](lib/google/strip-translation.ts)) en la normalización del cron BP + backfill one-shot de las 5 reseñas ya afectadas. Commit `82d6fe9`. Detalle: **CLAUDE.md §4.51**.
+
+### F. Respuestas: one-click por API + detección de respuestas puestas en Google (§4.48/§4.50)
+El one-click "Publicar en Google" ya estaba cableado para reseñas BP. Esta sesión añadió que la bandeja refleje la realidad de Google:
+- **Sync del `reviewReply`** (cierra §4.26 Bloque G p.18): el cron BP detecta respuestas puestas DIRECTO en Google y las saca de "Sin responder" (`reply_via='google_detected'`). Caso A (fresca con reply → insert) + Caso B (`syncExistingReplies`, reseña existente que gana reply después, race-safe). Helper puro `normalizeOwnerReply` ([lib/google/owner-reply.ts](lib/google/owner-reply.ts)). NUNCA pisa `api`/`manual`.
+- Bandeja "Sin responder" pasó a **recientes primero**.
+- **✅ Verificado E2E en prod**: (a) reseña de prueba "AleCris" en Castellón → "Publicar en Google" → respuesta **live en Google** (`reply_via='api'`); (b) las 10 reseñas que José ya había respondido en Google → `google_detected` al correr el cron; (c) "AleCris" se atribuyó a Almudena por mención. Commit `2b8cdb0`. ⚠️ Google tarda **unos minutos** en exponer una reseña nueva por la API (no es bug). Decisión "solo nuevas": las ~156 históricas de Places NO se reconcilian (siguen manuales). Detalle: **CLAUDE.md §4.48/§4.50**.
+
+### G. Fix menor: `emailHref` con `encodeURIComponent` (mailto)
+`URLSearchParams` codifica espacios como `+` (algunos clientes de correo lo interpretan literal en el body). Commit `66f5701`.
+
 ---
 
 ## 2. Estado operativo
@@ -39,7 +51,7 @@ A petición del usuario: si el texto nombra a un **comercial (sales) Y a un dire
 - **Migraciones 001–026 aplicadas** en Supabase (023 helpdesk, 024 review replies, 025 reviews_manager write, 026 commission_cap — todas confirmadas por el usuario). **No queda ninguna pendiente.**
 - **Business Profile**: cuota ACTIVA. 7 fichas conectadas por OAuth (`accounts/111197444117937021993`), `google_location_resource` = recurso completo. Fuente única. Places apagado. Diagnóstico: `node scripts/check-bp-quota.mjs` → 200 en todas.
 - **Tope de comisión**: productores con `commission_cap = 5` (default).
-- **Tests**: `npm test` → **316 verdes**. `npm run typecheck` ✅.
+- **Tests**: `npm test` → **329 verdes** (+strip-translation +owner-reply). `npm run typecheck` ✅.
 - **Deploy**: todo pusheado a `main`. Verificar en Vercel que el último deploy está **Ready** (especialmente el de la activación BP, para que el cron horario use el código con corte).
 
 ---
@@ -67,7 +79,7 @@ A petición del usuario: si el texto nombra a un **comercial (sales) Y a un dire
 
 ## 5. Pendientes (contexto)
 
-- **BP — pendientes deliberados** (§4.50): deep-link a reseña concreta (Google no expone URL pública por reviewId — descartado), **soft-delete automático** (`reconcileRemoved`, diferido por falsos positivos — reactivar solo desde cron BP con capa `last_seen_at`), sync del `reviewReply` de Google en el cron (auto-marcar respondidas las contestadas directo en Google, §4.26 Bloque G punto 18).
+- **BP — pendientes deliberados** (§4.50): deep-link a reseña concreta (Google no expone URL pública por reviewId — descartado), **soft-delete automático** (`reconcileRemoved`, diferido por falsos positivos — reactivar solo desde cron BP con capa `last_seen_at`). _(El sync del `reviewReply` ya está HECHO — ver §1.F.)_
 - **🔜 Soporte en mobile** (§4.45/§8.5): inalcanzable en mobile; plan = tarjeta en `/perfil`.
 - **Diferidos de auditoría** (§4.37): H2 (lock cron 60s a escala), M2 (reassign sin cliente).
 - **Backlog v2 / open questions**: CLAUDE.md §8 + spec.md §9 (dominio, branding, CRM, retención, cifrar `oauth_refresh_token`).
@@ -79,7 +91,7 @@ A petición del usuario: si el texto nombra a un **comercial (sales) Y a un dire
 ```bash
 npm run dev          # dev en localhost:3000 (Turbopack)
 npm run typecheck    # gate antes de cerrar tarea
-npm test             # Vitest (316 verdes)
+npm test             # Vitest (329 verdes)
 npm run build        # build producción
 npm run lint         # next lint
 ```

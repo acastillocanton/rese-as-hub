@@ -19,13 +19,13 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 
 - **Next.js 15.5.18** App Router + TypeScript strict (`noUncheckedIndexedAccess`) + Turbopack
 - **Supabase** Postgres + Auth + Row Level Security + Storage (bucket `avatars`)
-- **Google Business Profile API** con OAuth por ficha (Account Management + Business Information + Reviews v4) — **fuente única de reseñas desde 2026-06-10** (cuota concedida); incluye **responder reseñas** (reply v4) por API
+- **Google Business Profile API** con OAuth por ficha (Account Management + Business Information + Reviews v4) — **fuente única de reseñas desde 2026-06-10** (cuota concedida); incluye **responder reseñas en un clic** (reply v4) por API + **detección de respuestas puestas directo en Google** (`google_detected`). Verificado E2E en prod. El texto de la reseña se guarda **sin la traducción automática de Google** (§4.51)
 - **Google Places API legacy** — apagado el 2026-06-10 (sustituido por Business Profile); código y endpoint conservados, reactivables
 - **Brevo SMTP** dos claves independientes: una para Supabase Auth (magic-links + invites) y otra para notificaciones transaccionales (Nodemailer en [`lib/email/brevo.ts`](lib/email/brevo.ts))
 - **Vercel Hobby** hosting + Vercel Cron diario (`5 5 * * *` Business Profile UTC ≈ 6-7 AM España) + **GitHub Action horaria** (`sync-reviews-hourly.yml`, cada hora 06-23 UTC) al cron de Business Profile + botón **"Sincronizar ahora"** en UI (admin/gestor/comercial)
 - **ExcelJS** (dynamic import server-side) para export mensual del gestor
 - **qrcode.react** + Zod + middleware con RLS y redirección por rol
-- **Vitest** unit tests (316 verdes — matcher (incl. desempate comercial>director) + date-range (incl. periodo de comisión 20→20) + commission (tope bonificables) + cliente Places + leaderboard + branding + messaging + role/route helpers + duplicate-detection + verification-gating + reply-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + edit-merge + rls-self-update)
+- **Vitest** unit tests (329 verdes — matcher (incl. desempate comercial>director) + date-range (incl. periodo de comisión 20→20) + commission (tope bonificables) + cliente Places + leaderboard + branding + messaging + role/route helpers + duplicate-detection + verification-gating + reply-gating + review-url + strip-translation + owner-reply + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + edit-merge + rls-self-update)
 - **Playwright** E2E (login + admin-nav smoke; setup en [`playwright.config.ts`](playwright.config.ts) + helper de auth via `/login/manual`)
 - **eslint-plugin-jsx-a11y** activo (preset `recommended`); 0 errors, deuda menor en modal backdrops como warnings documentadas
 - **Content-Security-Policy** + HSTS + headers de seguridad en [`next.config.ts`](next.config.ts)
@@ -112,8 +112,8 @@ npm run dev
 
 ReseñaHub usa **dos APIs de Google** que viven en el mismo proyecto Cloud (`resenas-inseryal`, project number `628454280082`):
 
-#### 4.A Google Places API (New) — activo, sin OAuth
-Vía de respaldo que ya está trayendo reseñas reales en producción. Solo necesita una API key.
+#### 4.A Google Places API (New) — ⏸️ apagado (2026-06-10), reactivable
+Fue la vía de respaldo hasta que llegó la cuota de Business Profile. Ya NO se dispara (cron fuera de `vercel.json`), pero el código y el endpoint siguen ahí. Si se reactivara, solo necesita una API key.
 
 1. En [Google Cloud Console](https://console.cloud.google.com) → habilitar **Places API (New)**.
 2. APIs & Services → Credentials → Create API key.
@@ -191,7 +191,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/fichas`                      | admin + office_director | Lista + Conectar/Desconectar Google                        |
 | `/fichas/:id/conectar`         | admin + office_director | UI selección de Business Profile location                  |
 | `/resenas/verificacion`        | 4 roles (mig 016) | Bandeja pending/unmatched/eliminadas/atribuidas + confirm/reject/reassign/marcar eliminada/claim |
-| `/resenas/respuestas`          | admin + manager   | Bandeja de respuestas a reseñas de Google: redactar + "Publicar en Google" por API (mig 024) |
+| `/resenas/respuestas`          | admin + manager   | Bandeja de respuestas (recientes primero): redactar + "Publicar en Google" en un clic por API (reseñas BP); flujo manual para históricas de Places; detecta respuestas puestas directo en Google (mig 024) |
 | `/panel`                       | sales             | KPIs propios + RangePicker + proyección ETA + card mobile clientes |
 | `/panel/enlace`                | sales             | URL + QR + plantilla genérica editable + deep-links + card a "Mis plantillas" |
 | `/panel/plantillas`            | sales             | Editor de las 3 plantillas por cliente (nombre + cuerpo), guardadas en `profiles.message_templates` (mig 019) |
@@ -221,7 +221,7 @@ npm run build        # Build producción
 npm run start        # Server producción
 npm run typecheck    # tsc --noEmit (gate antes de cerrar tareas)
 npm run lint         # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test             # Vitest unit tests (316 verdes)
+npm test             # Vitest unit tests (329 verdes)
 npm run test:watch   # Vitest en modo watch
 npm run test:e2e     # Playwright E2E (login + admin-nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui  # Playwright en modo UI interactivo

@@ -36,9 +36,9 @@
 | UI | React 19 + CSS variables (tokens del diseño) + Tailwind | 4.x utility classes |
 | Backend / DB | Supabase (Postgres + Auth + RLS) | hosted |
 | Auth | Magic-link vía Supabase Auth (Brevo SMTP) + roles aplicados con middleware + RLS | — |
-| Integración externa | Google Business Profile API v1/v4 + OAuth 2.0 (fuente única de reseñas desde 2026-06-10; Places API legacy apagado pero reactivable) | — |
+| Integración externa | Google Business Profile API v1/v4 + OAuth 2.0 (fuente única de reseñas desde 2026-06-10; Places API legacy apagado pero reactivable). Incluye **responder reseñas en un clic** por API (reply v4) + detección de respuestas puestas directo en Google | — |
 | Email transaccional | Brevo SMTP vía Nodemailer (notificaciones al comercial cuando entra reseña counted) | — |
-| Hosting + Cron | Vercel Hobby + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC) | — |
+| Hosting + Cron | Vercel Hobby + **un** Vercel Cron diario (`5 5 * * *` Business Profile UTC) + GitHub Action horaria (`sync-reviews-hourly.yml`). El cron de Places se quitó al apagar Places (2026-06-10) | — |
 | Excel | ExcelJS (server-side, dynamic import) | 4.4 |
 | QR | qrcode.react | 4.2 |
 | Validación | Zod | 3.23 |
@@ -59,7 +59,7 @@ npm run build          # build de producción (verifica tipos y compila)
 npm run start          # server de producción tras npm run build
 npm run typecheck      # tsc --noEmit
 npm run lint           # next lint
-npm test               # Vitest unit (172 tests: matcher 22 + date-range 14 + Places 20 + reconcile 5 + leaderboard + branding + messaging + role/route + duplicate-detection 8 + verification-gating 14 + review-url 5 + sales-report 18 + orphan-reviews 10 + low-rating-alerts 18)
+npm test               # Vitest unit (329 tests: matcher + date-range + commission + Places + reconcile + leaderboard + branding + messaging + role/route + duplicate-detection + verification-gating + reply-gating + review-url + strip-translation + owner-reply + sales-report + orphan-reviews + low-rating-alerts + panel-badges + sales-schemas + excel-safe + edit-merge + rls-self-update)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright E2E (login + admin-nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo
