@@ -100,6 +100,11 @@ const SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS = 0.5;
  *  cuentan en automático (no hay nombre ni mención), pero el comercial está
  *  identificado con certeza por su propio enlace. */
 const SINGLE_COMMERCIAL_TEMPORAL_CONFIDENCE = 70;
+/** Confianza cuando el clic en ventana fue en el enlace ESPECÍFICO de un único
+ *  cliente del comercial (`/c/{comercial}/{cliente}`, `client_id` no nulo). Más
+ *  alta que la temporal-only: el enlace específico identifica también al cliente
+ *  con evidencia más fuerte, no solo al comercial. Ver §4.47. */
+const SINGLE_COMMERCIAL_TEMPORAL_WITH_CLIENT_CONFIDENCE = 80;
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -576,9 +581,16 @@ function resolveMentionBySalesPreference(
  * Último recurso cuando ni el nombre del autor ni una mención en el texto han
  * resuelto la reseña. Si en una ventana corta
  * (`SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS`) hubo clics de EXACTAMENTE UN
- * comercial, le atribuimos la reseña en automático (`counted`), SIN cliente:
- * la `share_link` ya identifica al comercial con certeza (es su enlace personal)
- * y la comisión es por comercial × reseña.
+ * comercial, le atribuimos la reseña en automático (`counted`): la `share_link`
+ * ya identifica al comercial con certeza (es su enlace) y la comisión es por
+ * comercial × reseña.
+ *
+ * Además, si en esa ventana hubo un clic en el enlace ESPECÍFICO de UN solo
+ * cliente de ese comercial (`/c/{comercial}/{cliente}`, `client_id` no nulo),
+ * atribuimos también el cliente — aunque el nombre de Google del reseñador no
+ * casara: el propio clic en el enlace de ese cliente lo identifica (§4.47). Si
+ * solo hubo clics genéricos, o clics de varios clientes distintos, se atribuye
+ * el comercial SIN cliente (no adivinamos cuál; anti-fraude mig 015).
  *
  * Devuelve `null` si no hay clics en ventana o si hay clics de más de un
  * comercial distinto (ambiguo → no adivinamos; ver §4.38). El caller solo la
@@ -601,17 +613,45 @@ function attributeBySingleCommercialInWindow(
   const distinctSales = new Set(inWindow.map((c) => c.sales_id));
   if (distinctSales.size !== 1) return null; // ambiguo: varios comerciales
 
-  // Un único comercial. Elegimos el clic más cercano en el tiempo (mejor
-  // evidencia / para registrar el share_link_id).
-  let best = inWindow[0]!;
-  let bestDelta = (reviewMs - new Date(best.opened_at).getTime()) / 3_600_000;
-  for (const c of inWindow) {
-    const d = (reviewMs - new Date(c.opened_at).getTime()) / 3_600_000;
-    if (d < bestDelta) {
-      best = c;
-      bestDelta = d;
-    }
+  const delta = (c: ShareLinkCandidate) =>
+    (reviewMs - new Date(c.opened_at).getTime()) / 3_600_000;
+
+  // ¿Hubo clics en enlaces ESPECÍFICOS de cliente (client_id no nulo)? Si hay
+  // exactamente un cliente distinto, el clic en SU enlace lo identifica con
+  // certeza (aunque el nombre de Google no case). Con varios clientes distintos
+  // no podemos desambiguar → atribuimos solo el comercial.
+  const clientSpecific = inWindow.filter((c) => c.client_id != null);
+  const distinctClients = new Set(clientSpecific.map((c) => c.client_id));
+
+  if (distinctClients.size === 1) {
+    // Clic en el enlace de UN único cliente: atribuir comercial + cliente.
+    // Elegimos el clic específico más cercano en el tiempo.
+    let best = clientSpecific[0]!;
+    for (const c of clientSpecific) if (delta(c) < delta(best)) best = c;
+    return {
+      match_state: "counted",
+      match_confidence: SINGLE_COMMERCIAL_TEMPORAL_WITH_CLIENT_CONFIDENCE,
+      match_evidence: {
+        reason: "counted_by_single_commercial_temporal_with_client",
+        share_link_id: best.id,
+        commercial_id: best.sales_id,
+        client_id: best.client_id,
+        review_author: review.author_name,
+        hours_delta: Number(delta(best).toFixed(2)),
+        candidates_considered: candidates.length,
+        window_hours: SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS,
+      },
+      sales_id: best.sales_id,
+      client_id: best.client_id!,
+      share_link_id: best.id,
+    };
   }
+
+  // Un único comercial pero sin clic específico de cliente resoluble (todos
+  // genéricos, o varios clientes distintos). Elegimos el clic más cercano en el
+  // tiempo (mejor evidencia / para registrar el share_link_id).
+  let best = inWindow[0]!;
+  for (const c of inWindow) if (delta(c) < delta(best)) best = c;
 
   return {
     match_state: "counted",
@@ -621,14 +661,15 @@ function attributeBySingleCommercialInWindow(
       share_link_id: best.id,
       commercial_id: best.sales_id,
       review_author: review.author_name,
-      hours_delta: Number(bestDelta.toFixed(2)),
+      hours_delta: Number(delta(best).toFixed(2)),
       candidates_considered: candidates.length,
       window_hours: SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS,
     },
     sales_id: best.sales_id,
     // client_id ausente a propósito: ningún candidato tenía buen parecido de
-    // nombre (primary < PENDING_THRESHOLD), así que adivinar cliente sería
-    // arriesgado (anti-fraude mig 015). Lo afina el humano al confirmar.
+    // nombre (primary < PENDING_THRESHOLD) y el clic fue genérico o de varios
+    // clientes, así que adivinar cliente sería arriesgado (anti-fraude mig 015).
+    // Lo afina el humano al confirmar.
     share_link_id: best.id,
   };
 }

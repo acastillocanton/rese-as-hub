@@ -17,8 +17,11 @@ function candidate(p: Partial<ShareLinkCandidate>): ShareLinkCandidate {
   return {
     id: p.id ?? "share-1",
     sales_id: p.sales_id ?? "sales-1",
-    client_id: p.client_id ?? "client-1",
-    client_full_name: p.client_full_name ?? "Cliente Genérico",
+    // Respetar `null` explícito (enlace genérico): no usar `??`, que lo
+    // sobreescribiría con el default.
+    client_id: "client_id" in p ? p.client_id! : "client-1",
+    client_full_name:
+      "client_full_name" in p ? p.client_full_name! : "Cliente Genérico",
     opened_at: p.opened_at ?? "2026-05-20T10:00:00Z", // 2h antes
     sales_full_name: p.sales_full_name,
   };
@@ -464,17 +467,112 @@ describe("attributeReview — atribución temporal a un único comercial", () =>
   // (sin cliente concreto → client_id null) y reseña segundos después, pero el
   // nombre del autor no casa con ningún cliente y no hay texto. La identidad del
   // comercial es inequívoca (es su enlace) → se atribuye en automático.
-  it("un único comercial con clic en ventana corta, sin nombre ni mención → counted al comercial", () => {
+  it("un único comercial con clic GENÉRICO en ventana corta, sin nombre ni mención → counted al comercial sin cliente", () => {
     const opened = new Date(new Date(REVIEW_AT).getTime() - 12_000).toISOString(); // 12s antes
     const r = attributeReview(
-      review({ author_name: "Eduuu Bermejo" }), // no casa con "Cliente Genérico"
-      [candidate({ sales_id: "cornel", opened_at: opened })],
+      review({ author_name: "Eduuu Bermejo" }), // no casa con nada
+      // Enlace personal del comercial → client_id null (caso real §4.47).
+      [
+        candidate({
+          sales_id: "cornel",
+          client_id: null,
+          client_full_name: null,
+          opened_at: opened,
+        }),
+      ],
     );
     expect(r.match_state).toBe("counted");
     expect(r.match_confidence).toBe(70);
     expect(r.sales_id).toBe("cornel");
     expect(r.client_id).toBeUndefined();
     expect(r.match_evidence.reason).toBe("counted_by_single_commercial_temporal");
+  });
+
+  it("clic en enlace ESPECÍFICO de un cliente en ventana, nombre del autor no casa → counted al comercial Y al cliente (conf. 80)", () => {
+    // El cliente abrió SU enlace `/c/cornel/marta` y reseñó 5 min después con un
+    // display name de Google que no casa con "Marta Ferrer". El clic en su
+    // enlace lo identifica igualmente (§4.47).
+    const opened = new Date(
+      new Date(REVIEW_AT).getTime() - 5 * 60_000,
+    ).toISOString();
+    const r = attributeReview(
+      review({ author_name: "Maf" }), // no casa con "Marta Ferrer"
+      [
+        candidate({
+          sales_id: "cornel",
+          client_id: "cli-marta",
+          client_full_name: "Marta Ferrer",
+          opened_at: opened,
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.match_confidence).toBe(80);
+    expect(r.sales_id).toBe("cornel");
+    expect(r.client_id).toBe("cli-marta");
+    expect(r.match_evidence.reason).toBe(
+      "counted_by_single_commercial_temporal_with_client",
+    );
+  });
+
+  it("un comercial con clics de DOS clientes específicos distintos en ventana → counted al comercial SIN cliente (no adivina)", () => {
+    const opened = new Date(
+      new Date(REVIEW_AT).getTime() - 5 * 60_000,
+    ).toISOString();
+    const r = attributeReview(
+      review({ author_name: "Eduuu Bermejo" }), // no casa con ninguno
+      [
+        candidate({
+          id: "a",
+          sales_id: "cornel",
+          client_id: "cli-1",
+          client_full_name: "Marta Ferrer",
+          opened_at: opened,
+        }),
+        candidate({
+          id: "b",
+          sales_id: "cornel",
+          client_id: "cli-2",
+          client_full_name: "Juan Pérez",
+          opened_at: opened,
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.match_confidence).toBe(70);
+    expect(r.sales_id).toBe("cornel");
+    expect(r.client_id).toBeUndefined();
+    expect(r.match_evidence.reason).toBe("counted_by_single_commercial_temporal");
+  });
+
+  it("mezcla clic genérico + clic específico de UN cliente del mismo comercial → atribuye ese cliente (conf. 80)", () => {
+    const t = new Date(REVIEW_AT).getTime();
+    const r = attributeReview(
+      review({ author_name: "Maf" }), // no casa con "Marta Ferrer"
+      [
+        candidate({
+          id: "gen",
+          sales_id: "cornel",
+          client_id: null,
+          client_full_name: null,
+          opened_at: new Date(t - 10 * 60_000).toISOString(), // 10 min, genérico
+        }),
+        candidate({
+          id: "esp",
+          sales_id: "cornel",
+          client_id: "cli-marta",
+          client_full_name: "Marta Ferrer",
+          opened_at: new Date(t - 5 * 60_000).toISOString(), // 5 min, específico
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.match_confidence).toBe(80);
+    expect(r.client_id).toBe("cli-marta");
+    expect(r.share_link_id).toBe("esp");
+    expect(r.match_evidence.reason).toBe(
+      "counted_by_single_commercial_temporal_with_client",
+    );
   });
 
   it("dos comerciales con clic en ventana, sin nombre ni mención → unmatched (ambiguo)", () => {
@@ -538,7 +636,15 @@ describe("attributeReview — atribución temporal a un único comercial", () =>
     ];
     const r = attributeReview(
       review({ author_name: "Eduuu Bermejo" }),
-      clics.map((c) => candidate({ ...c, sales_id: "cornel" })),
+      // Enlace personal del comercial (genérico) → client_id null.
+      clics.map((c) =>
+        candidate({
+          ...c,
+          sales_id: "cornel",
+          client_id: null,
+          client_full_name: null,
+        }),
+      ),
     );
     expect(r.match_state).toBe("counted");
     expect(r.sales_id).toBe("cornel");
