@@ -4,7 +4,7 @@
 >
 > **Fuentes de verdad permanentes**: [`CLAUDE.md`](CLAUDE.md) (estado + workarounds) y [`spec.md`](spec.md) (producto). Este archivo resume la **última tanda de trabajo** y el estado operativo para retomar rápido. Las memorias locales (`~/.claude/projects/.../memory/`) NO viajan entre máquinas — la continuidad cross-máquina es CLAUDE.md + spec.md + este handoff.
 
-**Última actualización**: 2026-06-10 · **Rama**: `main` · **HEAD**: post-activación BP (tras `66f5701`) — strip de traducción + sync de respuestas (`google_detected`) + verificación E2E de respuestas
+**Última actualización**: 2026-06-10 · **Rama**: `main` · **HEAD**: `cbed0e2` — respuestas v2 (paginación + filtro + limpieza Places) + intento §4.47→pending revertido
 
 ---
 
@@ -47,6 +47,9 @@ El one-click "Publicar en Google" ya estaba cableado para reseñas BP. Esta sesi
 ### H. Respuestas v2: paginación + filtro de fechas + limpieza de Places antiguas (§4.48)
 - **"Respondidas"**: nuevo paginador reutilizable [components/ui/Pagination.tsx](components/ui/Pagination.tsx) (primer paginador del código; `page` param, 25/pág, `.range()`) + RangePicker por `replied_at` (default periodo de comisión). "Sin responder" NO se filtra por fecha. `RangePicker` ganó `resetParams=["page"]`. `buildHref` nunca arrastra `page` (reset a 1 en cualquier filtro).
 - **Limpieza one-shot**: las ~167 de Places estaban en "Sin responder" pese a estar ya respondidas en Google (el sync `google_detected` no las alcanza). Script gitignored `scripts/reconcile-places-replies.mjs` (one-shot, no recurrente): casa Places↔Google por autor+estrella+fecha (48h) y marca las respondidas → **"Sin responder" 167→16**. Las 14 leftover ya no existen en Google (borradas/renombradas, son `reconcileRemoved` §4.20, fuera de alcance); 2 sin responder de verdad. typecheck + 329 tests verdes.
+
+### I. §4.47 (clic-temporal) — intento de `pending` PROBADO y REVERTIDO
+Tras detectar un falso positivo (reseña rusa "Елена Тесля" atribuida a Adriana Mihalascu, mercado rumano, por un clic 6 min antes; + clon Places+BP que contaba doble), se **probó degradar la §4.47 de `counted` a `pending`** (commit `a446216`) + degradar las 14 ya atribuidas. El usuario lo vivió como "una locura" (triaje manual de 14 de golpe) y pidió **dejarlo como estaba**. **Revertido** (commit `cbed0e2`): el clic-temporal vuelve a `counted` automático. Las 14 restauradas a counted con su comercial original (audit `restore_temporal_attribution`). ⚠️ **Lección (en memoria)**: NO degradar en bloque reseñas ya atribuidas — el usuario prefiere auto-count + corrección puntual en Verificación. El falso positivo concreto de Елена lo arregla el usuario a mano. BP no aporta nada para ligar clic↔reseña (§4.38); el lever real de calidad es la mención, no tocar el auto-count.
 
 ---
 
