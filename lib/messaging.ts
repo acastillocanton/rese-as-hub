@@ -150,8 +150,7 @@ export function emailHref(
   subject: string,
   message: string,
 ): string {
-  const qs = new URLSearchParams({ subject, body: message }).toString();
-  return `mailto:${email ?? ""}?${qs}`;
+  return `mailto:${email ?? ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
 }
 
 // `?&body=` works on both iOS (which expects `;body=`) and Android (which
