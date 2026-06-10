@@ -29,6 +29,8 @@ type ReviewRow = {
   replied_at: string | null;
   reply_text: string | null;
   reply_via: string | null;
+  source: string;
+  google_review_id: string;
   location: { id: string; name: string; google_place_id: string | null } | null;
   replier: { full_name: string } | null;
 };
@@ -97,7 +99,7 @@ export default async function RespuestasPage({
   let listQuery = supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, replied_at, reply_text, reply_via, location:locations(id, name, google_place_id), replier:profiles!reviews_reply_by_fkey(full_name)",
+      "id, author_name, rating, text, google_created_at, replied_at, reply_text, reply_via, source, google_review_id, location:locations(id, name, google_place_id), replier:profiles!reviews_reply_by_fkey(full_name)",
     )
     .is("removed_at", null);
   listQuery =
@@ -315,6 +317,10 @@ export default async function RespuestasPage({
                 repliedAt={r.replied_at}
                 replierName={r.replier?.full_name ?? null}
                 replyVia={r.reply_via}
+                canPublishApi={
+                  r.source === "business_profile" &&
+                  !r.google_review_id.startsWith("places:")
+                }
               />
             </Card>
           ))

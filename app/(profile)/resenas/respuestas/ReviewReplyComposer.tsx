@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Copy, Check, MessageSquareReply } from "lucide-react";
-import { saveReviewReply, clearReviewReply } from "./actions";
+import { ExternalLink, Copy, Check, MessageSquareReply, Send } from "lucide-react";
+import { saveReviewReply, clearReviewReply, publishReviewReply } from "./actions";
 import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
 
 const MAX_LEN = 4096;
@@ -22,8 +22,12 @@ const GBP_REVIEWS_URL = "https://business.google.com/reviews";
  * Pendiente → textarea (emojis) + contador + Guardar/Copiar/Abrir en Google.
  * Respondida → resumen (texto + vía + autor + fecha) + Editar/Revertir.
  *
- * Flujo recomendado para el gestor: redactar → "Copiar texto" → "Abrir en
- * Google" (pega y publica en Google) → vuelve y pulsa "Marcar respondida".
+ * Dos modos según `canPublishApi`:
+ *   • true  (reseña de Business Profile): botón "Publicar en Google" que
+ *     publica la respuesta directamente vía API y marca respondida en un paso.
+ *   • false (reseña de Places, google_review_id sintético): flujo asistido —
+ *     redactar → "Copiar texto" → "Responder en Google" (pega y publica a mano)
+ *     → "Marcar respondida".
  */
 export function ReviewReplyComposer({
   reviewId,
@@ -33,6 +37,7 @@ export function ReviewReplyComposer({
   repliedAt,
   replierName,
   replyVia,
+  canPublishApi,
 }: {
   reviewId: string;
   placeId: string | null | undefined;
@@ -41,6 +46,7 @@ export function ReviewReplyComposer({
   repliedAt: string | null;
   replierName: string | null;
   replyVia: string | null;
+  canPublishApi: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -56,6 +62,19 @@ export function ReviewReplyComposer({
     setError(null);
     startTransition(async () => {
       const r = await saveReviewReply({ reviewId, text });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setEditing(false);
+      router.refresh();
+    });
+  }
+
+  function onPublish() {
+    setError(null);
+    startTransition(async () => {
+      const r = await publishReviewReply({ reviewId, text });
       if (!r.ok) {
         setError(r.error);
         return;
@@ -223,28 +242,58 @@ export function ReviewReplyComposer({
           flexWrap: "wrap",
         }}
       >
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={isPending || text.trim().length === 0 || over}
-          style={btnPrimary}
-        >
-          {isPending ? "Guardando…" : editing ? "Guardar cambios" : "Marcar respondida"}
-        </button>
-        <button type="button" onClick={onCopy} disabled={text.trim().length === 0} style={btn}>
-          {copied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.75} />}
-          {copied ? "Copiado" : "Copiar texto"}
-        </button>
-        <a
-          href={GBP_REVIEWS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Abre tu panel de propietario de Google (pestaña Reseñas), donde puedes pegar y publicar la respuesta"
-          style={btn}
-        >
-          <MessageSquareReply size={13} strokeWidth={1.75} />
-          Responder en Google
-        </a>
+        {canPublishApi ? (
+          <>
+            <button
+              type="button"
+              onClick={onPublish}
+              disabled={isPending || text.trim().length === 0 || over}
+              title="Publica esta respuesta directamente en Google vía API"
+              style={btnPrimary}
+            >
+              <Send size={13} strokeWidth={1.75} />
+              {isPending ? "Publicando…" : "Publicar en Google"}
+            </button>
+            <button type="button" onClick={onCopy} disabled={text.trim().length === 0} style={btn}>
+              {copied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.75} />}
+              {copied ? "Copiado" : "Copiar texto"}
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={isPending || text.trim().length === 0 || over}
+              title="Marca la reseña como respondida SIN publicar en Google (p.ej. si ya respondiste por otro medio)"
+              style={btn}
+            >
+              Marcar sin publicar
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={isPending || text.trim().length === 0 || over}
+              style={btnPrimary}
+            >
+              {isPending ? "Guardando…" : editing ? "Guardar cambios" : "Marcar respondida"}
+            </button>
+            <button type="button" onClick={onCopy} disabled={text.trim().length === 0} style={btn}>
+              {copied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.75} />}
+              {copied ? "Copiado" : "Copiar texto"}
+            </button>
+            <a
+              href={GBP_REVIEWS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abre tu panel de propietario de Google (pestaña Reseñas), donde puedes pegar y publicar la respuesta"
+              style={btn}
+            >
+              <MessageSquareReply size={13} strokeWidth={1.75} />
+              Responder en Google
+            </a>
+          </>
+        )}
         {googleUrl && (
           <a
             href={googleUrl}
