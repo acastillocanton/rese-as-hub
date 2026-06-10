@@ -151,17 +151,21 @@ export function ProducerSummary(props: ProducerSummaryProps) {
               >
                 {counted}
               </span>
-              <span style={{ fontSize: 16, color: "var(--ink-3)" }}>reseñas abonables</span>
+              <span style={{ fontSize: 16, color: "var(--ink-3)" }}>reseñas verificadas</span>
               {deltaPill(counted, prevCounted)}
             </div>
 
             {commissionCap !== null && (
               <div style={{ marginTop: 8, fontSize: 13, color: "var(--ink-3)" }}>
-                <strong style={{ color: "var(--ink)" }}>{paid}</strong> de {commissionCap} bonificadas
-                {overCap && (
-                  <span style={{ color: "var(--ink-4)" }}>
-                    {" "}· máximo {commissionCap} pagadas por periodo
-                  </span>
+                {overCap ? (
+                  <>
+                    Se pagan <strong style={{ color: "var(--ink)" }}>{commissionCap}</strong> de {counted}
+                    <span style={{ color: "var(--ink-4)" }}> · tope del periodo</span>
+                  </>
+                ) : (
+                  <>
+                    <strong style={{ color: "var(--ink)" }}>{paid}</strong> de {commissionCap} bonificadas
+                  </>
                 )}
               </div>
             )}

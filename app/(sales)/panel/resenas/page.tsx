@@ -214,14 +214,14 @@ export default async function MisResenasPage({
           }}
         >
           <Stat
-            label="Abonables (verificadas)"
+            label="Verificadas"
             value={counted.toString()}
             sub={
               earnedEuro !== null
                 ? `≈ ${formatEuro(earnedEuro)} en comisión${
                     cap !== null
                       ? overCap
-                        ? ` · máx. ${cap} bonificadas`
+                        ? ` · se pagan ${cap} de ${counted} (tope)`
                         : ` · ${paid} de ${cap} bonificadas`
                       : ""
                   }`

@@ -546,19 +546,23 @@ export default async function PanelPage({
                   {data.counted}
                 </span>
                 <span style={{ fontSize: 16, color: "var(--ink-3)" }}>
-                  reseñas abonables
+                  reseñas verificadas
                 </span>
                 {deltaPill(data.counted, data.prevCounted)}
               </div>
 
-              {/* Bonificables: cuántas de las abonables se pagan (tope mig 026). */}
+              {/* Bonificables: cuántas de las verificadas se pagan (tope mig 026). */}
               {cap !== null && (
                 <div style={{ marginTop: 8, fontSize: 13, color: "var(--ink-3)" }}>
-                  <strong style={{ color: "var(--ink)" }}>{paid}</strong> de {cap} bonificadas
-                  {overCap && (
-                    <span style={{ color: "var(--ink-4)" }}>
-                      {" "}· máximo {cap} pagadas por periodo
-                    </span>
+                  {overCap ? (
+                    <>
+                      Se pagan <strong style={{ color: "var(--ink)" }}>{cap}</strong> de {data.counted}
+                      <span style={{ color: "var(--ink-4)" }}> · tope del periodo</span>
+                    </>
+                  ) : (
+                    <>
+                      <strong style={{ color: "var(--ink)" }}>{paid}</strong> de {cap} bonificadas
+                    </>
                   )}
                 </div>
               )}
