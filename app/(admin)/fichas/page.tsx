@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -53,23 +52,9 @@ export default async function FichasPage({
 
   let locations: LocationRow[] = [];
   let dbError: string | null = null;
-  let viewerRole: string | null = null;
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle<{ role: string }>();
-      viewerRole = profile?.role ?? null;
-    }
-    // Para office_director la RLS restringe a una sola fila (su location).
-    // Para admin devuelve todas. No hace falta `.eq` explícito aquí.
     const { data, error } = await supabase
       .from("locations")
       .select(
@@ -83,33 +68,20 @@ export default async function FichasPage({
     }
   }
 
-  const isDirector = viewerRole === "office_director";
-  const canCreateLocations = viewerRole === "admin";
-
   return (
     <>
       <Topbar
-        title={isDirector ? "Mi ficha" : "Fichas Google"}
-        subtitle={
-          isDirector
-            ? "Tu oficina en Google Business Profile"
-            : "Fichas de Google Business Profile"
-        }
-        range={
-          isDirector
-            ? locations[0]?.name ?? "—"
-            : `${locations.length} ${locations.length === 1 ? "ficha" : "fichas"}`
-        }
+        title="Fichas Google"
+        subtitle="Fichas de Google Business Profile"
+        range={`${locations.length} ${locations.length === 1 ? "ficha" : "fichas"}`}
         breadcrumb={getBrandBreadcrumb(brand)}
-        compact={isDirector}
         right={
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <SyncNowButton
-              label={isDirector ? "Sincronizar" : "Sincronizar todas"}
+              label="Sincronizar todas"
               variant="ghost"
-              locationId={isDirector ? locations[0]?.id : undefined}
             />
-            {canCreateLocations && <AddFichaButton />}
+            <AddFichaButton />
           </div>
         }
       />
@@ -165,9 +137,7 @@ export default async function FichasPage({
                 letterSpacing: "-0.02em",
               }}
             >
-              {isDirector
-                ? "Tu oficina aún no tiene ficha asignada"
-                : "Empieza añadiendo tu primera ficha"}
+              Empieza añadiendo tu primera ficha
             </div>
             <p
               style={{
@@ -178,11 +148,9 @@ export default async function FichasPage({
                 maxWidth: 560,
               }}
             >
-              {isDirector
-                ? "Habla con el administrador general para que te asigne una ficha (location)."
-                : "Cada apartamento / proyecto se representa por una ficha de Google Business. Empieza por el nombre; el Place ID se rellena automáticamente al conectar OAuth."}
+              Cada apartamento / proyecto se representa por una ficha de Google Business. Empieza por el nombre; el Place ID se rellena automáticamente al conectar OAuth.
             </p>
-            {canCreateLocations && <AddFichaButton />}
+            <AddFichaButton />
           </Card>
         ) : (
           // Scroll horizontal en mobile — la tabla tiene 6 columnas y
@@ -215,7 +183,6 @@ export default async function FichasPage({
                   key={loc.id}
                   loc={loc}
                   last={i === locations.length - 1}
-                  canDelete={canCreateLocations}
                 />
               ))}
             </Card>
@@ -229,11 +196,9 @@ export default async function FichasPage({
 function FichaRow({
   loc,
   last,
-  canDelete,
 }: {
   loc: LocationRow;
   last: boolean;
-  canDelete: boolean;
 }) {
   // Estado consolidado de sincronización: la ficha trae reseñas si tiene
   // Business Profile conectado (preferido, paginable) o Places API vía
@@ -354,7 +319,7 @@ function FichaRow({
           />
         )}
         <EditPlaceIdButton id={loc.id} currentPlaceId={loc.google_place_id} />
-        {canDelete && <EditBrandButton id={loc.id} currentBrand={loc.brand} />}
+        <EditBrandButton id={loc.id} currentBrand={loc.brand} />
         {loc.oauth_status === "connected" ? (
           <DisconnectGoogleButton id={loc.id} name={loc.name} />
         ) : (
@@ -374,7 +339,7 @@ function FichaRow({
             {loc.oauth_status === "error" ? "Reconectar" : "Conectar Google"}
           </a>
         )}
-        {canDelete && <DeleteFichaButton id={loc.id} name={loc.name} />}
+        <DeleteFichaButton id={loc.id} name={loc.name} />
       </div>
     </div>
   );

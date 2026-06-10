@@ -22,8 +22,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse("location_id requerido", { status: 400 });
   }
 
-  // Defensa en profundidad: confirma rol y, para director, que la ficha
-  // sea la suya (middleware ya gatea la ruta pero no inspecciona el param).
+  // Defensa en profundidad: solo el admin puede gestionar fichas / OAuth.
   const supabase = await createClient();
   const {
     data: { user },
@@ -32,14 +31,11 @@ export async function GET(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, location_id")
+    .select("role")
     .eq("id", user.id)
-    .maybeSingle<{ role: string; location_id: string | null }>();
-  if (profile?.role !== "admin" && profile?.role !== "office_director") {
+    .maybeSingle<{ role: string }>();
+  if (profile?.role !== "admin") {
     return new NextResponse("forbidden", { status: 403 });
-  }
-  if (profile.role === "office_director" && profile.location_id !== locationId) {
-    return new NextResponse("forbidden — fuera de tu oficina", { status: 403 });
   }
 
   // Confirma que la ficha existe (no necesario para la corrección, pero

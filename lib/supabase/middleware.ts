@@ -136,20 +136,18 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
     //   • Equipo (sales con director_id = él) → /comerciales, dashboard,
     //     verificación, export, ranking.
     //   • Su producción → /panel/*, /clientes/* (sales_id = él).
-    //   • Su ficha → /fichas (por location_id, no por equipo).
-    // NO accede a /gestores, /ajustes, /directores, /manager/resenas.
+    // NO accede a /gestores, /ajustes, /directores, /manager/resenas,
+    // /fichas (gestión de fichas es solo-admin).
     return (
       pathname === "/dashboard" ||
       pathname.startsWith("/comerciales") ||
       pathname.startsWith("/ranking") ||
-      pathname.startsWith("/fichas") ||
       pathname.startsWith("/resenas/verificacion") ||
       pathname.startsWith("/panel") ||
       pathname.startsWith("/clientes") ||
       pathname === "/manager/export" ||
       pathname.startsWith("/api/export") ||
-      pathname.startsWith("/api/sync") ||
-      pathname.startsWith("/api/google/oauth")
+      pathname.startsWith("/api/sync")
     );
   }
   return false;

@@ -80,17 +80,14 @@ describe("pathAllowedForRole — reviews_manager", () => {
 });
 
 describe("pathAllowedForRole — office_director (dualidad gestor + comercial)", () => {
-  it("admin de equipo + comercial productor: dashboard, comerciales, fichas, verificación, export, panel, clientes", () => {
+  it("admin de equipo + comercial productor: dashboard, comerciales, verificación, export, panel, clientes", () => {
     expect(pathAllowedForRole("/dashboard", "office_director")).toBe(true);
     expect(pathAllowedForRole("/comerciales", "office_director")).toBe(true);
     expect(pathAllowedForRole("/comerciales/foo", "office_director")).toBe(true);
-    expect(pathAllowedForRole("/fichas", "office_director")).toBe(true);
-    expect(pathAllowedForRole("/fichas/abc/conectar", "office_director")).toBe(true);
     expect(pathAllowedForRole("/resenas/verificacion", "office_director")).toBe(true);
     expect(pathAllowedForRole("/manager/export", "office_director")).toBe(true);
     expect(pathAllowedForRole("/api/export/reviews", "office_director")).toBe(true);
     expect(pathAllowedForRole("/api/sync/now", "office_director")).toBe(true);
-    expect(pathAllowedForRole("/api/google/oauth/start", "office_director")).toBe(true);
     expect(pathAllowedForRole("/perfil", "office_director")).toBe(true);
     expect(pathAllowedForRole("/ayuda", "office_director")).toBe(true);
     // Producer (vende): panel + clientes
@@ -101,11 +98,15 @@ describe("pathAllowedForRole — office_director (dualidad gestor + comercial)",
     expect(pathAllowedForRole("/clientes", "office_director")).toBe(true);
     expect(pathAllowedForRole("/clientes/foo", "office_director")).toBe(true);
   });
-  it("NO entra a /gestores, /directores, /ajustes ni /manager/resenas", () => {
+  it("NO entra a /gestores, /directores, /ajustes, /fichas, /api/google/oauth ni /manager/resenas", () => {
     expect(pathAllowedForRole("/gestores", "office_director")).toBe(false);
     expect(pathAllowedForRole("/directores", "office_director")).toBe(false);
     expect(pathAllowedForRole("/directores/foo", "office_director")).toBe(false);
     expect(pathAllowedForRole("/ajustes", "office_director")).toBe(false);
+    // Gestión de fichas: solo admin.
+    expect(pathAllowedForRole("/fichas", "office_director")).toBe(false);
+    expect(pathAllowedForRole("/fichas/abc/conectar", "office_director")).toBe(false);
+    expect(pathAllowedForRole("/api/google/oauth/start", "office_director")).toBe(false);
     expect(pathAllowedForRole("/manager/resenas", "office_director")).toBe(false);
     expect(pathAllowedForRole("/manager/resenas/importar", "office_director")).toBe(false);
     // mig 024: responder reseñas es solo admin+gestor — el director NO.

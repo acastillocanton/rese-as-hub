@@ -66,7 +66,7 @@ const DEPARTMENT_LABELS: Record<SalesDepartment, string> = {
 
 type PageProps = {
   searchParams: Promise<{
-    archived?: string;
+    status?: string;
     q?: string;
     location_id?: string;
     director_id?: string;
@@ -79,7 +79,11 @@ type PageProps = {
 export default async function ComercialesPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const brand = await getCurrentUserBrand();
-  const showArchived = sp.archived === "1";
+  const VALID_STATUSES = ["all", "invited", "active", "paused", "archived"] as const;
+  const filterStatus = VALID_STATUSES.includes(sp.status as (typeof VALID_STATUSES)[number])
+    ? (sp.status as string)
+    : undefined;
+  const showArchived = filterStatus === "archived";
 
   // Filtros saneados (descartamos basura para no romper la query).
   const filterLocationId = isUuid(sp.location_id) ? sp.location_id : undefined;
@@ -101,11 +105,10 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
     location_id: filterLocationId,
     director_id: filterDirectorId,
     department: filterDepartment,
-    archived: sp.archived,
+    status: filterStatus,
   };
 
   let salesList: SalesRow[] = [];
-  let archivedCount = 0;
   let locations: LocationOption[] = [];
   let directors: DirectorOption[] = [];
   let dbError: string | null = null;
@@ -149,15 +152,17 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
       );
     }
 
-    const [salesRes, archivedRes, locRes, dirRes] = await Promise.all([
-      showArchived
-        ? baseQuery.eq("status", "archived")
-        : baseQuery.neq("status", "archived"),
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .in("role", ["sales", "office_director"])
-        .eq("status", "archived"),
+    // Filtrado por estado
+    if (filterStatus && filterStatus !== "all") {
+      baseQuery = baseQuery.eq("status", filterStatus);
+    } else if (!filterStatus) {
+      // Default: plantilla activa (todo menos archivados)
+      baseQuery = baseQuery.neq("status", "archived");
+    }
+    // filterStatus === "all" → sin filtro
+
+    const [salesRes, locRes, dirRes] = await Promise.all([
+      baseQuery,
       supabase.from("locations").select("id, name").order("name"),
       // Directores disponibles para asignar. Excluimos archivados; el
       // selector del invite/edit los filtra después por location.
@@ -172,8 +177,6 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
 
     if (salesRes.error) dbError = salesRes.error.message;
     else salesList = ((salesRes.data ?? []) as unknown) as SalesRow[];
-
-    archivedCount = archivedRes.count ?? 0;
 
     if (locRes.data) locations = locRes.data as LocationOption[];
     if (dirRes.data) directors = dirRes.data;
@@ -201,18 +204,13 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
   // resuelve la FK auto-referencial profiles.director_id desde el select.
   const directorById = new Map(directors.map((d) => [d.id, d.full_name]));
 
-  // hrefs de las pestañas Activos/Archivados que preservan los filtros
-  // aplicados (oficina, director, departamento, búsqueda).
-  function tabHref(toArchived: boolean): string {
-    const params = new URLSearchParams();
-    if (filterQ) params.set("q", filterQ);
-    if (filterLocationId) params.set("location_id", filterLocationId);
-    if (filterDirectorId) params.set("director_id", filterDirectorId);
-    if (filterDepartment) params.set("department", filterDepartment);
-    if (toArchived) params.set("archived", "1");
-    const qs = params.toString();
-    return qs ? `/comerciales?${qs}` : "/comerciales";
-  }
+  const STATUS_LABELS: Record<string, string> = {
+    all: "Todos",
+    invited: "Invitados",
+    active: "Activos",
+    paused: "Pausados",
+    archived: "Archivados",
+  };
 
   const stats = {
     total: salesList.length,
@@ -226,17 +224,13 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
       <Topbar
         title="Comerciales"
         subtitle={
-          showArchived
-            ? "Comerciales archivados"
+          filterStatus
+            ? `Comerciales · ${STATUS_LABELS[filterStatus] ?? filterStatus}`
             : canEdit
               ? "Gestión de comerciales"
               : "Vista solo lectura"
         }
-        range={
-          showArchived
-            ? `${salesList.length} archivados`
-            : `${stats.total} en plantilla`
-        }
+        range={`${salesList.length} comerciales`}
         breadcrumb={getBrandBreadcrumb(brand)}
         compact
         right={canEdit && !showArchived ? <InviteSalesButton locations={locations} directors={directors} lockScope={isDirector} /> : undefined}
@@ -287,34 +281,6 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
               directors={directors}
               current={currentFilters}
             />
-
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                marginBottom: 12,
-                alignItems: "center",
-              }}
-            >
-              <Link
-                href={tabHref(false)}
-                style={{
-                  ...tabBtn,
-                  ...(showArchived ? {} : tabBtnActive),
-                }}
-              >
-                Activos
-              </Link>
-              <Link
-                href={tabHref(true)}
-                style={{
-                  ...tabBtn,
-                  ...(showArchived ? tabBtnActive : {}),
-                }}
-              >
-                Archivados {archivedCount > 0 && `(${archivedCount})`}
-              </Link>
-            </div>
 
             {salesList.length === 0 ? (
               <Card padding={32}>
@@ -752,19 +718,3 @@ function MiniStat({ label, value, sub }: { label: string; value: number; sub: st
   );
 }
 
-const tabBtn: React.CSSProperties = {
-  padding: "6px 12px",
-  fontSize: 12.5,
-  color: "var(--ink-3)",
-  textDecoration: "none",
-  border: "1px solid var(--line)",
-  borderRadius: 8,
-  background: "transparent",
-};
-
-const tabBtnActive: React.CSSProperties = {
-  background: "var(--surface)",
-  borderColor: "var(--line-strong)",
-  color: "var(--ink)",
-  fontWeight: 600,
-};

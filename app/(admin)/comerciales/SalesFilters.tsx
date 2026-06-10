@@ -15,7 +15,7 @@ type Props = {
     location_id?: string;
     director_id?: string;
     department?: string;
-    archived?: string;
+    status?: string;
   };
 };
 
@@ -73,7 +73,7 @@ export function SalesFilters({ locations, directors, current }: Props) {
     : directors;
 
   const hasFilters = Boolean(
-    current.q || current.location_id || current.director_id || current.department,
+    current.q || current.location_id || current.director_id || current.department || current.status,
   );
 
   return (
@@ -142,6 +142,20 @@ export function SalesFilters({ locations, directors, current }: Props) {
         ))}
       </select>
 
+      <select
+        value={current.status ?? ""}
+        onChange={(e) => push({ status: e.target.value || null })}
+        aria-label="Filtrar por estado"
+        style={selectStyle}
+      >
+        <option value="">En plantilla</option>
+        <option value="all">Todos</option>
+        <option value="invited">Invitados</option>
+        <option value="active">Activos</option>
+        <option value="paused">Pausados</option>
+        <option value="archived">Archivados</option>
+      </select>
+
       {hasFilters && (
         <button
           type="button"
@@ -151,6 +165,7 @@ export function SalesFilters({ locations, directors, current }: Props) {
               location_id: null,
               director_id: null,
               department: null,
+              status: null,
             })
           }
           style={clearBtnStyle}

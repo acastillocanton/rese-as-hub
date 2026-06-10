@@ -48,11 +48,7 @@ export async function GET(request: NextRequest) {
     return clearCookieAndRedirect(fichasUrl);
   }
 
-  // Defensa en profundidad: no confiar SOLO en la cookie state (que setea
-  // /start). Reconfirmamos que quien completa el flujo sigue autenticado y con
-  // permiso sobre esta location, por si el gate de /start regresara o la cookie
-  // se reutilizara tras revocar permisos. admin → cualquier ficha;
-  // office_director → solo la suya.
+  // Defensa en profundidad: solo el admin puede completar el flujo OAuth.
   const authClient = await createClient();
   const {
     data: { user },
@@ -63,13 +59,10 @@ export async function GET(request: NextRequest) {
   }
   const { data: prof } = await authClient
     .from("profiles")
-    .select("role, location_id")
+    .select("role")
     .eq("id", user.id)
-    .maybeSingle<{ role: string; location_id: string | null }>();
-  const allowed =
-    prof?.role === "admin" ||
-    (prof?.role === "office_director" && prof.location_id === locationId);
-  if (!allowed) {
+    .maybeSingle<{ role: string }>();
+  if (prof?.role !== "admin") {
     fichasUrl.searchParams.set("oauth_error", "forbidden");
     return clearCookieAndRedirect(fichasUrl);
   }

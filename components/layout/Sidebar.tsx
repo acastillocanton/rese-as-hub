@@ -440,7 +440,6 @@ export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
     items: [
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
       { id: "sales", label: "Comerciales", href: "/comerciales", icon: Users },
-      { id: "branch", label: "Mi ficha", href: "/fichas", icon: MapPin },
       // Ranking del equipo del director (filtrado por RLS) — él mismo
       // aparece como una fila más del leaderboard porque es productor.
       { id: "team-ranking", label: "Ranking", href: "/ranking", icon: Trophy },

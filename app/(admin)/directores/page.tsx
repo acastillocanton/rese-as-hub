@@ -9,13 +9,14 @@ import type { ProfileStatus } from "@/lib/supabase/types";
 import { InviteDirectorButton } from "./InviteDirectorButton";
 import { ArchiveDirectorButton } from "./ArchiveDirectorButton";
 import { DeleteDirectorButton } from "./DeleteDirectorButton";
+import { StatusFilter } from "./StatusFilter";
 import { ResendAccessButton } from "@/components/ui/ResendAccessButton";
 import { resendDirectorAccess } from "./actions";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
 
 type PageProps = {
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<{ status?: string }>;
 };
 
 type DirectorRow = {
@@ -35,10 +36,13 @@ type LocationOption = { id: string; name: string };
 export default async function DirectoresPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const brand = await getCurrentUserBrand();
-  const showArchived = sp.archived === "1";
+  const VALID_STATUSES = ["all", "invited", "active", "paused", "archived"] as const;
+  const filterStatus = VALID_STATUSES.includes(sp.status as (typeof VALID_STATUSES)[number])
+    ? (sp.status as string)
+    : undefined;
+  const showArchived = filterStatus === "archived";
 
   let directors: DirectorRow[] = [];
-  let archivedCount = 0;
   let locations: LocationOption[] = [];
   let teamCountByDirector = new Map<string, number>();
   let dbError: string | null = null;
@@ -53,15 +57,16 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
       .eq("role", "office_director")
       .order("joined_at", { ascending: false });
 
-    const [directorsRes, archivedCountRes, locsRes, teamsRes] = await Promise.all([
-      showArchived
-        ? baseQuery.eq("status", "archived")
-        : baseQuery.neq("status", "archived"),
-      supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "office_director")
-        .eq("status", "archived"),
+    // Filtrado por estado
+    let filteredQuery = baseQuery;
+    if (filterStatus && filterStatus !== "all") {
+      filteredQuery = baseQuery.eq("status", filterStatus);
+    } else if (!filterStatus) {
+      filteredQuery = baseQuery.neq("status", "archived");
+    }
+
+    const [directorsRes, locsRes, teamsRes] = await Promise.all([
+      filteredQuery,
       supabase.from("locations").select("id, name").order("name"),
       // Equipo: cuántos sales activos tiene cada director.
       supabase
@@ -73,7 +78,6 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
     ]);
     if (directorsRes.error) dbError = directorsRes.error.message;
     else directors = (directorsRes.data ?? []) as unknown as DirectorRow[];
-    archivedCount = archivedCountRes.count ?? 0;
     if (locsRes.data) locations = locsRes.data as LocationOption[];
     if (teamsRes.data) {
       for (const row of teamsRes.data) {
@@ -85,6 +89,14 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
       }
     }
   }
+
+  const STATUS_LABELS: Record<string, string> = {
+    all: "Todos",
+    invited: "Invitados",
+    active: "Activos",
+    paused: "Pausados",
+    archived: "Archivados",
+  };
 
   const stats = {
     total: directors.length,
@@ -98,15 +110,11 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
       <Topbar
         title="Directores de oficina"
         subtitle={
-          showArchived
-            ? "Directores archivados"
+          filterStatus
+            ? `Directores · ${STATUS_LABELS[filterStatus] ?? filterStatus}`
             : "Cada director gestiona su propio equipo de comerciales"
         }
-        range={
-          showArchived
-            ? `${directors.length} archivados`
-            : `${stats.total} en plantilla`
-        }
+        range={`${directors.length} directores`}
         breadcrumb={getBrandBreadcrumb(brand)}
         right={!showArchived ? <InviteDirectorButton locations={locations} primary /> : undefined}
       />
@@ -164,32 +172,8 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
               </div>
             )}
 
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                marginBottom: 12,
-                alignItems: "center",
-              }}
-            >
-              <Link
-                href="/directores"
-                style={{
-                  ...tabBtn,
-                  ...(showArchived ? {} : tabBtnActive),
-                }}
-              >
-                Activos
-              </Link>
-              <Link
-                href="/directores?archived=1"
-                style={{
-                  ...tabBtn,
-                  ...(showArchived ? tabBtnActive : {}),
-                }}
-              >
-                Archivados {archivedCount > 0 && `(${archivedCount})`}
-              </Link>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
+              <StatusFilter current={filterStatus} basePath="/directores" />
             </div>
 
             {directors.length === 0 ? (
@@ -438,19 +422,4 @@ function MiniStat({
   );
 }
 
-const tabBtn: React.CSSProperties = {
-  padding: "6px 12px",
-  fontSize: 12.5,
-  color: "var(--ink-3)",
-  textDecoration: "none",
-  border: "1px solid var(--line)",
-  borderRadius: 8,
-  background: "transparent",
-};
 
-const tabBtnActive: React.CSSProperties = {
-  background: "var(--surface)",
-  borderColor: "var(--line-strong)",
-  color: "var(--ink)",
-  fontWeight: 600,
-};
