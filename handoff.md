@@ -4,85 +4,73 @@
 >
 > **Fuentes de verdad permanentes**: [`CLAUDE.md`](CLAUDE.md) (estado + workarounds) y [`spec.md`](spec.md) (producto). Este archivo resume la **última tanda de trabajo** y el estado operativo para retomar rápido. Las memorias locales (`~/.claude/projects/.../memory/`) NO viajan entre máquinas — la continuidad cross-máquina es CLAUDE.md + spec.md + este handoff.
 
-**Última actualización**: 2026-06-01 · **Rama**: `main` · **HEAD**: `34bff27`
+**Última actualización**: 2026-06-10 · **Rama**: `main` · **HEAD**: docs de esta sesión (tras `af8ca49`)
 
 ---
 
-## 1. Qué se hizo en esta sesión (2026-06-01)
+## 1. Qué se hizo en esta sesión (2026-06-10)
 
-Sesión larga: dos features grandes del panel del comercial + **tres rondas de auditoría** (seguridad/rendimiento/duplicidad) con sus arreglos.
+Sesión grande: un bugfix de RLS, una feature de comisión, y **la activación end-to-end de Google Business Profile** (el bloqueo de meses).
 
-### A. Panel del comercial — bloque "Histórico, ranking e insignias" (sin migración)
-Se sustituyó el placeholder `ComingSoon` del fondo de `/panel` por 4 widgets reales:
-- **Evolución mensual** (`MonthBars`, 6 meses) — se extrajo `bucketByMonth` a [lib/date-range.ts](lib/date-range.ts) (compartido con el dashboard).
-- **Últimas reseñas verificadas** (5 más recientes).
-- **Posición en el ranking del equipo** (`TeamRankSummary`).
-- **Insignias** — **calculadas al vuelo, sin tabla ni migración** ([lib/panel-badges.ts](lib/panel-badges.ts) + [components/ui/Badge.tsx](components/ui/Badge.tsx)).
-- Detalle: **CLAUDE.md §4.34**. Memoria: `v2-panel-historico-ranking-insignias`.
+### A. Bug: el `reviews_manager` no podía escribir sobre `reviews` (mig 025)
+Reasignar/confirmar/rechazar/responder fallaba **en silencio** para el gestor: nunca tuvo policy de UPDATE sobre `reviews` (solo SELECT desde mig 002), y las server actions no comprobaban filas afectadas → RLS bloqueaba con 0 filas y `error=null` → devolvían `ok:true` sin guardar. Fix: **mig 025** `reviews_manager_all` (paridad real con admin). Commits `b3c4dfd`, `f265f76`. Detalle: **CLAUDE.md §7** + memoria nueva.
 
-### B. Periodo de comisión (20→20) protagonista + tarifa €/reseña (mig 020)
-El comercial cobra **comisión por reseña verificada**; el periodo de liquidación va del **día 20 al 19 del mes siguiente** (no el mes natural). Ahora ese es el rango por defecto en `/panel`, `/panel/resenas` y `/panel/ranking` (cubre también al director productor, que comparte pantallas).
-- Lógica en [lib/date-range.ts](lib/date-range.ts): `commissionPeriodRange`, `previousCommissionPeriodRange`, `commissionShortcuts`, `isCommissionPeriod`; `parseRange` ganó 4º parámetro `fallback`.
-- **Abonable = solo `counted`**. Hero reformulado: nº de abonables + **€ estimado** (`counted × commission_rate`) + cierre del periodo.
-- **Tarifa**: columna `profiles.commission_rate` (mig 020), editable en `/comerciales` y `/directores`. **Todos los productores tienen 20 €** puestos por bulk update vía API REST.
-- Detalle: **CLAUDE.md §4.35**. Memoria: `v2-periodo-comision`.
+### B. Tope de reseñas BONIFICABLES por productor (mig 026)
+Dirección cambió la política: se paga un **máximo de N reseñas por periodo de comisión** (default 5), **configurable por comercial/director**. Distinto de `monthly_goal`. El € = `min(counted, commission_cap) × commission_rate`.
+- **mig 026**: `profiles.commission_cap int DEFAULT 5` (NULL = sin tope) + backfill productores a 5 + congelado en `profiles_self_update`.
+- Helper puro [lib/commission.ts](lib/commission.ts) (única fuente de verdad) + `commissionCapSchema`.
+- UI "reales + bonificadas + aviso": panel hero ("X verificadas / se pagan N de X · tope del periodo"), `/panel/resenas`, `ProducerSummary`, Excel individual (total capado). Editable en ficha de comercial/director.
+- Commits `b626594`, `e4ad2e9` (copy "verificadas" en vez de "abonables" para no confundir). Detalle: **CLAUDE.md §4.49**.
 
-### C. Tres rondas de auditoría de código (todo arreglado)
-1. **Auditoría inicial** → halló un **agujero crítico de RLS**: la policy `profiles_self_update` solo congelaba `role`, así que un comercial podía auto-editarse `commission_rate`/`status`/etc. por API directa (fraude). Fix: **mig 021** congela las columnas sensibles. + ranking por verificadas (`metric`), paralelización del panel, `commissionRateSchema` que rechaza inválidos, guard del `Ring`, módulos compartidos (`lib/validation/sales-schemas.ts`, `lib/constants.ts`, `lib/format.ts`).
-2. **Re-auditoría** (3 tandas): `claimReview`/`reassignReview` ahora validan propiedad del cliente (`clientBelongsToSales`); **mig 022** congela también `department`/`language`; `.limit()` defensivos en listados; consolidación de formateadores de fecha + `FormField` compartido.
-3. **Auditoría enfocada del pipeline** (crons/matching/OAuth/landing/Excel — nunca auditado): **inyección de fórmulas en Excel (HIGH)** → `excelSafe()`; fail-safe anti-doble-conteo en el cron (C1); visibilidad de colisiones de insert (C2); hardening de `/api/sync/now`, callback OAuth y `isPublicPath`; **test de regresión RLS**.
-- Detalle: **CLAUDE.md §4.36 y §4.37**.
+### C. 🎉 Google Business Profile API ACTIVADA (caso `5-5855000041022`)
+Google aprobó la cuota. Se activó **going-forward, fuente única**:
+- **Bug del resource**: el picker guardaba `locations/456` pero la v4 exige `accounts/123/locations/456` → 404. Fix en `linkGoogleLocation` (compone el resource) + backfill de las 7 fichas (vía service-role). Commit `3aaa6bd`.
+- **"Solo de ahora en adelante"** (decisión negocio): corte `BP_GO_LIVE_AT="2026-06-10T00:00:00Z"` en el cron → NO importa histórico (Oropesa 1.622) → **cero email-storm de alertas ≤2★**. Verificado: entraron 10 reseñas de hoy (todas 5★, 0 alertas).
+- **Fuente única BP**: Places apagado (cron fuera de `vercel.json`); GitHub Action horaria repuntada a BP (renombrada `sync-reviews-hourly.yml`). Sin duplicados. 2 clones transitorios de Places (05:00) deduplicados a mano.
+- **Responder por API**: botón "Publicar en Google" en `/resenas/respuestas` para reseñas BP (`publishReviewReply`). Sidebar "Respuestas" reactivado. Commits `f3e526f`, `c4d7549`, `25648eb`, `9d89675`. Detalle: **CLAUDE.md §4.50**.
 
-### Commits de la sesión
-```
-34bff27 docs: migraciones 021/022 aplicadas y verificadas (sync de estado)
-eb1a351 fix(seguridad+robustez): auditoria enfocada del pipeline (crons/matching/OAuth/Excel)
-67b027d refactor: tanda 3 de la re-auditoria — consolidar formato y FormField
-33fad18 perf: tanda 2 de la re-auditoria — limites defensivos en listados
-60da11c fix(seguridad): tanda 1 de la re-auditoria (integridad de atribucion + self-update)
-fbd3962 fix(seguridad+calidad): arreglos de la auditoria de codigo
-4547f8b docs: migraciones 019 y 020 aplicadas en Supabase
-96b8df5 feat(panel): periodo de comision (20->20) protagonista + tarifa por resena
-1b5ab98 feat(panel): bloque "Historico, ranking e insignias" del comercial
-```
+### D. Matcher: desempate comercial>director (§4.38)
+A petición del usuario: si el texto nombra a un **comercial (sales) Y a un director (office_director)**, se atribuye al **comercial** (es quien produce). Solo si queda exactamente 1 `sales`; con 0 ó ≥2 sigue ambiguo. `CommercialInfo` gana `role`; helper `resolveMentionBySalesPreference`; ambos crons cargan `role`. Caso real: clientes internacionales que agradecen a "Katalin y Pavel". Commit `af8ca49`. Detalle: **CLAUDE.md §4.38**.
 
 ---
 
 ## 2. Estado operativo
 
-- **Migraciones 001–022 aplicadas** en Supabase. 021/022 **verificadas empíricamente en prod** (un sales recibe **403** al intentar PATCH de `commission_rate`/`status`/`department` por API; **200** en `phone`). **No queda ninguna migración pendiente.**
-- **Tarifa de comisión**: los 51 productores (sales + office_director) tienen `commission_rate = 20 €`.
-- **Tests**: `npm test` → **241 verdes**. `npm run typecheck` ✅. `npm run build` ✅ (exit 0). `npm run lint` ✅ (solo warnings preexistentes de `<img>`/backdrops).
-- **Deploy**: todo pusheado a `main` (HEAD `34bff27`). Verificar en Vercel que el último deploy está **Ready**.
+- **Migraciones 001–026 aplicadas** en Supabase (023 helpdesk, 024 review replies, 025 reviews_manager write, 026 commission_cap — todas confirmadas por el usuario). **No queda ninguna pendiente.**
+- **Business Profile**: cuota ACTIVA. 7 fichas conectadas por OAuth (`accounts/111197444117937021993`), `google_location_resource` = recurso completo. Fuente única. Places apagado. Diagnóstico: `node scripts/check-bp-quota.mjs` → 200 en todas.
+- **Tope de comisión**: productores con `commission_cap = 5` (default).
+- **Tests**: `npm test` → **316 verdes**. `npm run typecheck` ✅.
+- **Deploy**: todo pusheado a `main`. Verificar en Vercel que el último deploy está **Ready** (especialmente el de la activación BP, para que el cron horario use el código con corte).
 
 ---
 
-## 3. Cómo verificar (humo, como comercial en prod)
+## 3. Cómo verificar (humo, en prod)
 
-1. `/panel`: el rango por defecto es **"20 X – 19 Y"** (periodo de comisión); el número grande son las **abonables** (counted); aparece **≈ € en comisión**; desglose con "por verificar" y "cierre en N días". Abajo: barras de evolución, últimas reseñas, posición en ranking, insignias.
-2. `/panel/resenas`: KPIs "Abonables (verificadas)" + "Por verificar"; el selector permite "periodo anterior" y mes natural; "Descargar Excel" hereda el periodo.
-3. `/comerciales/[slug]` y `/directores/[slug]`: campo **"Comisión por reseña (€)"** editable; se refleja en el panel del productor.
-4. Seguridad: el comercial NO puede cambiarse tarifa/estado/departamento por API (verificado, 403).
+1. `/resenas/verificacion` → "Sin atribuir": las reseñas nuevas de hoy; "Atribuidas": reasignar las mal atribuidas.
+2. `/resenas/respuestas` (como gestor): las reseñas BP muestran botón **"Publicar en Google"** (un clic publica por API). Las viejas de Places siguen con flujo manual.
+3. `/panel` (como comercial con >5 verificadas): número grande = **verificadas** reales; debajo "se pagan 5 de X · tope del periodo"; € sobre el tope.
+4. `/comerciales/[slug]`: campo **"Reseñas bonificables"** editable (default 5, vacío = sin tope).
+5. `/fichas`: pill "Business Profile" (verde).
 
 ---
 
 ## 4. Watch-outs / gotchas al retomar
 
-- ⚠️ **Email de commit para Vercel**: usar **`alejandro.castillo@inseryal.es`** (config del repo). NO sobreescribir con gmail — Vercel bloquea el deploy. (Esta sesión todos los commits usaron `-c user.email=...` correcto.)
-- ⚠️ **El guard del sandbox bloquea `git commit -m` con `/panel` en el mensaje**: usar fichero de mensaje (`git commit -F`) o evitar rutas con `/` en el `-m`.
-- ⚠️ **RLS `profiles_self_update`**: al añadir CUALQUIER columna sensible a `profiles`, **congélala en la policy** (mig más reciente) y añádela a `FROZEN_COLUMNS` en [lib/__tests__/rls-self-update.test.ts](lib/__tests__/rls-self-update.test.ts) (el test falla si se olvida). Ver **CLAUDE.md §4.36**.
-- ⚠️ **Inyección de fórmulas en Excel**: cualquier celda con texto de origen externo (autor/comentario/cliente) debe pasar por `excelSafe()` ([lib/reports/excel-safe.ts](lib/reports/excel-safe.ts)). Ver **§4.37**.
-- **Periodo de comisión vs mes natural**: las pantallas del comercial usan periodo de comisión por defecto; admin/manager/gestor/dashboard/Excel global siguen en **mes natural**. No mezclar.
+- ⚠️ **Email de commit para Vercel**: usar **`alejandro.castillo@inseryal.es`** (config del repo). NO gmail — Vercel bloquea el deploy.
+- ⚠️ **BP es going-forward**: el cron solo importa reseñas con `createTime >= BP_GO_LIVE_AT` (no histórico). Si algún día se quiere histórico, subir/quitar el corte CON CUIDADO (suprimir alertas ≤2★ durante la carga, o sería un email-storm).
+- ⚠️ **Fuente única BP**: Places está apagado. NO reactivar su cron sin añadir dedup Places↔BP (si no, clones). El código de Places sigue ahí, reactivable.
+- ⚠️ **RLS `profiles_self_update`**: al añadir CUALQUIER columna sensible a `profiles`, congélala en la policy (mig más reciente) + añádela a `FROZEN_COLUMNS` en [lib/__tests__/rls-self-update.test.ts](lib/__tests__/rls-self-update.test.ts). Ver **CLAUDE.md §4.36**.
+- ⚠️ **Comisión con tope**: cualquier superficie que muestre € de comisión debe usar `lib/commission.ts` (`commissionEuro`/`payableCount`), no `rate × counted`. Ver **§4.49**.
 - **Migraciones**: las aplica el usuario a mano en Supabase → SQL Editor. Confirmar aplicada antes de pushear código que lea una columna nueva.
 
 ---
 
-## 5. Pendientes mayores del proyecto (contexto, no de esta sesión)
+## 5. Pendientes (contexto)
 
-- **Google Business Profile API** (caso `5-5855000041022`, cuota aún a 0 — re-verificado el 2026-06-04, re-check programado 2026-06-09): checklist completo en **CLAUDE.md §4.26** (16 items + el nuevo §4.37-H3 sobre truncado del primer sync >500 reseñas). Mientras tanto, Places API trae reseñas.
-- **Diferidos de auditoría (latentes, documentados en §4.37)**: H2 (lock de cron 60s a gran escala), M2 (reassign sin cliente).
-- **Backlog cosmético**: unificar `<ReviewCard>` (5 pantallas) e `<InviteModal>` — fuera por riesgo de regresión visual sin QA. ~10 ficheros aún con `inputStyle` local.
-- **Backlog v2 / open questions**: CLAUDE.md §8 + spec.md §9 (dominio, branding, CRM, retención, **cifrar `oauth_refresh_token`** #8).
+- **BP — pendientes deliberados** (§4.50): deep-link a reseña concreta (Google no expone URL pública por reviewId — descartado), **soft-delete automático** (`reconcileRemoved`, diferido por falsos positivos — reactivar solo desde cron BP con capa `last_seen_at`), sync del `reviewReply` de Google en el cron (auto-marcar respondidas las contestadas directo en Google, §4.26 Bloque G punto 18).
+- **🔜 Soporte en mobile** (§4.45/§8.5): inalcanzable en mobile; plan = tarjeta en `/perfil`.
+- **Diferidos de auditoría** (§4.37): H2 (lock cron 60s a escala), M2 (reassign sin cliente).
+- **Backlog v2 / open questions**: CLAUDE.md §8 + spec.md §9 (dominio, branding, CRM, retención, cifrar `oauth_refresh_token`).
 
 ---
 
@@ -91,7 +79,7 @@ fbd3962 fix(seguridad+calidad): arreglos de la auditoria de codigo
 ```bash
 npm run dev          # dev en localhost:3000 (Turbopack)
 npm run typecheck    # gate antes de cerrar tarea
-npm test             # Vitest (241 verdes)
+npm test             # Vitest (316 verdes)
 npm run build        # build producción
 npm run lint         # next lint
 ```

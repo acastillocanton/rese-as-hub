@@ -2,16 +2,16 @@
 
 Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google Business Profile por comercial.
 
-> 🏁 **V1 cerrada el 2026-05-26 · v2 en curso (jun 2026)** — entregadas: anti-fraude, verificación abierta, alertas ≤2★, plantillas de mensaje, panel "Histórico/ranking/insignias", **periodo de comisión 20→20 + tarifa €/reseña**, y endurecimiento de seguridad (RLS de perfil, inyección de fórmulas). Ver [`CLAUDE.md`](CLAUDE.md) §3/§4 y §8 (Backlog v2) y [`spec.md`](spec.md) §9 (open questions).
+> 🏁 **V1 cerrada el 2026-05-26 · v2 en curso (jun 2026)** — entregadas: anti-fraude, verificación abierta, alertas ≤2★, plantillas de mensaje, panel "Histórico/ranking/insignias", **periodo de comisión 20→20 + tarifa €/reseña**, **tope de reseñas bonificables por productor** (mig 026), soporte interno/helpdesk (mig 023), **responder reseñas de Google** (mig 024) y endurecimiento de seguridad. **🎉 Google Business Profile API activada el 2026-06-10** (cuota concedida) → **fuente única de reseñas going-forward**, Places API apagado. Ver [`CLAUDE.md`](CLAUDE.md) §3/§4 (§4.50 estado BP, §4.49 tope bonificables) y [`spec.md`](spec.md) §9.
 >
 > 📖 **Fuente de verdad del producto**: [`spec.md`](spec.md). Leer antes de añadir features o tomar decisiones de arquitectura.
 > 📋 **Estado actual del proyecto, workarounds y comandos**: [`CLAUDE.md`](CLAUDE.md). Leer al abrir el repo en una máquina nueva.
 
-**Roles**: Admin (gestor global), Director de oficina (admin de su equipo + comercial productor), Comercial (envía enlace al cliente tras la visita), Gestor de reseñas (solo lectura + exporta a Excel).
+**Roles**: Admin (gestor global), Director de oficina (admin de su equipo + comercial productor), Comercial (envía enlace al cliente tras la visita), Gestor de reseñas (verifica/reasigna reseñas, responde reseñas de Google, exporta a Excel).
 
 **Producción**: [`https://resenas.marinadorconstrucciones.com`](https://resenas.marinadorconstrucciones.com).
 
-**Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{slug-comercial}/{slug-cliente}` → cliente abre y aterriza directamente en la ficha de Google → dos crons diarios (Google Places API + Google Business Profile API) + cron horario en GitHub Actions traen las reseñas → el algoritmo las atribuye al comercial mediante ventana temporal y nombre del cliente → el comercial recibe email de notificación (Brevo SMTP, batch al final del cron) y la reseña aparece en su panel.
+**Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{slug-comercial}/{slug-cliente}` → cliente abre y aterriza directamente en la ficha de Google → el cron de Google Business Profile (diario en Vercel + horario en GitHub Actions) trae las reseñas → el algoritmo las atribuye al comercial mediante ventana temporal + nombre del cliente + mención del comercial en el texto → el comercial recibe email de notificación (Brevo SMTP, batch al final del cron) y la reseña aparece en su panel.
 
 ---
 
@@ -19,13 +19,13 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 
 - **Next.js 15.5.18** App Router + TypeScript strict (`noUncheckedIndexedAccess`) + Turbopack
 - **Supabase** Postgres + Auth + Row Level Security + Storage (bucket `avatars`)
-- **Google Places API legacy** con API key (vía de respaldo activa — sin OAuth, `reviews_sort=newest`, top-5 más recientes por ficha)
-- **Google Business Profile API** con OAuth por ficha (Account Management + Business Information + Reviews v4) — esperando aprobación de cuota
+- **Google Business Profile API** con OAuth por ficha (Account Management + Business Information + Reviews v4) — **fuente única de reseñas desde 2026-06-10** (cuota concedida); incluye **responder reseñas** (reply v4) por API
+- **Google Places API legacy** — apagado el 2026-06-10 (sustituido por Business Profile); código y endpoint conservados, reactivables
 - **Brevo SMTP** dos claves independientes: una para Supabase Auth (magic-links + invites) y otra para notificaciones transaccionales (Nodemailer en [`lib/email/brevo.ts`](lib/email/brevo.ts))
-- **Vercel Hobby** hosting + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC ≈ 6-7 AM España) + **GitHub Action horario** (cada hora 06-23 UTC) llamando al cron Places para fichas activas + botón **"Sincronizar ahora"** en UI (admin/gestor/comercial)
+- **Vercel Hobby** hosting + Vercel Cron diario (`5 5 * * *` Business Profile UTC ≈ 6-7 AM España) + **GitHub Action horaria** (`sync-reviews-hourly.yml`, cada hora 06-23 UTC) al cron de Business Profile + botón **"Sincronizar ahora"** en UI (admin/gestor/comercial)
 - **ExcelJS** (dynamic import server-side) para export mensual del gestor
 - **qrcode.react** + Zod + middleware con RLS y redirección por rol
-- **Vitest** unit tests (241 verdes — matcher + date-range (incl. periodo de comisión 20→20) + cliente Places + leaderboard + branding + messaging + role/route helpers + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + rls-self-update)
+- **Vitest** unit tests (316 verdes — matcher (incl. desempate comercial>director) + date-range (incl. periodo de comisión 20→20) + commission (tope bonificables) + cliente Places + leaderboard + branding + messaging + role/route helpers + duplicate-detection + verification-gating + reply-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + edit-merge + rls-self-update)
 - **Playwright** E2E (login + admin-nav smoke; setup en [`playwright.config.ts`](playwright.config.ts) + helper de auth via `/login/manual`)
 - **eslint-plugin-jsx-a11y** activo (preset `recommended`); 0 errors, deuda menor en modal backdrops como warnings documentadas
 - **Content-Security-Policy** + HSTS + headers de seguridad en [`next.config.ts`](next.config.ts)
@@ -34,7 +34,7 @@ Plataforma interna de Inseryal by Marina d'Or para gestionar reseñas de Google 
 
 ## Estado del producto
 
-🏁 **V1 cerrada el 2026-05-26**. Producto live y **trayendo reseñas reales desde 2026-05-23** vía Google Places API (vía de respaldo). El cron oficial de Business Profile sigue activo en paralelo esperando la aprobación de cuota (caso `5-5855000041022`, ETA ~2026-06-04; verificado el 2026-06-04 que sigue a cuota 0, re-check 2026-06-09); cuando llegue, retomará automáticamente sin redeploy.
+🏁 **V1 cerrada el 2026-05-26**. Producto live. **🎉 Business Profile API activada el 2026-06-10** (caso `5-5855000041022` aprobado): las 7 fichas conectadas por OAuth, BP es la **fuente única** de reseñas going-forward (solo importa reseñas creadas a partir de la activación — no el histórico). Places API trajo reseñas reales del 2026-05-23 al 06-10 y ahora está apagado. Detalle en [CLAUDE.md §4.50](CLAUDE.md).
 
 Por fase:
 
@@ -42,8 +42,8 @@ Por fase:
 - **Fase 2 Admin** — ✅ `/dashboard` con datos reales, `/comerciales` + `/comerciales/[slug]` editable, `/gestores`, `/fichas` con botón Conectar Google + UI selección Business Profile + edición de Place ID, `/resenas/verificacion` con confirm/reject/reassign.
 - **Fase 3 Sales (desktop + mobile)** — ✅ `/panel` (con bloque "Histórico, ranking e insignias" + **periodo de comisión 20→20** como rango protagonista y **€ estimado**), `/panel/enlace`, `/panel/plantillas` (3 plantillas por cliente editables nombre+cuerpo, mig 019), `/panel/resenas`, `/clientes` con QR + selector de plantilla + deep-links, `/clientes/[slug]` con edición inline. Vista mobile (≤767px) con MobileTabBar + avatar fijo top-right.
 - **v2 (jun 2026)** — ✅ panel "Histórico, ranking e insignias" (insignias derivadas, sin tabla); **periodo de comisión (20→20)** + **tarifa €/reseña por productor** (`profiles.commission_rate`, mig 020); blindaje RLS de auto-edición de perfil (mig 021/022); hardening de seguridad (inyección de fórmulas en Excel, propiedad de cliente en verificación). Detalle en [CLAUDE.md §4.34-4.37](CLAUDE.md).
-- **Fase 4 Google Business Profile sync** — ⚠️ código 100% (OAuth, refresh-token, cliente API, matcher con ventana 48h + similitud + modo anonymous, cron con lock optimista + email batch, notificador Brevo). Esperando aprobación de Google a la cuota de la API.
-- **Fase 4.b Places API fallback** — ✅ cron `/api/cron/sync-places-reviews` trae las 5 reseñas más recientes por ficha (Places API legacy con `reviews_sort=newest`) sin necesidad de OAuth + cron horario GitHub Action + botón "Sincronizar ahora" en UI. Detalle en [CLAUDE.md §3 Fase 4.b](CLAUDE.md).
+- **Fase 4 Google Business Profile sync** — ✅ **ACTIVA desde 2026-06-10** (cuota concedida). OAuth en las 7 fichas, cron con corte going-forward (`BP_GO_LIVE_AT`, no importa histórico), lock optimista + email batch, matcher (ventana 48h + similitud + mención del comercial + desempate comercial>director), **responder reseñas por API** desde `/resenas/respuestas`. Fuente única. Detalle en [CLAUDE.md §4.50](CLAUDE.md).
+- **Fase 4.b Places API fallback** — ⏸️ apagado el 2026-06-10 (sustituido por Business Profile). El cron `/api/cron/sync-places-reviews` y `lib/google/sync-places.ts` siguen existiendo (reactivables) pero no se disparan.
 - **Fase 5 Manager (Bel)** — ✅ comparte vista con admin en `/dashboard` y `/comerciales` con plenos permisos, `/manager/resenas` con filtros, `/manager/export` y endpoint `/api/export/reviews` con ExcelJS (dos hojas).
 - **Perfil global** — ✅ `/perfil` accesible a los tres roles con avatar upload (bucket Storage).
 - **Fase 6 Polish / hardening** — ✅ auditoría 18 items (críticos + altos + medios + bajos). Tests Vitest, `noUncheckedIndexedAccess`, CSP, índices compuestos, lock cron, email batch, etc. Detalle en [CLAUDE.md §3 Fase 6](CLAUDE.md).
@@ -101,6 +101,10 @@ npm run dev
    supabase/migrations/020_commission_rate.sql
    supabase/migrations/021_profiles_self_update_lockdown.sql
    supabase/migrations/022_profiles_self_update_freeze_department.sql
+   supabase/migrations/023_support_helpdesk.sql
+   supabase/migrations/024_review_replies.sql
+   supabase/migrations/025_reviews_manager_write.sql
+   supabase/migrations/026_commission_cap.sql
    ```
 4. Auth: usar el flujo OTP `token_hash` documentado en [CLAUDE.md §4.1](CLAUDE.md). Las plantillas de email en Supabase Dashboard → Authentication → Emails deben usar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type={email|invite}`.
 
@@ -120,20 +124,20 @@ Vía de respaldo que ya está trayendo reseñas reales en producción. Solo nece
    ```
 5. Cada ficha en `/fichas` debe tener su `google_place_id` rellenado (botón "Editar Place ID" en la fila).
 
-#### 4.B Google Business Profile API — pendiente de aprobación
-Cuando llegue la cuota, complementa a Places con paginación completa y datos más ricos.
+#### 4.B Google Business Profile API — ✅ ACTIVA (fuente única desde 2026-06-10)
+Cuota concedida (caso `5-5855000041022`). Es la fuente única de reseñas going-forward.
 
-1. APIs habilitadas: My Business Account Management + Business Information.
-2. OAuth 2.0 Client ID (Web app) con redirect URI `http://localhost:3000/api/google/oauth/callback`. Añadir HTTPS prod cuando despleguéis.
-3. OAuth consent screen en Testing con scopes `openid`, `email`, `https://www.googleapis.com/auth/business.manage` + test users autorizados (admins de Inseryal).
+1. APIs habilitadas: My Business Account Management + Business Information + Business Profile (reviews v4).
+2. OAuth 2.0 Client ID (Web app) con redirect URI `http://localhost:3000/api/google/oauth/callback` (+ HTTPS prod).
+3. OAuth consent screen con scopes `openid`, `email`, `https://www.googleapis.com/auth/business.manage`.
 4. Rellenar `.env.local`:
    ```
    GOOGLE_CLIENT_ID=…
    GOOGLE_CLIENT_SECRET=…
    GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3000/api/google/oauth/callback
    ```
-5. Solicitar acceso a la **Business Profile API** vía [el formulario oficial](https://support.google.com/business/contact/api_default). Sin esto la cuota está a 0 y todas las llamadas a `mybusiness*.googleapis.com` devuelven 429 RESOURCE_EXHAUSTED. ETA: 7-15 días hábiles.
-6. Cuando Google apruebe: ir a [/fichas](http://localhost:3000/fichas) → "Conectar Google" en cada ficha → seleccionar Business Profile → vincular. Tras el primer run del cron, ejecutar el script de dedup descrito en [CLAUDE.md §8](CLAUDE.md).
+5. Las 7 fichas de prod ya están conectadas (OAuth en `location_secrets`, `google_location_resource` = recurso completo `accounts/.../locations/...`). Para conectar una ficha nueva: [/fichas](http://localhost:3000/fichas) → "Conectar Google" → seleccionar la ficha → vincular.
+6. ⚠️ El cron solo importa reseñas creadas a partir de `BP_GO_LIVE_AT` (corte going-forward, no histórico). Diagnóstico de cuota: `node scripts/check-bp-quota.mjs`. Detalle: [CLAUDE.md §4.50](CLAUDE.md).
 
 ### 5. Notificaciones por email (Brevo SMTP)
 
@@ -151,21 +155,16 @@ Detalles sobre Brevo, las dos claves SMTP independientes y el whitelist de IPs e
 
 ### 6. Crons en producción
 
-[`vercel.json`](vercel.json) configura **dos crons diarios** apuntando a endpoints distintos:
-- `0 5 * * *` UTC → `/api/cron/sync-places-reviews` (Places API, activo)
-- `5 5 * * *` UTC → `/api/cron/sync-google-reviews` (Business Profile, esperando cuota)
+[`vercel.json`](vercel.json) configura **un cron diario** de Business Profile (fuente única desde 2026-06-10):
+- `5 5 * * *` UTC → `/api/cron/sync-google-reviews` (Business Profile)
 
-Ambos a las 5:00/5:05 UTC ≈ 6-7 AM hora española. Vercel firma cada request con `Authorization: Bearer $CRON_SECRET` (validado con `timingSafeEqual`). Vercel Hobby no admite schedules sub-diarios; ver [CLAUDE.md §4.11](CLAUDE.md) para alternativas si urge inmediatez.
+Para casi-tiempo-real, la **GitHub Action** [`sync-reviews-hourly.yml`](.github/workflows/sync-reviews-hourly.yml) llama al mismo endpoint cada hora (30 6-23 UTC). Vercel firma cada request con `Authorization: Bearer $CRON_SECRET` (validado con `timingSafeEqual`). El cron de Places (`0 5 * * *`) se quitó al apagar Places; su endpoint sigue existiendo, reactivable.
 
-Ambos crons comparten el helper [`lib/cron/process-reviews.ts`](lib/cron/process-reviews.ts) (matcher + insert + acumulación de notificaciones email + flush en batch) y un lock optimista por location (`oauth_last_sync_at < now() - 60s`). El cron Business Profile añade paginación con `nextPageToken` (MAX_PAGES=10) + early-exit cuando una página ya está sincronizada.
+El cron comparte el helper [`lib/cron/process-reviews.ts`](lib/cron/process-reviews.ts) (matcher + insert + acumulación de notificaciones email + flush en batch) y un lock optimista por location (`oauth_last_sync_at < now() - 60s`). Pagina con `nextPageToken` (MAX_PAGES=10) + early-exit cuando una página ya está sincronizada O es anterior al corte de activación (`BP_GO_LIVE_AT`).
 
-Para lanzar los crons a mano en local:
+Para lanzar el cron a mano en local:
 
 ```bash
-set -a && source .env.local && set +a && \
-curl -H "Authorization: Bearer $CRON_SECRET" \
-  http://localhost:3000/api/cron/sync-places-reviews
-
 set -a && source .env.local && set +a && \
 curl -H "Authorization: Bearer $CRON_SECRET" \
   http://localhost:3000/api/cron/sync-google-reviews
@@ -191,7 +190,8 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/gestores`                    | admin             | Lista + invite + delete de gestores                              |
 | `/fichas`                      | admin + office_director | Lista + Conectar/Desconectar Google                        |
 | `/fichas/:id/conectar`         | admin + office_director | UI selección de Business Profile location                  |
-| `/resenas/verificacion`        | 4 roles (mig 016) | Bandeja pending/unmatched/eliminadas + confirm/reject/reassign/marcar eliminada/claim |
+| `/resenas/verificacion`        | 4 roles (mig 016) | Bandeja pending/unmatched/eliminadas/atribuidas + confirm/reject/reassign/marcar eliminada/claim |
+| `/resenas/respuestas`          | admin + manager   | Bandeja de respuestas a reseñas de Google: redactar + "Publicar en Google" por API (mig 024) |
 | `/panel`                       | sales             | KPIs propios + RangePicker + proyección ETA + card mobile clientes |
 | `/panel/enlace`                | sales             | URL + QR + plantilla genérica editable + deep-links + card a "Mis plantillas" |
 | `/panel/plantillas`            | sales             | Editor de las 3 plantillas por cliente (nombre + cuerpo), guardadas en `profiles.message_templates` (mig 019) |
@@ -221,7 +221,7 @@ npm run build        # Build producción
 npm run start        # Server producción
 npm run typecheck    # tsc --noEmit (gate antes de cerrar tareas)
 npm run lint         # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test             # Vitest unit tests (241 verdes)
+npm test             # Vitest unit tests (316 verdes)
 npm run test:watch   # Vitest en modo watch
 npm run test:e2e     # Playwright E2E (login + admin-nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui  # Playwright en modo UI interactivo
@@ -314,11 +314,15 @@ supabase/migrations/    ─ 001 schema, 002 RLS, 003 seed, 004 google_oauth,
                          019 sales_message_templates (profiles.message_templates jsonb),
                          020 commission_rate (profiles.commission_rate numeric — tarifa €/reseña),
                          021 profiles_self_update_lockdown (congela columnas sensibles en RLS),
-                         022 profiles_self_update_freeze_department (addendum: + department/language)
+                         022 profiles_self_update_freeze_department (addendum: + department/language),
+                         023 support_helpdesk (soporte interno: 3 tablas + RLS + unread_count),
+                         024 review_replies (reply_text/replied_at/reply_by/reply_via en reviews),
+                         025 reviews_manager_write (policy UPDATE del gestor sobre reviews),
+                         026 commission_cap (profiles.commission_cap — tope reseñas bonificables)
 e2e/                    ─ Playwright specs (login + admin-nav) + helpers/auth.ts
 test/                   ─ server-only-stub.ts (para que Vitest importe módulos server-only)
 middleware.ts           ─ Auth + roles + redirección por rol
-vercel.json             ─ Crons diarios 0 5 * * * (Places) y 5 5 * * * (Business Profile) UTC
+vercel.json             ─ Cron diario 5 5 * * * (Business Profile, fuente única) UTC
 vitest.config.ts        ─ Alias @/* + stub server-only
 next.config.ts          ─ Headers de seguridad (CSP completo + HSTS + …)
 _design_package/        ─ Bundle original de diseño (referencia, no se toca)

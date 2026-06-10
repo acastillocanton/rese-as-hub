@@ -4,7 +4,7 @@
 >
 > Documento vivo · versión 1.0 (v1 cerrada el 2026-05-26) · última edición 2026-06-01 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
 >
-> 🏁 **V1 cerrada el 2026-05-26**. MVP completo, live en producción, trayendo reseñas reales vía Places API (Business Profile esperando cuota de Google). **v2 en curso (jun 2026)**: anti-fraude, verificación abierta, alertas ≤2★, plantillas de mensaje, panel "Histórico/ranking/insignias", **modelo de comisión (periodo 20→20 + tarifa €/reseña)** y endurecimiento de seguridad. Ver §9 (cerradas v2) y `CLAUDE.md` §3/§4.
+> 🏁 **V1 cerrada el 2026-05-26**. MVP completo, live en producción. **🎉 Google Business Profile API activada el 2026-06-10** (fuente única de reseñas going-forward; Places API apagado). **v2 (jun 2026)**: anti-fraude, verificación abierta, alertas ≤2★, plantillas de mensaje, panel "Histórico/ranking/insignias", **modelo de comisión (periodo 20→20 + tarifa €/reseña + tope de reseñas bonificables)**, soporte interno, responder reseñas de Google y endurecimiento de seguridad. Ver §9 (cerradas v2) y `CLAUDE.md` §3/§4 (§4.50 BP).
 
 ---
 
@@ -115,7 +115,7 @@ app/                              Next.js App Router
   c/[salesSlug]/[clientSlug]/     Landing pública con cliente identificado
   auth/                           callback (magic-link) + signout
   api/cron/sync-google-reviews/   Cron Business Profile (fuente única, activo desde 2026-06-10)
-  api/cron/sync-places-reviews/   Cron Places API legacy (activo, reviews_sort=newest)
+  api/cron/sync-places-reviews/   Cron Places API legacy (apagado 2026-06-10; reactivable)
   api/sync/now/                   Sync manual on-demand (autenticado por sesión)
   login/                          Pantalla de login + server action
   accept-invite/[token]/          Onboarding del comercial invitado
