@@ -1,25 +1,27 @@
-# Sincronización horaria contra Google Places API
+# Sincronización horaria contra Google Business Profile API
 #
 # Por qué este workflow existe:
-#   Vercel Hobby solo permite crons diarios. Places API devuelve top-5 sin
-#   paginación: con 1 sync al día perdemos reseñas si una ficha recibe >5 en
-#   24h. Disparando el endpoint cada hora desde GitHub Actions, casi nunca
-#   habrá >5 reseñas entre dos llamadas consecutivas (asumiendo bajo volumen
-#   por hora típico de Inseryal).
+#   Vercel Hobby solo permite crons diarios. Para traer reseñas casi en tiempo
+#   real disparamos el endpoint del cron cada hora desde GitHub Actions.
+#
+# Fuente: Business Profile API (caso 5-5855000041022, cuota concedida
+#   2026-06-10). Sustituye a Places API como fuente única — ver CLAUDE.md
+#   §4.26 / §4.50. El cron solo importa reseñas creadas a partir del corte de
+#   activación (BP_GO_LIVE_AT), no el histórico.
 #
 # Cuándo se ejecuta:
 #   Cada hora a y media (las 30 del minuto), entre las 06:00 y las 23:00 UTC.
-#   En total ~18 ejecuciones/día × 7 fichas = 126 requests/día. Muy dentro
-#   del free tier de Google Maps Platform.
+#   El endpoint es idempotente (unique location_id+google_review_id) y tiene
+#   lock optimista de 60s contra el cron diario de Vercel.
 #
 # Secrets necesarios (Repository Settings → Secrets and variables → Actions):
 #   - APP_URL    → https://resenas.marinadorconstrucciones.com
 #   - CRON_SECRET → mismo valor que la env var de Vercel
 #
-# Si quieres ejecutarlo a demanda: pestaña Actions → "Sync Places hourly" →
+# Si quieres ejecutarlo a demanda: pestaña Actions → "Sync reviews hourly" →
 # "Run workflow".
 
-name: Sync Places hourly
+name: Sync reviews hourly
 
 on:
   schedule:
@@ -32,7 +34,7 @@ concurrency:
   # Si una ejecución se cruza con otra (lenta), la nueva espera a que la
   # anterior termine. El lock optimista del endpoint también lo cubriría,
   # pero esto evita llamadas duplicadas innecesarias.
-  group: sync-places
+  group: sync-reviews
   cancel-in-progress: false
 
 jobs:
@@ -40,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Call Places sync endpoint
+      - name: Call Business Profile sync endpoint
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -51,7 +53,7 @@ jobs:
           fi
           response=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" \
             -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/sync-places-reviews")
+            "$APP_URL/api/cron/sync-google-reviews")
           status=$(echo "$response" | tail -n1 | sed 's/HTTP_STATUS://')
           body=$(echo "$response" | sed '$d')
           echo "HTTP $status"

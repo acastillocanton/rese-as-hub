@@ -30,6 +30,16 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
+ * Fecha de activación de Business Profile como fuente (caso 5-5855000041022,
+ * cuota concedida 2026-06-10). Decisión de producto: "solo de ahora en
+ * adelante" — NO importamos el histórico de Google (Oropesa tiene 1.622
+ * reseñas) para no inflar la bandeja de unmatched ni disparar una tormenta
+ * de alertas ≤2★ por reseñas viejas. Solo se insertan reseñas con
+ * createTime >= este corte. Ver CLAUDE.md §4.26 / §4.50.
+ */
+const BP_GO_LIVE_AT = "2026-06-10T00:00:00.000Z";
+
+/**
  * Vercel Cron entry point. Configurar el schedule en vercel.json:
  *   { "crons": [{ "path": "/api/cron/sync-google-reviews", "schedule": "*\/10 * * * *" }] }
  *
@@ -220,6 +230,12 @@ export async function GET(request: NextRequest) {
         if (pageReviews.length === 0) break;
         googleReviews.push(...pageReviews);
 
+        // Going-forward only (§4.26): la API ordena por updateTime desc. Si la
+        // página ENTERA es anterior al corte de activación, ya hemos pasado la
+        // ventana de reseñas recientes y las páginas siguientes son aún más
+        // antiguas → dejamos de paginar hacia el histórico (no lo importamos).
+        if (pageReviews.every((r) => r.createTime < BP_GO_LIVE_AT)) break;
+
         // Si toda la página ya está en DB, no merece la pena pedir más:
         // las siguientes son más antiguas todavía y ya las tenemos.
         const pageIds = pageReviews.map((r) => r.reviewId);
@@ -250,7 +266,13 @@ export async function GET(request: NextRequest) {
         .in("google_review_id", ids)
         .returns<{ google_review_id: string }[]>();
       const existingSet = new Set((existing ?? []).map((r) => r.google_review_id));
-      const fresh = googleReviews.filter((r) => !existingSet.has(r.reviewId));
+      // Going-forward only (§4.26): además de filtrar las ya existentes,
+      // descartamos las creadas ANTES del corte de activación. Así el
+      // histórico de Google nunca entra como "fresh" → ni se inserta ni
+      // dispara alertas ≤2★ / emails de nueva reseña.
+      const fresh = googleReviews.filter(
+        (r) => !existingSet.has(r.reviewId) && r.createTime >= BP_GO_LIVE_AT,
+      );
 
       if (fresh.length === 0) {
         await markSyncOk(admin, loc.id);
