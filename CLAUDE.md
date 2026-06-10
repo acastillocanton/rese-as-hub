@@ -1082,6 +1082,21 @@ La API v4 de Business Profile devuelve el `comment` con una **traducción autom�
 
 ⚠️ Decisión de producto: guardamos **solo el original** (no la traducción en campo aparte). Si el dpto. internacional quisiera leer en español lo que escriben en otros idiomas, habría que añadir columna + migración ("Ask first").
 
+### 4.52 El sync manual usaba Places → clones Places/BP (fix + limpieza, 2026-06-10)
+
+**Síntoma (José):** al pulsar "Sincronizar" salía `Error: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, y aparecían reseñas/respuestas **duplicadas** (una con botón "Publicar en Google" = copia BP, otra con "Responder en Google" = copia Places).
+
+**Causa:** [`/api/sync/now`](app/api/sync/now/route.ts) seguía llamando a `syncPlaces()` después de apagar Places el mismo día (§4.50). Con Places caído, el endpoint se colgaba hasta el timeout de Vercel → HTML 504/500 → `SyncNowButton` hacía `res.json()` sobre HTML → el error críptico. Y mientras procesaba fichas antes del timeout, **insertaba copias `places:`** de reseñas que el cron BP ya había traído → clones (el `unique(location_id, google_review_id)` no los detecta: IDs distintos, §4.26 Bloque B).
+
+**Fix (commit `4dcf6cf`):**
+- La lógica del cron BP (antes inline en [`sync-google-reviews/route.ts`](app/api/cron/sync-google-reviews/route.ts)) se extrajo a [`lib/google/sync-business-profile.ts`](lib/google/sync-business-profile.ts) (`syncBusinessProfile({ locationIds? })`, mismo patrón "nunca lanza" que `syncPlaces`). La usan **el cron Y el sync manual**. El cron quedó como wrapper fino (auth + llamada), comportamiento idéntico.
+- `/api/sync/now` → `syncBusinessProfile`. El botón ya sincroniza por BP.
+- [`SyncNowButton`](components/ui/SyncNowButton.tsx) protege el `res.json()`: si la respuesta no es JSON (timeout/HTML), mensaje claro en vez del "Unexpected token '<'".
+- No queda fuente de Places: `vercel.json` solo BP, el único GitHub Action apunta a BP, y `/api/cron/sync-places-reviews` no lo dispara nada (reactivable, §4.50).
+
+**Limpieza one-shot** (`scripts/dedup-places-bp-clones.mjs`, gitignored, count-first + audit): **11 pares clon** del 2026-06-10 → borrada la copia `places_api`, conservada la BP (autoritativa, `reply_via='api'` donde aplica), y **recalculado el anti-fraude** por cliente (mig 015) para promover a principal las 4 copias BP que habían quedado `Duplicada`. `audit_log action='places_bp_clone_dedup'` ×11. Verificado: 0 pares restantes, 0 clientes con ≠1 principal. Las 158 reseñas `places_api` históricas (sin par BP) no se tocaron.
+- **De paso:** corregido un caso preexistente (NO causado por esta limpieza) — cliente "Marina Kudryavtseva": su principal se soft-removió en la limpieza de ediciones §4.41 (2026-06-04) pero la superviviente quedó `is_duplicate=true` sin promover (§4.23: `markReviewRemoved` no toca `is_duplicate`) → su única reseña activa no contaba. Promovida a principal (`audit_log action='promote_orphan_principal'`).
+
 ---
 
 ## 5. Setup en otro Mac
