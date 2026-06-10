@@ -158,7 +158,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
     locationsQuery.returns<{ id: string; name: string; google_place_id: string; brand: Brand }[]>(),
     admin
       .from("profiles")
-      .select("id, full_name, email, status, director_id, location_id")
+      .select("id, full_name, email, status, director_id, location_id, role")
       .in("role", ["sales", "office_director"])
       .returns<{
         id: string;
@@ -167,6 +167,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
         status: string;
         director_id: string | null;
         location_id: string | null;
+        role: "sales" | "office_director";
       }[]>(),
     admin
       .from("profiles")
@@ -222,7 +223,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
   for (const s of salesRes.data ?? []) {
     if (!s.location_id || s.status === "archived") continue;
     const arr = commercialsByLocation.get(s.location_id) ?? [];
-    arr.push({ sales_id: s.id, full_name: s.full_name });
+    arr.push({ sales_id: s.id, full_name: s.full_name, role: s.role });
     commercialsByLocation.set(s.location_id, arr);
   }
   // Mapa brand por location para que flushLowRatingAlerts resuelva sin

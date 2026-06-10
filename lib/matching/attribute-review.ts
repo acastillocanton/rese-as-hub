@@ -50,9 +50,13 @@ export const PENDING_THRESHOLD = 40;
  * cliente exacto es secundario (lo afina el humano/comercial después, ver
  * §4.38). Por eso las confianzas aquí son >= AUTO_THRESHOLD.
  *
- * Guardrail duro que SE MANTIENE (es corrección, no criterio): si el texto
- * nombra a MÁS DE UN comercial distinto, es ambiguo y NO contamos — no podemos
- * saber a quién atribuirla.
+ * Guardrail que SE MANTIENE: si el texto nombra a MÁS DE UN comercial distinto,
+ * es ambiguo y NO contamos — salvo el desempate por rol de abajo.
+ *
+ * Desempate por rol (2026-06-10, §4.38): cuando los mencionados son un
+ * COMERCIAL (`sales`) y uno o varios DIRECTORES (`office_director`), se atribuye
+ * al comercial (es quien produce; el director es supervisión). Solo resuelve si
+ * queda EXACTAMENTE UN `sales`; con 0 ó ≥2 `sales` sigue siendo ambiguo → null.
  */
 /** Token mínimo del nombre del comercial que cuenta como mención (evita que
  *  partículas tipo "de"/"la" o iniciales sueltas disparen falsos positivos). */
@@ -119,6 +123,13 @@ export type ShareLinkCandidate = {
 export type CommercialInfo = {
   sales_id: string;
   full_name: string;
+  /** Rol del productor en la ficha. Se usa para desempatar menciones
+   *  ambiguas: si el texto nombra a un COMERCIAL (`sales`) Y a un DIRECTOR
+   *  (`office_director`), se atribuye al comercial, no al director (decisión
+   *  de producto 2026-06-10, §4.38 — el comercial es quien produce sobre el
+   *  terreno; el director es supervisión, "nos curamos en salud"). Opcional
+   *  por compatibilidad: si falta, no se aplica la preferencia. */
+  role?: "sales" | "office_director";
 };
 
 export type ReviewInput = {
@@ -415,8 +426,9 @@ function primaryAttribution(
  *     el roster de la ficha: cuenta al comercial SIN cliente (la comisión es
  *     por comercial; el cliente exacto lo afina el humano/comercial luego).
  *
- * En ambos niveles, si el texto menciona a MÁS DE UN comercial distinto de
- * forma ambigua, no adivinamos → `null` (no contamos).
+ * En ambos niveles, si el texto menciona a MÁS DE UN comercial distinto, no
+ * adivinamos → `null` — salvo el desempate comercial>director
+ * (`resolveMentionBySalesPreference`).
  */
 function attributeByCommercialMention(
   review: ReviewInput,
@@ -427,6 +439,12 @@ function attributeByCommercialMention(
   if (!text) return null;
   const reviewMs = new Date(review.google_created_at).getTime();
 
+  // Rol por sales_id (desde el roster) para el desempate comercial>director.
+  const roleById = new Map<string, "sales" | "office_director">();
+  for (const c of commercials) {
+    if (c.role) roleById.set(c.sales_id, c.role);
+  }
+
   // Candidatos cuyo enlace cae en ventana Y cuyo comercial se menciona.
   const inWindowMentioned = candidates.filter((c) => {
     const openedMs = new Date(c.opened_at).getTime();
@@ -436,18 +454,21 @@ function attributeByCommercialMention(
     return mentionsCommercial(text, c.sales_full_name);
   });
 
-  const distinctSalesInWindow = new Set(
-    inWindowMentioned.map((c) => c.sales_id),
-  );
-
-  // Tier 1: exactamente un comercial mencionado con enlace en ventana.
-  if (distinctSalesInWindow.size === 1) {
+  // Tier 1: comercial mencionado con enlace en ventana. Si hay varios, el
+  // desempate comercial>director intenta resolver a un único `sales`.
+  if (inWindowMentioned.length > 0) {
+    const resolved = resolveMentionBySalesPreference(
+      inWindowMentioned.map((c) => c.sales_id),
+      roleById,
+    );
+    if (!resolved) return null; // ambiguo no resoluble por preferencia
     let best: {
       candidate: ShareLinkCandidate;
       nameScore: number;
       hoursDelta: number;
     } | null = null;
     for (const c of inWindowMentioned) {
+      if (c.sales_id !== resolved.salesId) continue;
       const nameScore = c.client_full_name
         ? nameSimilarity(c.client_full_name, review.author_name)
         : 0;
@@ -482,6 +503,9 @@ function attributeByCommercialMention(
         name_score: best.nameScore,
         hours_delta: Number(best.hoursDelta.toFixed(2)),
         candidates_considered: candidates.length,
+        ...(resolved.viaPreference
+          ? { resolved_by_sales_preference: true }
+          : {}),
       },
       sales_id: best.candidate.sales_id,
       client_id: best.candidate.client_id ?? undefined,
@@ -489,17 +513,18 @@ function attributeByCommercialMention(
     };
   }
 
-  // Más de un comercial mencionado con enlace en ventana → ambiguo.
-  if (distinctSalesInWindow.size > 1) return null;
-
   // Tier 2: ningún comercial mencionado tiene enlace en ventana. Buscamos en
-  // el roster de la ficha. Solo pre-asignamos si hay EXACTAMENTE uno.
+  // el roster de la ficha. Pre-asignamos si hay EXACTAMENTE uno, o si el
+  // desempate comercial>director resuelve a un único `sales`.
   const mentionedRoster = commercials.filter((c) =>
     mentionsCommercial(text, c.full_name),
   );
-  const distinctRoster = new Set(mentionedRoster.map((c) => c.sales_id));
-  if (distinctRoster.size === 1) {
-    const c = mentionedRoster[0]!;
+  const resolved = resolveMentionBySalesPreference(
+    mentionedRoster.map((c) => c.sales_id),
+    roleById,
+  );
+  if (resolved) {
+    const c = mentionedRoster.find((x) => x.sales_id === resolved.salesId)!;
     return {
       match_state: "counted",
       match_confidence: MENTION_COUNT_NO_WINDOW_CONFIDENCE,
@@ -509,6 +534,9 @@ function attributeByCommercialMention(
         review_author: review.author_name,
         candidates_considered: candidates.length,
         roster_size: commercials.length,
+        ...(resolved.viaPreference
+          ? { resolved_by_sales_preference: true }
+          : {}),
       },
       sales_id: c.sales_id,
       // client_id ausente a propósito: sin enlace en ventana no hay cliente
@@ -516,6 +544,29 @@ function attributeByCommercialMention(
     };
   }
 
+  return null;
+}
+
+/**
+ * Resuelve un conjunto (posiblemente ambiguo) de comerciales mencionados a un
+ * único sales_id aplicando la preferencia COMERCIAL > DIRECTOR (§4.38):
+ *   - 0 mencionados → null.
+ *   - 1 mencionado → ese (sin preferencia: `viaPreference=false`).
+ *   - >1 pero exactamente uno con role 'sales' → ese (`viaPreference=true`);
+ *     los `office_director` se descartan como desempate.
+ *   - >1 con 0 ó ≥2 'sales' → null (sigue ambiguo: no adivinamos).
+ * `roleById` mapea sales_id → role desde el roster (vacío → no hay preferencia
+ * posible, así que solo resuelve el caso de 1 mención).
+ */
+function resolveMentionBySalesPreference(
+  salesIds: string[],
+  roleById: Map<string, "sales" | "office_director">,
+): { salesId: string; viaPreference: boolean } | null {
+  const distinct = [...new Set(salesIds)];
+  if (distinct.length === 0) return null;
+  if (distinct.length === 1) return { salesId: distinct[0]!, viaPreference: false };
+  const salesOnly = distinct.filter((id) => roleById.get(id) === "sales");
+  if (salesOnly.length === 1) return { salesId: salesOnly[0]!, viaPreference: true };
   return null;
 }
 

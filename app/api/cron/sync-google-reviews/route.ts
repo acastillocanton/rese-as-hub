@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       }[]>(),
     admin
       .from("profiles")
-      .select("id, full_name, email, status, director_id, location_id")
+      .select("id, full_name, email, status, director_id, location_id, role")
       .in("role", ["sales", "office_director"])
       .returns<{
         id: string;
@@ -92,6 +92,7 @@ export async function GET(request: NextRequest) {
         status: string;
         director_id: string | null;
         location_id: string | null;
+        role: "sales" | "office_director";
       }[]>(),
     admin
       .from("profiles")
@@ -141,7 +142,7 @@ export async function GET(request: NextRequest) {
   for (const s of salesRes.data ?? []) {
     if (!s.location_id || s.status === "archived") continue;
     const arr = commercialsByLocation.get(s.location_id) ?? [];
-    arr.push({ sales_id: s.id, full_name: s.full_name });
+    arr.push({ sales_id: s.id, full_name: s.full_name, role: s.role });
     commercialsByLocation.set(s.location_id, arr);
   }
   const appBase =

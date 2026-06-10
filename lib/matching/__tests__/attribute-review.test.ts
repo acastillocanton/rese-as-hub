@@ -357,6 +357,67 @@ describe("attributeReview — atribución por mención del comercial", () => {
     expect(r.match_state).toBe("unmatched");
   });
 
+  // Desempate comercial>director (§4.38, 2026-06-10). Caso real: el cliente
+  // da las gracias a su comercial Y a su director en el mismo texto.
+  it("Tier 2 desempate: menciona a un comercial y a un director → counted al COMERCIAL", () => {
+    const roster: CommercialInfo[] = [
+      { sales_id: "katalin", full_name: "Katalin Sarovics", role: "sales" },
+      { sales_id: "pavel", full_name: "Pavel Kurlaev", role: "office_director" },
+    ];
+    const r = attributeReview(
+      review({ author_name: "Gheorghe Silaghi", text: "Thank you Katalin and Pavel!" }),
+      [],
+      roster,
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.sales_id).toBe("katalin");
+    expect(r.match_evidence.resolved_by_sales_preference).toBe(true);
+  });
+
+  it("Tier 2 desempate: un comercial + DOS directores → counted al comercial", () => {
+    const roster: CommercialInfo[] = [
+      { sales_id: "katalin", full_name: "Katalin Sarovics", role: "sales" },
+      { sales_id: "pavel", full_name: "Pavel Kurlaev", role: "office_director" },
+      { sales_id: "maria", full_name: "María Jesús Lozano", role: "office_director" },
+    ];
+    const r = attributeReview(
+      review({ author_name: "X", text: "Gracias Katalin, Pavel y María" }),
+      [],
+      roster,
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.sales_id).toBe("katalin");
+  });
+
+  it("Tier 2 sigue ambiguo: dos COMERCIALES (sales) mencionados aunque haya un director → unmatched", () => {
+    const roster: CommercialInfo[] = [
+      { sales_id: "tono", full_name: "Tono Sánchez", role: "sales" },
+      { sales_id: "luis", full_name: "Luis Gómez", role: "sales" },
+      { sales_id: "pavel", full_name: "Pavel Kurlaev", role: "office_director" },
+    ];
+    const r = attributeReview(
+      review({ author_name: "Maf", text: "Gracias Tono, Luis y Pavel" }),
+      [],
+      roster,
+    );
+    expect(r.match_state).toBe("unmatched");
+  });
+
+  it("Tier 2: un único director mencionado (sin comercial) → counted al director", () => {
+    const roster: CommercialInfo[] = [
+      { sales_id: "pavel", full_name: "Pavel Kurlaev", role: "office_director" },
+      { sales_id: "tono", full_name: "Tono Sánchez", role: "sales" },
+    ];
+    const r = attributeReview(
+      review({ author_name: "X", text: "Muchas gracias Pavel" }),
+      [],
+      roster,
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.sales_id).toBe("pavel");
+    expect(r.match_evidence.resolved_by_sales_preference).toBeUndefined();
+  });
+
   it("no rescata por mención si la reseña no tiene texto", () => {
     // Dos comerciales distintos en ventana → la atribución temporal a un único
     // comercial tampoco aplica (ambiguo), así aislamos el caso de la mención.
