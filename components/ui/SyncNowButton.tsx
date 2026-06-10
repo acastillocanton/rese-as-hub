@@ -55,7 +55,21 @@ export function SyncNowButton({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(locationId ? { location_id: locationId } : {}),
         });
-        const data = (await res.json()) as SyncNowResult;
+        // La respuesta puede no ser JSON si el endpoint agota el tiempo o
+        // devuelve una página de error de Vercel (504/500 → HTML). Parsear sin
+        // proteger lanzaría "Unexpected token '<'"; mostramos un mensaje claro.
+        let data: SyncNowResult | null = null;
+        try {
+          data = (await res.json()) as SyncNowResult;
+        } catch {
+          setFeedbackTone("warn");
+          setFeedback(
+            res.status === 504
+              ? "La sincronización tardó demasiado. Vuelve a intentarlo en un momento."
+              : `No se pudo sincronizar (HTTP ${res.status}). Vuelve a intentarlo en un momento.`,
+          );
+          return;
+        }
         if (!res.ok || !data.ok) {
           setFeedbackTone("warn");
           setFeedback(`Error: ${data.error ?? `HTTP ${res.status}`}`);

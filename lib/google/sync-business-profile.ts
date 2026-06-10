@@ -1,0 +1,524 @@
+import "server-only";
+import { createServiceClient } from "@/lib/supabase/service";
+import {
+  getValidAccessTokenForLocation,
+  listReviews,
+  starRatingToInt,
+  type GoogleReview,
+} from "@/lib/google/business-profile";
+import { stripGoogleTranslation } from "@/lib/google/strip-translation";
+import { normalizeOwnerReply } from "@/lib/google/owner-reply";
+import {
+  processFreshReviews,
+  flushNotifications,
+  flushLowRatingAlerts,
+  type LocationSummary,
+  type SalesInfo,
+  type FreshReview,
+  type PendingNotification,
+  type LowRatingAlertContext,
+  type CommercialInfo,
+} from "@/lib/cron/process-reviews";
+import {
+  resolveLowRatingRecipients,
+  type LowRatingAlert,
+} from "@/lib/cron/low-rating-alerts";
+import { notifyNewReview } from "@/lib/email/notify-new-review";
+import { notifyLowRating } from "@/lib/email/notify-low-rating";
+import type { Brand, ProfileStatus } from "@/lib/supabase/types";
+
+/**
+ * Orquestador del sync de reseñas vía Google Business Profile API (v4).
+ *
+ * Fuente ÚNICA de reseñas going-forward desde 2026-06-10 (§4.50). Reutilizado por:
+ *   - El cron `/api/cron/sync-google-reviews` (horario vía GitHub Action +
+ *     diario de respaldo en vercel.json), todas las fichas conectadas, sin filtro.
+ *   - El endpoint manual `/api/sync/now` con `locationIds` filtrado por rol:
+ *     admin/gestor sin body → todas; con location_id → solo esa; comercial/director
+ *     → la de su ficha.
+ *
+ * Nunca lanza — los errores quedan en el `entry.error` de la location
+ * correspondiente (mismo contrato que `syncPlaces`), para que el caller pinte
+ * un NextResponse JSON sin romperse.
+ *
+ * (Antes esta lógica vivía inline en el GET del cron; se extrajo a este módulo
+ * para que el sync manual use BP en lugar de Places — apagado el 2026-06-10.)
+ */
+
+/**
+ * Fecha de activación de Business Profile como fuente (caso 5-5855000041022,
+ * cuota concedida 2026-06-10). Decisión de producto: "solo de ahora en
+ * adelante" — NO importamos el histórico de Google (Oropesa tiene 1.622
+ * reseñas) para no inflar la bandeja de unmatched ni disparar una tormenta
+ * de alertas ≤2★ por reseñas viejas. Solo se insertan reseñas con
+ * createTime >= este corte. Ver CLAUDE.md §4.26 / §4.50.
+ */
+export const BP_GO_LIVE_AT = "2026-06-10T00:00:00.000Z";
+
+export type SyncBusinessProfileArgs = {
+  /** Si `null`/`undefined` → todas las fichas conectadas (oauth_status=connected
+   *  con google_location_resource). Si array → solo esas IDs (las que no estén
+   *  conectadas se ignoran). */
+  locationIds?: string[] | null;
+};
+
+export type SyncBusinessProfileResult = {
+  locations_processed: number;
+  notify_attempted: number;
+  notify_failed: number;
+  low_rating_alerts_attempted: number;
+  low_rating_alerts_failed: number;
+  low_rating_alerts_skipped: number;
+  summary: LocationSummary[];
+};
+
+export async function syncBusinessProfile(
+  args: SyncBusinessProfileArgs = {},
+): Promise<SyncBusinessProfileResult> {
+  const admin = createServiceClient();
+  const filter = args.locationIds ?? null;
+
+  let locationsQuery = admin
+    .from("locations")
+    .select("id, name, google_location_resource, google_place_id, brand")
+    .eq("oauth_status", "connected")
+    .not("google_location_resource", "is", null);
+  if (filter && filter.length > 0) {
+    locationsQuery = locationsQuery.in("id", filter);
+  }
+
+  // Cargamos en paralelo: locations conectadas + sales + admins + managers
+  // (los dos últimos para alertas ≤2★ multi-stakeholder).
+  const [locationsRes, salesRes, adminsRes, managersRes] = await Promise.all([
+    locationsQuery.returns<{
+      id: string;
+      name: string;
+      google_location_resource: string;
+      google_place_id: string | null;
+      brand: Brand;
+    }[]>(),
+    admin
+      .from("profiles")
+      .select("id, full_name, email, status, director_id, location_id, role")
+      .in("role", ["sales", "office_director"])
+      .returns<{
+        id: string;
+        full_name: string;
+        email: string | null;
+        status: string;
+        director_id: string | null;
+        location_id: string | null;
+        role: "sales" | "office_director";
+      }[]>(),
+    admin
+      .from("profiles")
+      .select("id, email, status")
+      .eq("role", "admin")
+      .returns<{ id: string; email: string | null; status: string }[]>(),
+    admin
+      .from("profiles")
+      .select("id, email, status")
+      .eq("role", "reviews_manager")
+      .returns<{ id: string; email: string | null; status: string }[]>(),
+  ]);
+
+  if (locationsRes.error) {
+    console.error(
+      "[sync-bp] failed listing connected locations:",
+      locationsRes.error,
+    );
+    return emptyResult();
+  }
+
+  const connectedLocations = locationsRes.data ?? [];
+  const salesById = new Map<
+    string,
+    SalesInfo & { director_id: string | null }
+  >();
+  for (const s of salesRes.data ?? []) {
+    salesById.set(s.id, {
+      full_name: s.full_name,
+      email: s.email,
+      status: s.status,
+      director_id: s.director_id,
+    });
+  }
+  // directorBySalesId[sales_id] → profile del director responsable.
+  const directorBySalesId = new Map<
+    string,
+    { id: string; email: string | null; status: ProfileStatus }
+  >();
+  for (const s of salesRes.data ?? []) {
+    if (s.director_id) {
+      const dir = salesById.get(s.director_id);
+      if (dir) {
+        directorBySalesId.set(s.id, {
+          id: s.director_id,
+          email: dir.email,
+          status: dir.status as ProfileStatus,
+        });
+      }
+    }
+  }
+  // Roster de comerciales NO archivados por ficha — para el rescate por
+  // mención del matcher (comercial nombrado en el texto sin enlace en ventana).
+  const commercialsByLocation = new Map<string, CommercialInfo[]>();
+  for (const s of salesRes.data ?? []) {
+    if (!s.location_id || s.status === "archived") continue;
+    const arr = commercialsByLocation.get(s.location_id) ?? [];
+    arr.push({ sales_id: s.id, full_name: s.full_name, role: s.role });
+    commercialsByLocation.set(s.location_id, arr);
+  }
+  const appBase =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
+
+  if (connectedLocations.length === 0) {
+    return emptyResult();
+  }
+
+  const summary: LocationSummary[] = [];
+
+  // Mapa brand por location para el flush de alertas ≤2★.
+  const brandByLocationId = new Map<string, Brand>();
+  for (const l of connectedLocations) {
+    brandByLocationId.set(l.id, l.brand);
+  }
+
+  // Acumulamos las notificaciones de TODAS las locations y las enviamos en
+  // paralelo al final (Promise.allSettled), para no exceder los 60s de Vercel.
+  const pendingNotifications: PendingNotification[] = [];
+  const lowRatingAlerts: LowRatingAlert[] = [];
+  const clientIdsSeen = new Set<string>();
+
+  for (const loc of connectedLocations) {
+    const entry: LocationSummary = {
+      location_id: loc.id,
+      location_name: loc.name,
+      fetched: 0,
+      new_reviews: 0,
+      counted: 0,
+      pending: 0,
+      unmatched: 0,
+    };
+
+    // Lock optimista contra solapamiento: si otro proceso (cron horario, cron
+    // diario o sync manual) tocó esta location en los últimos 60s, hacemos skip.
+    const lockCutoff = new Date(Date.now() - 60_000).toISOString();
+    const { data: lockRows, error: lockErr } = await admin
+      .from("locations")
+      .update({ oauth_last_sync_at: new Date().toISOString() } as never)
+      .eq("id", loc.id)
+      .or(`oauth_last_sync_at.is.null,oauth_last_sync_at.lt.${lockCutoff}`)
+      .select("id");
+    if (lockErr) {
+      entry.error = `lock_failed: ${lockErr.message}`;
+      summary.push(entry);
+      continue;
+    }
+    if (!lockRows || lockRows.length === 0) {
+      entry.error = "skipped_concurrent_run";
+      summary.push(entry);
+      continue;
+    }
+
+    try {
+      const accessToken = await getValidAccessTokenForLocation(loc.id);
+      if (!accessToken) {
+        entry.error = "no_refresh_token";
+        await markSyncError(admin, loc.id, entry.error);
+        summary.push(entry);
+        continue;
+      }
+
+      // Paginación: la API v4 ordena por updateTime desc, así que avanzamos
+      // hasta que una página entera ya esté en DB (alcanzamos backlog
+      // sincronizado) o se acabe nextPageToken. MAX_PAGES (10 × 50 = 500)
+      // limita el primer cron sobre una ficha con histórico enorme.
+      const MAX_PAGES = 10;
+      const PAGE_SIZE = 50;
+      const googleReviews: GoogleReview[] = [];
+      let pageToken: string | undefined;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const { reviews: pageReviews, nextPageToken } = await listReviews(
+          accessToken,
+          loc.google_location_resource,
+          { pageSize: PAGE_SIZE, pageToken },
+        );
+        if (pageReviews.length === 0) break;
+        googleReviews.push(...pageReviews);
+
+        // Going-forward only (§4.26): la API ordena por updateTime desc. Si la
+        // página ENTERA es anterior al corte de activación, ya hemos pasado la
+        // ventana de reseñas recientes y las páginas siguientes son aún más
+        // antiguas → dejamos de paginar hacia el histórico (no lo importamos).
+        if (pageReviews.every((r) => r.createTime < BP_GO_LIVE_AT)) break;
+
+        // Si toda la página ya está en DB, no merece la pena pedir más:
+        // las siguientes son más antiguas todavía y ya las tenemos.
+        const pageIds = pageReviews.map((r) => r.reviewId);
+        const { data: existingInPage } = await admin
+          .from("reviews")
+          .select("google_review_id")
+          .eq("location_id", loc.id)
+          .in("google_review_id", pageIds)
+          .returns<{ google_review_id: string }[]>();
+        if ((existingInPage?.length ?? 0) === pageReviews.length) break;
+
+        if (!nextPageToken) break;
+        pageToken = nextPageToken;
+      }
+      entry.fetched = googleReviews.length;
+
+      if (googleReviews.length === 0) {
+        await markSyncOk(admin, loc.id);
+        summary.push(entry);
+        continue;
+      }
+
+      const ids = googleReviews.map((r) => r.reviewId);
+      const { data: existing } = await admin
+        .from("reviews")
+        .select("google_review_id")
+        .eq("location_id", loc.id)
+        .in("google_review_id", ids)
+        .returns<{ google_review_id: string }[]>();
+      const existingSet = new Set((existing ?? []).map((r) => r.google_review_id));
+
+      // Caso B (§4.48): respuestas del propietario añadidas DESPUÉS en Google a
+      // reseñas que ya teníamos. El caso dominante tiene cero reseñas fresh
+      // (una reseña vieja a la que responden días más tarde), así que esto va
+      // ANTES del filtro `fresh` y del early-return de abajo.
+      await syncExistingReplies(admin, loc.id, googleReviews, existingSet);
+
+      // Going-forward only (§4.26): además de filtrar las ya existentes,
+      // descartamos las creadas ANTES del corte de activación.
+      const fresh = googleReviews.filter(
+        (r) => !existingSet.has(r.reviewId) && r.createTime >= BP_GO_LIVE_AT,
+      );
+
+      if (fresh.length === 0) {
+        await markSyncOk(admin, loc.id);
+        summary.push(entry);
+        continue;
+      }
+
+      // Convertimos las reseñas de Google al shape común y delegamos en el
+      // helper compartido (matcher + insert + notif).
+      const freshNormalized: FreshReview[] = fresh.map((gr) => {
+        const rawAuthor = gr.reviewer?.displayName?.trim() ?? "";
+        const hasAuthorName = rawAuthor.length > 0;
+        return {
+          google_review_id: gr.reviewId,
+          author_name: hasAuthorName ? rawAuthor : "Anónimo",
+          hasAuthorName,
+          rating: starRatingToInt(gr.starRating),
+          // Google incrusta una traducción automática en el comment cuando el
+          // idioma de la reseña ≠ locale de la cuenta. Guardamos solo el
+          // original del cliente (§4.51).
+          text: stripGoogleTranslation(gr.comment ?? null),
+          google_created_at: gr.createTime,
+          // §4.48: respuesta del propietario ya puesta directamente en Google.
+          reply: normalizeOwnerReply(gr.reviewReply),
+        };
+      });
+
+      const { notifications, lowRatingAlerts: locLowRating } =
+        await processFreshReviews(
+          {
+            admin,
+            location: {
+              id: loc.id,
+              name: loc.name,
+              brand: loc.brand,
+              place_id: loc.google_place_id,
+            },
+            fresh: freshNormalized,
+            salesById,
+            commercials: commercialsByLocation.get(loc.id) ?? [],
+            source: "business_profile",
+          },
+          entry,
+        );
+      pendingNotifications.push(...notifications);
+      lowRatingAlerts.push(...locLowRating);
+      for (const a of locLowRating) {
+        if (a.clientId) clientIdsSeen.add(a.clientId);
+      }
+
+      await markSyncOk(admin, loc.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[sync-bp] location ${loc.id} failed:`, msg);
+      entry.error = msg;
+      await markSyncError(admin, loc.id, msg);
+    }
+
+    summary.push(entry);
+  }
+
+  const notifResult = await flushNotifications(
+    admin,
+    pendingNotifications,
+    notifyNewReview,
+    appBase,
+  );
+
+  // Nombres de cliente para el email de alerta ≤2★ (cuando hay client_id).
+  const clientNameById = new Map<string, string>();
+  if (clientIdsSeen.size > 0) {
+    const { data: clientsRes } = await admin
+      .from("clients")
+      .select("id, full_name")
+      .in("id", [...clientIdsSeen])
+      .returns<{ id: string; full_name: string }[]>();
+    for (const c of clientsRes ?? []) {
+      clientNameById.set(c.id, c.full_name);
+    }
+  }
+
+  const lowRatingCtx: LowRatingAlertContext = {
+    admins: (adminsRes.data ?? []).map((a) => ({
+      id: a.id,
+      email: a.email,
+      status: a.status as ProfileStatus,
+    })),
+    managers: (managersRes.data ?? []).map((m) => ({
+      id: m.id,
+      email: m.email,
+      status: m.status as ProfileStatus,
+    })),
+    directorBySalesId,
+    salesById,
+    brandByLocationId,
+    clientNameById,
+    appBase,
+  };
+  const lowRatingResult = await flushLowRatingAlerts(
+    admin,
+    lowRatingAlerts,
+    lowRatingCtx,
+    notifyLowRating,
+    resolveLowRatingRecipients,
+  );
+
+  return {
+    locations_processed: summary.length,
+    notify_attempted: notifResult.attempted,
+    notify_failed: notifResult.failed,
+    low_rating_alerts_attempted: lowRatingResult.attempted,
+    low_rating_alerts_failed: lowRatingResult.failed,
+    low_rating_alerts_skipped: lowRatingResult.skipped,
+    summary,
+  };
+}
+
+function emptyResult(): SyncBusinessProfileResult {
+  return {
+    locations_processed: 0,
+    notify_attempted: 0,
+    notify_failed: 0,
+    low_rating_alerts_attempted: 0,
+    low_rating_alerts_failed: 0,
+    low_rating_alerts_skipped: 0,
+    summary: [],
+  };
+}
+
+/**
+ * Caso B de §4.48: sincroniza respuestas del propietario puestas DIRECTAMENTE en
+ * Google a reseñas que ya teníamos en BD. El sync descarta las no-fresh, así que
+ * sin esto nunca veríamos una respuesta añadida en Google después de importar la
+ * reseña. Las saca de "Sin responder" con `reply_via='google_detected'`.
+ *
+ * Guarda anti-clobber (doble): el SELECT filtra `replied_at IS NULL` y el UPDATE
+ * la re-asevera (race-safe contra una respuesta manual/API que aterrice entre
+ * medias). NUNCA pisa un `manual` ni un `api` nuestro.
+ */
+async function syncExistingReplies(
+  admin: ReturnType<typeof createServiceClient>,
+  locationId: string,
+  googleReviews: GoogleReview[],
+  existingSet: Set<string>,
+): Promise<number> {
+  const withReply = googleReviews.filter(
+    (gr) => existingSet.has(gr.reviewId) && gr.reviewReply,
+  );
+  if (withReply.length === 0) return 0;
+
+  const byId = new Map(withReply.map((gr) => [gr.reviewId, gr.reviewReply!]));
+  const ids = [...byId.keys()];
+
+  const { data: pending } = await admin
+    .from("reviews")
+    .select("id, google_review_id")
+    .eq("location_id", locationId)
+    .in("google_review_id", ids)
+    .is("replied_at", null)
+    .returns<{ id: string; google_review_id: string }[]>();
+  if (!pending || pending.length === 0) return 0;
+
+  const now = new Date().toISOString();
+  const auditRows: Record<string, unknown>[] = [];
+  await Promise.all(
+    pending.map(async (r) => {
+      const rep = byId.get(r.google_review_id);
+      const norm = normalizeOwnerReply(rep);
+      if (!norm) return;
+      const { error } = await admin
+        .from("reviews")
+        .update({
+          reply_text: norm.text,
+          replied_at: norm.repliedAt,
+          reply_by: null,
+          reply_via: "google_detected",
+          reply_synced_at: now,
+        } as never)
+        .eq("id", r.id)
+        .is("replied_at", null); // re-aseverada → race-safe
+      if (!error) {
+        auditRows.push({
+          entity_type: "review",
+          entity_id: r.id,
+          action: "reply_google_detected",
+          payload: {
+            google_review_id: r.google_review_id,
+            source: "business_profile",
+            replied_at: norm.repliedAt,
+            on_insert: false,
+          },
+        });
+      }
+    }),
+  );
+  if (auditRows.length > 0) {
+    await admin.from("audit_log").insert(auditRows as never);
+  }
+  return auditRows.length;
+}
+
+async function markSyncOk(
+  admin: ReturnType<typeof createServiceClient>,
+  locationId: string,
+) {
+  await admin
+    .from("locations")
+    .update({
+      oauth_last_sync_at: new Date().toISOString(),
+      oauth_last_sync_error: null,
+    } as never)
+    .eq("id", locationId);
+}
+
+async function markSyncError(
+  admin: ReturnType<typeof createServiceClient>,
+  locationId: string,
+  error: string,
+) {
+  await admin
+    .from("locations")
+    .update({
+      oauth_last_sync_at: new Date().toISOString(),
+      oauth_last_sync_error: error.slice(0, 500),
+    } as never)
+    .eq("id", locationId);
+}

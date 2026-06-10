@@ -1,19 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { syncPlaces } from "@/lib/google/sync-places";
+import { syncBusinessProfile } from "@/lib/google/sync-business-profile";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * Sincronización manual de reseñas vía Places API, disparada por un usuario
- * autenticado (no por Vercel Cron).
+ * Sincronización manual de reseñas vía Google Business Profile, disparada por
+ * un usuario autenticado (no por Vercel Cron). BP es la fuente única desde
+ * 2026-06-10 (§4.50) — Places API apagado, así que este endpoint usa el mismo
+ * orquestador que el cron (`syncBusinessProfile`).
  *
  *   POST /api/sync/now
  *     body opcional: { location_id?: string }
  *
  * Reglas por rol:
- *   - admin / reviews_manager: sin body → todas las fichas con place_id.
+ *   - admin / reviews_manager: sin body → todas las fichas conectadas.
  *                              con location_id → solo esa.
  *   - office_director: ignora body; sincroniza únicamente su `profiles.location_id`
  *            (la ficha de su oficina).
@@ -21,8 +23,8 @@ export const maxDuration = 60;
  *            (la ficha que tiene asignada).
  *   - resto: 403.
  *
- * El lock optimista de 60s ya está dentro de `syncPlaces()` por location,
- * así que dos clicks rápidos seguidos devuelven `skipped_concurrent_run`
+ * El lock optimista de 60s ya está dentro de `syncBusinessProfile()` por
+ * location, así que dos clicks rápidos seguidos devuelven `skipped_concurrent_run`
  * para las afectadas — no hay flooding posible.
  */
 
@@ -80,6 +82,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const result = await syncPlaces({ locationIds });
+  const result = await syncBusinessProfile({ locationIds });
   return NextResponse.json({ ok: true, ...result });
 }

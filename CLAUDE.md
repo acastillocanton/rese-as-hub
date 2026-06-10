@@ -155,9 +155,10 @@ Vía de respaldo para no depender de la aprobación de cuota de Business Profile
 - Requiere dos secrets en GitHub repo → Settings → Secrets: `APP_URL` (URL de prod) y `CRON_SECRET` (mismo valor que en Vercel).
 
 **Sincronización manual** ([`/api/sync/now`](app/api/sync/now/route.ts)):
+- ⚠️ **Desde 2026-06-10 sincroniza vía Business Profile** (`syncBusinessProfile`, no `syncPlaces`): Places se apagó (§4.50) y el endpoint manual seguía llamando a `syncPlaces` → Places caído colgaba hasta el timeout de Vercel → HTML 504/500 → el botón hacía `res.json()` sobre HTML → "Unexpected token '<'". Fix: la lógica del cron BP se extrajo a [`lib/google/sync-business-profile.ts`](lib/google/sync-business-profile.ts) (`syncBusinessProfile({ locationIds? })`, mismo patrón que `syncPlaces`, "nunca lanza") y la usan tanto el cron como el sync manual. Además `<SyncNowButton>` ahora protege el `res.json()` (si no es JSON, mensaje claro en vez del error críptico).
 - POST autenticado por cookie de sesión (no por CRON_SECRET).
-- Admin / reviews_manager sin body → todas las fichas; con `{ location_id }` → solo esa.
-- Sales → ignora body; sincroniza únicamente su `profiles.location_id`.
+- Admin / reviews_manager sin body → todas las fichas conectadas; con `{ location_id }` → solo esa.
+- Sales / office_director → ignora body; sincroniza únicamente su `profiles.location_id` (si está conectada).
 - Botón [`<SyncNowButton />`](components/ui/SyncNowButton.tsx) reutilizable en `/fichas` (admin: global + por fila), `/manager/resenas` (gestor) y `/panel/resenas` (comercial — añadido 2026-06-02; `/api/sync/now` ya soportaba el rol `sales` sincronizando su `location_id`).
 
 **Importador manual** ❌ ELIMINADO 2026-05-23 (PR #9): existía la pantalla `/manager/resenas/importar` para meter reseñas a mano, pero el cron horario + el botón "Sincronizar ahora" cubren todos los casos. Se eliminó para simplificar y evitar el riesgo de reseñas inventadas. El enum `review_source_enum` mantiene el valor `'manual'` por compatibilidad pero ya no entra ningún registro nuevo con esa fuente. Resucitable desde el historial git de la rama `feature/places-fallback` (commit `6aaae66`).
