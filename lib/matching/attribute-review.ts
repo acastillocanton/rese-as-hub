@@ -79,15 +79,15 @@ const MENTION_COUNT_NO_WINDOW_CONFIDENCE = 78;
  * aunque la `share_link` ya identifica al comercial con certeza.
  *
  * Decisión de producto (2026-06-08): si en una ventana corta hay clics de
- * EXACTAMENTE UN comercial, se PROPONE ese comercial. **Desde 2026-06-10 entra
- * como `pending`, NO `counted`** (§4.47): el clic es solo coincidencia temporal,
- * no causal (Google no nos dice qué reseña vino de qué clic, §4.38), y un clic
- * genérico en ráfaga generaba falsos positivos cross-mercado que se PAGABAN
- * solos. Ahora un humano confirma en Verificación antes de que cuente. El
- * cliente exacto también lo afina el humano. Reversible.
+ * EXACTAMENTE UN comercial, la reseña se le atribuye en automático (`counted`),
+ * sin cliente. Racional: la comisión es por comercial × reseña y la identidad
+ * del comercial es inequívoca (es su propio enlace); el cliente exacto lo afina
+ * el humano luego. Reversible en Verificación.
  *
- * Guardrail duro: si en la ventana hay clics de >1 comercial distinto, es
- * ambiguo y NO proponemos. La ventana corta evita capturar reseñas orgánicas.
+ * Guardrail duro (corrección, no criterio): si en la ventana hay clics de >1
+ * comercial distinto, es ambiguo y NO atribuimos. Google no nos dice qué reseña
+ * vino de qué clic — solo lo deducimos por tiempo (§4.38), de ahí la ventana
+ * corta para no capturar reseñas orgánicas.
  */
 /** Ventana corta para la atribución por proximidad a un ÚNICO comercial
  *  (cuando ni el nombre ni la mención resuelven la reseña). 30 min: el flujo
@@ -96,10 +96,9 @@ const MENTION_COUNT_NO_WINDOW_CONFIDENCE = 78;
  *  a 0.5h el 2026-06-08 tras un falso positivo en prod (reseña orgánica
  *  atribuida a Cornel por un clic genérico 3h antes). Ver §4.47. */
 const SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS = 0.5;
-/** Confianza de la propuesta temporal-only. Es la señal más débil (no hay
- *  nombre ni mención); por eso entra como `pending` (la confirma un humano),
- *  no `counted`. El comercial está identificado por su propio enlace, pero el
- *  clic es coincidencia temporal, no prueba de autoría. */
+/** Confianza de esa atribución temporal-only. Es la señal más débil de las que
+ *  cuentan en automático (no hay nombre ni mención), pero el comercial está
+ *  identificado con certeza por su propio enlace. */
 const SINGLE_COMMERCIAL_TEMPORAL_CONFIDENCE = 70;
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
@@ -577,9 +576,9 @@ function resolveMentionBySalesPreference(
  * Último recurso cuando ni el nombre del autor ni una mención en el texto han
  * resuelto la reseña. Si en una ventana corta
  * (`SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS`) hubo clics de EXACTAMENTE UN
- * comercial, PROPONE ese comercial en `pending` (NO cuenta solo), SIN cliente:
- * la `share_link` identifica al comercial, pero el clic es solo coincidencia
- * temporal — un humano confirma en Verificación antes de que pague (§4.47).
+ * comercial, le atribuimos la reseña en automático (`counted`), SIN cliente:
+ * la `share_link` ya identifica al comercial con certeza (es su enlace personal)
+ * y la comisión es por comercial × reseña.
  *
  * Devuelve `null` si no hay clics en ventana o si hay clics de más de un
  * comercial distinto (ambiguo → no adivinamos; ver §4.38). El caller solo la
@@ -615,15 +614,10 @@ function attributeBySingleCommercialInWindow(
   }
 
   return {
-    // PENDING, no counted (cambio 2026-06-10, §4.47): el clic-temporal es la
-    // señal MÁS DÉBIL (ni nombre ni mención) y un clic genérico en ráfaga
-    // generaba falsos positivos cross-mercado que se PAGABAN solos (p.ej. una
-    // reseña rusa atribuida a una comercial del mercado rumano). Ahora propone
-    // el comercial pero NO cuenta hasta que un humano confirma en Verificación.
-    match_state: "pending",
+    match_state: "counted",
     match_confidence: SINGLE_COMMERCIAL_TEMPORAL_CONFIDENCE,
     match_evidence: {
-      reason: "single_commercial_temporal_pending",
+      reason: "counted_by_single_commercial_temporal",
       share_link_id: best.id,
       commercial_id: best.sales_id,
       review_author: review.author_name,
