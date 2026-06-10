@@ -19,6 +19,10 @@ type Props = {
   label: string;
   /** Atajos pre-calculados desde el server con sus fechas. */
   shortcuts: Shortcut[];
+  /** Query params a BORRAR al aplicar un rango (además de setear from/to).
+   *  Ej: `["page"]` para resetear la paginación al cambiar de periodo.
+   *  Por defecto no borra nada (comportamiento histórico de manager/dashboard). */
+  resetParams?: string[];
 };
 
 /**
@@ -28,7 +32,7 @@ type Props = {
  * Navega cambiando los query params `from` y `to` y conservando el
  * resto. El padre re-renderiza vía Server Components automáticamente.
  */
-export function RangePicker({ from, to, label, shortcuts }: Props) {
+export function RangePicker({ from, to, label, shortcuts, resetParams }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
@@ -65,6 +69,7 @@ export function RangePicker({ from, to, label, shortcuts }: Props) {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
     params.set("from", nextFrom);
     params.set("to", nextTo);
+    for (const p of resetParams ?? []) params.delete(p);
     router.push(`?${params.toString()}`);
     setOpen(false);
   }

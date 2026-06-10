@@ -10,14 +10,22 @@ import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
 import { getRoleScope } from "@/lib/auth/role-scope";
 import { canReplyToReviews } from "@/lib/auth/reply-gating";
+import { RangePicker } from "@/components/ui/RangePicker";
+import { Pagination } from "@/components/ui/Pagination";
+import { parseRange, commissionShortcuts, commissionPeriodRange } from "@/lib/date-range";
 import { ReviewReplyComposer } from "./ReviewReplyComposer";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 25;
 
 type SearchParams = Promise<{
   tab?: string;
   location_id?: string;
   rating_lte?: string;
+  page?: string;
+  from?: string;
+  to?: string;
 }>;
 
 type ReviewRow = {
@@ -94,6 +102,19 @@ export default async function RespuestasPage({
       ? ratingLteRaw
       : null;
 
+  // Paginación: 1-based, clamp >= 1.
+  const pageRaw = params.page ? Number(params.page) : 1;
+  const page = Number.isInteger(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
+  const offset = (page - 1) * PAGE_SIZE;
+
+  // Rango de fechas SOLO en "Respondidas" (filtra por replied_at). Mismo patrón
+  // que /manager/resenas: fallback al periodo de comisión vigente. La pestaña
+  // "Sin responder" NO se filtra por fecha (se ven TODAS las pendientes).
+  const range =
+    tab === "answered"
+      ? parseRange(params.from, params.to, new Date(), commissionPeriodRange)
+      : null;
+
   // Cola de pendientes: RECIENTES primero (lo último que ha entrado sube arriba
   // — es lo más urgente de contestar). Respondidas: las más recientes primero.
   let listQuery = supabase
@@ -110,9 +131,36 @@ export default async function RespuestasPage({
       : listQuery.is("replied_at", null).order("google_created_at", { ascending: false });
   if (locationId) listQuery = listQuery.eq("location_id", locationId);
   if (ratingLte) listQuery = listQuery.lte("rating", ratingLte);
-  listQuery = listQuery.limit(1000);
+  if (tab === "answered" && range) {
+    listQuery = listQuery
+      .gte("replied_at", range.startIso)
+      .lt("replied_at", range.endIso);
+  }
+  // Desempate estable (mismo timestamp en inserciones concurrentes) + paginación.
+  listQuery = listQuery
+    .order("id", { ascending: false })
+    .range(offset, offset + PAGE_SIZE - 1);
 
-  const [listRes, pendingCountRes, answeredCountRes, locationsRes] =
+  // Recuento FILTRADO: misma combinación de filtros que la lista activa, para
+  // nº de páginas y deshabilitar "Siguiente" en la última. Distinto de los
+  // contadores GLOBALES de los chips (pendingCount/answeredCount).
+  let filteredCountQuery = supabase
+    .from("reviews")
+    .select("id", { count: "exact", head: true })
+    .is("removed_at", null);
+  filteredCountQuery =
+    tab === "answered"
+      ? filteredCountQuery.not("replied_at", "is", null)
+      : filteredCountQuery.is("replied_at", null);
+  if (locationId) filteredCountQuery = filteredCountQuery.eq("location_id", locationId);
+  if (ratingLte) filteredCountQuery = filteredCountQuery.lte("rating", ratingLte);
+  if (tab === "answered" && range) {
+    filteredCountQuery = filteredCountQuery
+      .gte("replied_at", range.startIso)
+      .lt("replied_at", range.endIso);
+  }
+
+  const [listRes, pendingCountRes, answeredCountRes, filteredCountRes, locationsRes] =
     await Promise.all([
       listQuery.returns<ReviewRow[]>(),
       supabase
@@ -125,6 +173,7 @@ export default async function RespuestasPage({
         .select("id", { count: "exact", head: true })
         .not("replied_at", "is", null)
         .is("removed_at", null),
+      filteredCountQuery,
       supabase
         .from("locations")
         .select("id, name")
@@ -135,7 +184,13 @@ export default async function RespuestasPage({
   const reviews = listRes.data ?? [];
   const pendingCount = pendingCountRes.count ?? 0;
   const answeredCount = answeredCountRes.count ?? 0;
+  const filteredTotal = filteredCountRes.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
   const locations = locationsRes.data ?? [];
+
+  // from/to del rango activo (solo answered) — para arrastrar en los links.
+  const rangeFrom = tab === "answered" && range ? range.from : null;
+  const rangeTo = tab === "answered" && range ? range.to : null;
 
   return (
     <>
@@ -146,6 +201,17 @@ export default async function RespuestasPage({
           tab === "pending"
             ? `${pendingCount} sin responder`
             : `${answeredCount} respondidas`
+        }
+        right={
+          tab === "answered" && range ? (
+            <RangePicker
+              from={range.from}
+              to={range.to}
+              label={range.label}
+              shortcuts={commissionShortcuts()}
+              resetParams={["page"]}
+            />
+          ) : null
         }
         breadcrumb={getBrandBreadcrumb(brand)}
         compact
@@ -199,14 +265,14 @@ export default async function RespuestasPage({
             tone="warn"
           />
           <FilterChip
-            href={buildHref({ tab: "answered", locationId, ratingLte })}
+            href={buildHref({ tab: "answered", locationId, ratingLte, from: rangeFrom, to: rangeTo })}
             label={`Respondidas (${answeredCount})`}
             active={tab === "answered"}
             tone="neutral"
           />
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
             <FilterChip
-              href={buildHref({ tab, locationId, ratingLte: ratingLte ? null : 2 })}
+              href={buildHref({ tab, locationId, ratingLte: ratingLte ? null : 2, from: rangeFrom, to: rangeTo })}
               label="Solo ≤2★"
               active={ratingLte === 2}
               tone="neutral"
@@ -214,7 +280,7 @@ export default async function RespuestasPage({
             {locations.length > 1 &&
               (locationId ? (
                 <FilterChip
-                  href={buildHref({ tab, locationId: null, ratingLte })}
+                  href={buildHref({ tab, locationId: null, ratingLte, from: rangeFrom, to: rangeTo })}
                   label={`Ficha: ${locations.find((l) => l.id === locationId)?.name ?? "—"} ✕`}
                   active
                   tone="neutral"
@@ -228,7 +294,7 @@ export default async function RespuestasPage({
             {locations.map((l) => (
               <Link
                 key={l.id}
-                href={buildHref({ tab, locationId: l.id, ratingLte })}
+                href={buildHref({ tab, locationId: l.id, ratingLte, from: rangeFrom, to: rangeTo })}
                 style={{
                   fontSize: 11.5,
                   padding: "4px 9px",
@@ -326,6 +392,22 @@ export default async function RespuestasPage({
             </Card>
           ))
         )}
+
+        {filteredTotal > 0 && (
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={filteredTotal}
+            totalPages={totalPages}
+            currentParams={{
+              tab,
+              location_id: locationId,
+              rating_lte: ratingLte,
+              from: rangeFrom,
+              to: rangeTo,
+            }}
+          />
+        )}
       </div>
     </>
   );
@@ -335,15 +417,25 @@ function buildHref({
   tab,
   locationId,
   ratingLte,
+  from,
+  to,
 }: {
   tab: "pending" | "answered";
   locationId: string | null;
   ratingLte: number | null;
+  from?: string | null;
+  to?: string | null;
 }): string {
   const sp = new URLSearchParams();
   sp.set("tab", tab);
   if (locationId) sp.set("location_id", locationId);
   if (ratingLte) sp.set("rating_lte", String(ratingLte));
+  // El rango solo aplica en "answered"; lo arrastramos para no perder el periodo
+  // al cambiar de ficha/rating. NUNCA arrastramos `page` → todo filtro resetea a 1.
+  if (tab === "answered" && from && to) {
+    sp.set("from", from);
+    sp.set("to", to);
+  }
   return `/resenas/respuestas?${sp.toString()}`;
 }
 

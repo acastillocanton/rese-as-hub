@@ -44,6 +44,10 @@ El one-click "Publicar en Google" ya estaba cableado para reseñas BP. Esta sesi
 ### G. Fix menor: `emailHref` con `encodeURIComponent` (mailto)
 `URLSearchParams` codifica espacios como `+` (algunos clientes de correo lo interpretan literal en el body). Commit `66f5701`.
 
+### H. Respuestas v2: paginación + filtro de fechas + limpieza de Places antiguas (§4.48)
+- **"Respondidas"**: nuevo paginador reutilizable [components/ui/Pagination.tsx](components/ui/Pagination.tsx) (primer paginador del código; `page` param, 25/pág, `.range()`) + RangePicker por `replied_at` (default periodo de comisión). "Sin responder" NO se filtra por fecha. `RangePicker` ganó `resetParams=["page"]`. `buildHref` nunca arrastra `page` (reset a 1 en cualquier filtro).
+- **Limpieza one-shot**: las ~167 de Places estaban en "Sin responder" pese a estar ya respondidas en Google (el sync `google_detected` no las alcanza). Script gitignored `scripts/reconcile-places-replies.mjs` (one-shot, no recurrente): casa Places↔Google por autor+estrella+fecha (48h) y marca las respondidas → **"Sin responder" 167→16**. Las 14 leftover ya no existen en Google (borradas/renombradas, son `reconcileRemoved` §4.20, fuera de alcance); 2 sin responder de verdad. typecheck + 329 tests verdes.
+
 ---
 
 ## 2. Estado operativo
