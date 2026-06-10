@@ -7,6 +7,7 @@ import {
   starRatingToInt,
   type GoogleReview,
 } from "@/lib/google/business-profile";
+import { stripGoogleTranslation } from "@/lib/google/strip-translation";
 import {
   processFreshReviews,
   flushNotifications,
@@ -291,7 +292,10 @@ export async function GET(request: NextRequest) {
           author_name: hasAuthorName ? rawAuthor : "Anónimo",
           hasAuthorName,
           rating: starRatingToInt(gr.starRating),
-          text: gr.comment ?? null,
+          // Google incrusta una traducción automática en el comment cuando el
+          // idioma de la reseña ≠ locale de la cuenta. Guardamos solo el
+          // original del cliente (§4.51).
+          text: stripGoogleTranslation(gr.comment ?? null),
           google_created_at: gr.createTime,
         };
       });

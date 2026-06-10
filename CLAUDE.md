@@ -1043,6 +1043,25 @@ Cerró el bloqueo de meses (cuota concedida, caso `5-5855000041022`). **Fase 4 �
 
 ⚠️ **Reseñas viejas en BD**: las ~72 de `source='places_api'` (desde 2026-05-23) + las recientes se quedan tal cual (no se borran). Going-forward todo es `business_profile`. No se vuelven a generar clones porque Places está apagado.
 
+### 4.51 Quitar la traducción automática de Google del texto de la reseña (2026-06-10)
+
+La API v4 de Business Profile devuelve el `comment` con una **traducción automática incrustada** cuando el idioma de la reseña ≠ locale de la cuenta de Google. Formato consistente observado en prod:
+
+```
+<texto original del cliente>
+
+(Translated by Google)
+<traducción automática>
+```
+
+(Google puede invertir el orden — traducción primero, original tras `(Original)` — aunque hoy no se da ningún caso). Antes guardábamos el `comment` verbatim → en la plataforma se veía el original + "(Translated by Google)" + la traducción, todo pegado (caso reportado: reseña de Mercedes García). No pasaba con Places API porque ese endpoint respetaba `language=es`.
+
+**Fix**: helper puro [lib/google/strip-translation.ts](lib/google/strip-translation.ts) `stripGoogleTranslation(comment)` (extrae solo el original; cubre ambos órdenes de Google; marcadores siempre en inglés). Cableado en la normalización del cron BP ([sync-google-reviews/route.ts](app/api/cron/sync-google-reviews/route.ts) → `text: stripGoogleTranslation(gr.comment ?? null)`). Tests en [lib/google/__tests__/strip-translation.test.ts](lib/google/__tests__/strip-translation.test.ts) (8 casos).
+
+**Seguro para el matcher** (§4.38): el original conserva la mención al comercial (los nombres propios no se traducen). **Backfill one-shot** aplicado el 2026-06-10 a las 5 reseñas BP que ya tenían la traducción pegada (service-client, no migración). Verificado: 0 reseñas con el marcador.
+
+⚠️ Decisión de producto: guardamos **solo el original** (no la traducción en campo aparte). Si el dpto. internacional quisiera leer en español lo que escriben en otros idiomas, habría que añadir columna + migración ("Ask first").
+
 ---
 
 ## 5. Setup en otro Mac
