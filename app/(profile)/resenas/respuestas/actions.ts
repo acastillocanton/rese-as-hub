@@ -143,11 +143,12 @@ export async function clearReviewReply(reviewId: string) {
 }
 
 /**
- * FASE API (NO cableada en UI hoy — cuota Business Profile a 0). Publica la
- * respuesta directamente en Google vía Business Profile API y marca la reseña
- * con reply_via='api'. Solo aplica a reseñas con source='business_profile'
- * (las de Places usan google_review_id sintético "places:..." que no sirve
- * para el endpoint de reply — §4.17). Activar en el Bloque G de §4.26.
+ * Publica la respuesta directamente en Google vía Business Profile API (un
+ * clic: guarda aquí + publica) y marca la reseña con reply_via='api'. ACTIVA
+ * desde 2026-06-10 (cuota concedida, §4.50). Solo aplica a reseñas con
+ * source='business_profile' (las de Places usan google_review_id sintético
+ * "places:..." que no sirve para el endpoint de reply — §4.17), de ahí la
+ * guarda de abajo + el gating `canPublishApi` en page.tsx.
  */
 export async function publishReviewReply(input: SaveReplyInput) {
   const parsed = saveReplySchema.safeParse(input);

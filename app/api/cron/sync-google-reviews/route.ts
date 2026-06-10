@@ -8,6 +8,7 @@ import {
   type GoogleReview,
 } from "@/lib/google/business-profile";
 import { stripGoogleTranslation } from "@/lib/google/strip-translation";
+import { normalizeOwnerReply } from "@/lib/google/owner-reply";
 import {
   processFreshReviews,
   flushNotifications,
@@ -268,6 +269,13 @@ export async function GET(request: NextRequest) {
         .in("google_review_id", ids)
         .returns<{ google_review_id: string }[]>();
       const existingSet = new Set((existing ?? []).map((r) => r.google_review_id));
+
+      // Caso B (§4.48): respuestas del propietario añadidas DESPUÉS en Google a
+      // reseñas que ya teníamos. El caso dominante tiene cero reseñas fresh
+      // (una reseña vieja a la que responden días más tarde), así que esto va
+      // ANTES del filtro `fresh` y del early-return de abajo.
+      await syncExistingReplies(admin, loc.id, googleReviews, existingSet);
+
       // Going-forward only (§4.26): además de filtrar las ya existentes,
       // descartamos las creadas ANTES del corte de activación. Así el
       // histórico de Google nunca entra como "fresh" → ni se inserta ni
@@ -297,6 +305,10 @@ export async function GET(request: NextRequest) {
           // original del cliente (§4.51).
           text: stripGoogleTranslation(gr.comment ?? null),
           google_created_at: gr.createTime,
+          // §4.48: respuesta del propietario ya puesta directamente en Google.
+          // Si la reseña fresca ya la trae, entra marcada como respondida
+          // (reply_via='google_detected').
+          reply: normalizeOwnerReply(gr.reviewReply),
         };
       });
 
@@ -389,6 +401,81 @@ export async function GET(request: NextRequest) {
     low_rating_alerts_skipped: lowRatingResult.skipped,
     summary,
   });
+}
+
+/**
+ * Caso B de §4.48: sincroniza respuestas del propietario puestas DIRECTAMENTE en
+ * Google a reseñas que ya teníamos en BD. El cron descarta las no-fresh, así que
+ * sin esto nunca veríamos una respuesta añadida en Google después de importar la
+ * reseña. Las saca de "Sin responder" con `reply_via='google_detected'`.
+ *
+ * Guarda anti-clobber (doble): el SELECT filtra `replied_at IS NULL` y el UPDATE
+ * la re-asevera (race-safe contra una respuesta manual/API que aterrice entre
+ * medias). NUNCA pisa un `manual` ni un `api` nuestro.
+ *
+ * Eficiente: 1 SELECT + UPDATEs acotados a las filas que GANARON respuesta desde
+ * el último run (típicamente 0-2), no a todo el set de reseñas de la página.
+ */
+async function syncExistingReplies(
+  admin: ReturnType<typeof createServiceClient>,
+  locationId: string,
+  googleReviews: GoogleReview[],
+  existingSet: Set<string>,
+): Promise<number> {
+  const withReply = googleReviews.filter(
+    (gr) => existingSet.has(gr.reviewId) && gr.reviewReply,
+  );
+  if (withReply.length === 0) return 0;
+
+  const byId = new Map(withReply.map((gr) => [gr.reviewId, gr.reviewReply!]));
+  const ids = [...byId.keys()];
+
+  const { data: pending } = await admin
+    .from("reviews")
+    .select("id, google_review_id")
+    .eq("location_id", locationId)
+    .in("google_review_id", ids)
+    .is("replied_at", null)
+    .returns<{ id: string; google_review_id: string }[]>();
+  if (!pending || pending.length === 0) return 0;
+
+  const now = new Date().toISOString();
+  const auditRows: Record<string, unknown>[] = [];
+  await Promise.all(
+    pending.map(async (r) => {
+      const rep = byId.get(r.google_review_id);
+      const norm = normalizeOwnerReply(rep);
+      if (!norm) return;
+      const { error } = await admin
+        .from("reviews")
+        .update({
+          reply_text: norm.text,
+          replied_at: norm.repliedAt,
+          reply_by: null,
+          reply_via: "google_detected",
+          reply_synced_at: now,
+        } as never)
+        .eq("id", r.id)
+        .is("replied_at", null); // re-aseverada → race-safe
+      if (!error) {
+        auditRows.push({
+          entity_type: "review",
+          entity_id: r.id,
+          action: "reply_google_detected",
+          payload: {
+            google_review_id: r.google_review_id,
+            source: "business_profile",
+            replied_at: norm.repliedAt,
+            on_insert: false,
+          },
+        });
+      }
+    }),
+  );
+  if (auditRows.length > 0) {
+    await admin.from("audit_log").insert(auditRows as never);
+  }
+  return auditRows.length;
 }
 
 async function markSyncOk(

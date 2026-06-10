@@ -35,6 +35,14 @@ export type FreshReview = {
   rating: number; // 1..5
   text: string | null;
   google_created_at: string; // ISO
+  /**
+   * Mig 024 / §4.48 / §4.50. Respuesta del PROPIETARIO ya puesta directamente en
+   * Google (campo `reviewReply` de la API v4). Si la reseña fresca ya la trae, la
+   * persistimos en el mismo insert con `reply_via='google_detected'` para que NO
+   * entre en "Sin responder". Solo el cron BP la rellena; Places nunca tiene
+   * reply → queda `undefined` y el insert no escribe columnas de respuesta.
+   */
+  reply?: { text: string; repliedAt: string } | null;
 };
 
 export type LocationCtx = {
@@ -322,6 +330,19 @@ export async function processFreshReviews(
       match_evidence: result.match_evidence,
       source,
       is_duplicate: dup.newIsDuplicate,
+      // Caso A (§4.48): la reseña fresca YA trae respuesta del propietario puesta
+      // en Google → la persistimos aquí mismo para que no entre en "Sin
+      // responder". reply_by=null (no sabemos quién respondió en Google). La
+      // guarda anti-clobber es implícita: es una fila nueva, no hay nada que pisar.
+      ...(fr.reply
+        ? {
+            reply_text: fr.reply.text,
+            replied_at: fr.reply.repliedAt,
+            reply_by: null,
+            reply_via: "google_detected" as const,
+            reply_synced_at: new Date().toISOString(),
+          }
+        : {}),
     };
 
     const { data: inserted, error: insErr } = await admin
@@ -351,6 +372,22 @@ export async function processFreshReviews(
         },
       } as never);
       continue;
+    }
+
+    // Caso A (§4.48): si la reseña fresca traía respuesta del propietario,
+    // dejamos traza de que entró ya marcada como respondida desde Google.
+    if (fr.reply) {
+      await admin.from("audit_log").insert({
+        entity_type: "review",
+        entity_id: inserted.id,
+        action: "reply_google_detected",
+        payload: {
+          google_review_id: fr.google_review_id,
+          source,
+          replied_at: fr.reply.repliedAt,
+          on_insert: true,
+        },
+      } as never);
     }
 
     if (dup.demotedReviewId) {

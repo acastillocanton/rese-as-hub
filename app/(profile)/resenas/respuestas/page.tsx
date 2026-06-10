@@ -94,8 +94,8 @@ export default async function RespuestasPage({
       ? ratingLteRaw
       : null;
 
-  // Cola de pendientes: ANTIGUAS primero (responder primero lo que más lleva
-  // sin respuesta). Respondidas: las más recientes primero.
+  // Cola de pendientes: RECIENTES primero (lo último que ha entrado sube arriba
+  // — es lo más urgente de contestar). Respondidas: las más recientes primero.
   let listQuery = supabase
     .from("reviews")
     .select(
@@ -107,7 +107,7 @@ export default async function RespuestasPage({
       ? listQuery
           .not("replied_at", "is", null)
           .order("replied_at", { ascending: false })
-      : listQuery.is("replied_at", null).order("google_created_at", { ascending: true });
+      : listQuery.is("replied_at", null).order("google_created_at", { ascending: false });
   if (locationId) listQuery = listQuery.eq("location_id", locationId);
   if (ratingLte) listQuery = listQuery.lte("rating", ratingLte);
   listQuery = listQuery.limit(1000);
@@ -173,13 +173,14 @@ export default async function RespuestasPage({
               maxWidth: 680,
             }}
           >
-            Redacta la respuesta (puedes usar emojis) y pulsa{" "}
-            <strong>Copiar texto</strong>. Luego <strong>Responder en Google</strong>
-            : abre tu panel de propietario (pestaña Reseñas), busca la reseña
-            —usa <strong>Ver reseña</strong> para localizarla por autor y
-            fecha—, pega la respuesta y publícala. Al volver, marca la reseña
-            como <strong>respondida</strong> para sacarla de la cola. Empieza
-            por las más antiguas: son las que más tiempo llevan sin contestar.
+            Redacta la respuesta (puedes usar emojis). En las reseñas nuevas
+            verás <strong>Publicar en Google</strong>: un solo clic la guarda
+            aquí y la publica directamente en la reseña. En las reseñas
+            antiguas (importadas antes), usa <strong>Copiar texto</strong> +{" "}
+            <strong>Responder en Google</strong> para pegarla en tu panel de
+            propietario, y al volver marca la reseña como{" "}
+            <strong>respondida</strong>. Si respondes una reseña directamente en
+            Google, también saldrá sola de esta cola.
           </p>
         </Card>
 
