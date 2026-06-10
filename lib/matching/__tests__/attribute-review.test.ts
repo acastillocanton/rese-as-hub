@@ -463,18 +463,20 @@ describe("attributeReview — atribución temporal a un único comercial", () =>
   // Caso real (Cornel, 2026-06): un cliente abre el enlace PERSONAL del comercial
   // (sin cliente concreto → client_id null) y reseña segundos después, pero el
   // nombre del autor no casa con ningún cliente y no hay texto. La identidad del
-  // comercial es inequívoca (es su enlace) → se atribuye en automático.
-  it("un único comercial con clic en ventana corta, sin nombre ni mención → counted al comercial", () => {
+  // comercial es inequívoca (es su enlace), PERO el clic es solo coincidencia
+  // temporal → se PROPONE en pending (lo confirma un humano), no cuenta solo
+  // (§4.47, cambio 2026-06-10).
+  it("un único comercial con clic en ventana corta, sin nombre ni mención → pending (propuesta), no counted", () => {
     const opened = new Date(new Date(REVIEW_AT).getTime() - 12_000).toISOString(); // 12s antes
     const r = attributeReview(
       review({ author_name: "Eduuu Bermejo" }), // no casa con "Cliente Genérico"
       [candidate({ sales_id: "cornel", opened_at: opened })],
     );
-    expect(r.match_state).toBe("counted");
+    expect(r.match_state).toBe("pending");
     expect(r.match_confidence).toBe(70);
     expect(r.sales_id).toBe("cornel");
     expect(r.client_id).toBeUndefined();
-    expect(r.match_evidence.reason).toBe("counted_by_single_commercial_temporal");
+    expect(r.match_evidence.reason).toBe("single_commercial_temporal_pending");
   });
 
   it("dos comerciales con clic en ventana, sin nombre ni mención → unmatched (ambiguo)", () => {
@@ -512,7 +514,7 @@ describe("attributeReview — atribución temporal a un único comercial", () =>
     expect(r.match_state).toBe("counted");
     expect(r.match_confidence).toBeGreaterThanOrEqual(AUTO_THRESHOLD);
     expect(r.client_id).toBe("client-1");
-    expect(r.match_evidence.reason).not.toBe("counted_by_single_commercial_temporal");
+    expect(r.match_evidence.reason).not.toBe("single_commercial_temporal_pending");
   });
 
   it("anónimo con dos clics del mismo comercial → unmatched (el path temporal no aplica a anónimos)", () => {
@@ -527,7 +529,7 @@ describe("attributeReview — atribución temporal a un único comercial", () =>
     expect(r.match_evidence.reason).toBe("anonymous_author_multiple_candidates (2)");
   });
 
-  it("escenario real Eduuu Bermejo: 5 clics de Cornel, el más cercano 12s antes → counted a Cornel", () => {
+  it("escenario real Eduuu Bermejo: 5 clics de Cornel, el más cercano 12s antes → pending a Cornel (lo confirma un humano)", () => {
     const t = new Date(REVIEW_AT).getTime();
     const clics = [
       { id: "c1", opened_at: new Date(t - 12_000).toISOString() }, //  12s
@@ -540,7 +542,7 @@ describe("attributeReview — atribución temporal a un único comercial", () =>
       review({ author_name: "Eduuu Bermejo" }),
       clics.map((c) => candidate({ ...c, sales_id: "cornel" })),
     );
-    expect(r.match_state).toBe("counted");
+    expect(r.match_state).toBe("pending");
     expect(r.sales_id).toBe("cornel");
     expect(r.client_id).toBeUndefined();
     expect(r.share_link_id).toBe("c1"); // el clic más cercano
