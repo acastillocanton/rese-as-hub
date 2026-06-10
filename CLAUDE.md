@@ -18,7 +18,7 @@ Cuatro roles:
 
 **Flujo**: comercial comparte `resenas.marinadorconstrucciones.com/c/{sales-slug}/{client-slug}` → cliente cae directo en "Escribir reseña" en Google (302) → dos crons diarios (Google Places API + Google Business Profile API) traen las reseñas → algoritmo atribuye al comercial por ventana temporal + nombre del cliente.
 
-**Stack**: Next.js 15.5.18 App Router + Turbopack · TypeScript strict + `noUncheckedIndexedAccess` · Supabase (Postgres + Auth + RLS) · Google Places API (New) v1 con API key + Google Business Profile API con OAuth · Brevo SMTP (vía Supabase para magic-links/invites; vía Nodemailer en [lib/email/brevo.ts](lib/email/brevo.ts) para notificaciones transaccionales — claves SMTP independientes) · Vercel Hobby + crons diarios `0 5 * * *` Places y `5 5 * * *` Business Profile UTC · ExcelJS (dynamic import) · qrcode.react · Zod · lucide-react · Vitest para tests unit.
+**Stack**: Next.js 15.5.18 App Router + Turbopack · TypeScript strict + `noUncheckedIndexedAccess` · Supabase (Postgres + Auth + RLS) · Google Business Profile API con OAuth (fuente única de reseñas desde 2026-06-10, §4.50; Places API legacy apagado pero reactivable) · Brevo SMTP (vía Supabase para magic-links/invites; vía Nodemailer en [lib/email/brevo.ts](lib/email/brevo.ts) para notificaciones transaccionales — claves SMTP independientes) · Vercel Hobby cron diario `5 5 * * *` Business Profile + GitHub Action horaria (`sync-reviews-hourly.yml`) · ExcelJS (dynamic import) · qrcode.react · Zod · lucide-react · Vitest para tests unit.
 
 **Producción**: [`https://resenas.marinadorconstrucciones.com`](https://resenas.marinadorconstrucciones.com). DNS en SiteGround.
 
@@ -54,8 +54,8 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | 2 · Admin (`/dashboard`, `/comerciales`, `/gestores`, `/fichas`, `/resenas/verificacion`) | ✅ |
 | 3 · Sales desktop (`/panel`, `/panel/enlace`, `/panel/resenas`, `/clientes`, `/clientes/[slug]`) | ✅ |
 | 3.b · Sales mobile (ver subsección) | ✅ |
-| 4 · Google Business Profile sync + matching | ⚠️ código listo + hardened, esperando cuota Google |
-| 4.b · Places API fallback (legacy + sort=newest) | ✅ trayendo reseñas reales en prod desde 2026-05-23 |
+| 4 · Google Business Profile sync + matching | ✅ **ACTIVO desde 2026-06-10** — cuota concedida, fuente única going-forward (§4.50) |
+| 4.b · Places API fallback (legacy + sort=newest) | ⏸️ apagado el 2026-06-10 (sustituido por BP; código reactivable) — trajo reseñas reales 2026-05-23→06-10 |
 | 4.c · Sync manual + cron horario GitHub Action + soft-delete + estado consolidado | ✅ |
 | 5 · Reviews manager (`/manager/resenas`, `/manager/export`) | ✅ |
 | 6 · Polish / hardening (auditoría 18 items) | ✅ |
@@ -485,6 +485,16 @@ Cada listado de reseñas tiene un mini-link "Ver en Google" (icono `ExternalLink
 **Pendiente cuando llegue Business Profile**: ampliar el helper a `buildGoogleReviewUrl(placeId, googleReviewId, source)` y switchear entre URL a lista (Places) y URL a reseña concreta (Business Profile). El call site no cambia — se sigue pasando `placeId` desde el componente, simplemente añadimos `googleReviewId` y `source` desde la review. Ver §4.26.
 
 ### 4.26 Checklist completo "Cuando llegue Business Profile API"
+
+> # ✅ CUOTA CONCEDIDA Y ACTIVADA — 2026-06-10
+> Google aprobó el caso `5-5855000041022`. **Business Profile es ya la fuente ÚNICA de reseñas, going-forward.** Resumen de la activación (commits `3aaa6bd`, `f3e526f`, `c4d7549`; ver §4.50):
+> - **7 fichas conectadas** por OAuth (cuenta `accounts/111197444117937021993`), 200 en v4 reviews. Bug del resource arreglado: `linkGoogleLocation` compone `accounts/X/locations/Y` (la v4 lo exige; antes guardaba `locations/Y` → 404) + backfill de las 7.
+> - **"Solo de ahora en adelante"** (decisión de negocio): corte `BP_GO_LIVE_AT="2026-06-10T00:00:00Z"` en el cron BP → NO se importa histórico (Oropesa tiene 1.622) → **cero email-storm de alertas ≤2★** + bandeja limpia. (Deroga el plan de "backfill profundo" del Bloque A 4.b — ya NO aplica.)
+> - **Fuente única BP**: Places apagado. `vercel.json` cron diario → `sync-google-reviews`; GitHub Action horaria repuntada a BP (`sync-reviews-hourly.yml`). Sin duplicados (Bloque B/D resueltos por diseño; quedaron 2 clones transitorios de Places del 05:00, deduplicados a mano).
+> - **Bloque G (respuestas por API) ✅**: botón "Publicar en Google" en `/resenas/respuestas` para reseñas BP (§4.48 + §4.50).
+> - **PENDIENTE (no hecho a propósito)**: deep-link a reseña concreta (Bloque C punto 7) — Google no expone URL pública por reviewId, se queda "Ver reseña" a la lista; **soft-delete automático** (`reconcileRemoved`, Bloque C punto 6) — diferido, causó falsos positivos con Places (§4.20), reactivar con capa `last_seen_at` si se decide.
+>
+> El histórico de abajo se conserva como registro de cómo se consiguió la cuota. Lo accionable vivo está en §4.50.
 
 > **Caso en Google**: `5-5855000041022`. ETA original ~2026-06-04. **Verificado el 2026-06-04 que sigue a cuota 0** (OAuth E2E funciona y guarda token, pero `listAccounts` → `429 RESOURCE_EXHAUSTED` con `quota_limit_value: "0"`).
 >
@@ -1021,6 +1031,18 @@ Cambio de política de dirección (2026-06-10): a cada productor (sales + office
 
 ⚠️ **Fuera de alcance (decisión consciente):** el **parte semanal global** ([weekly-report.ts](lib/reports/weekly-report.ts), Raquel) mide productividad por departamento (cuenta reseñas, no €) → **sin tope**. **Ranking** ([leaderboard.ts](lib/leaderboard.ts)) ordena por counted reales → sin cambios. **Insignias** ([panel-badges.ts](lib/panel-badges.ts)) por `monthly_goal`/volumen → sin cambios. Si se quisiera topar el parte, abordar aparte.
 
+### 4.50 Business Profile activado — fuente única going-forward (2026-06-10)
+
+Cerró el bloqueo de meses (cuota concedida, caso `5-5855000041022`). **Fase 4 ✅.** Estado vivo:
+
+- **Fuente de reseñas = Business Profile API**, fuente ÚNICA. Places API **apagado** (cron quitado de `vercel.json`; el código de Places y su endpoint siguen existiendo, reactivables, pero no se disparan). El cron BP (`/api/cron/sync-google-reviews`) corre cada hora vía GitHub Action [`sync-reviews-hourly.yml`](.github/workflows/sync-reviews-hourly.yml) + diario de respaldo en `vercel.json` (`5 5 * * *`).
+- **Going-forward only**: constante `BP_GO_LIVE_AT` en [sync-google-reviews/route.ts](app/api/cron/sync-google-reviews/route.ts). El cron solo inserta reseñas con `createTime >= BP_GO_LIVE_AT` y deja de paginar en cuanto una página entera es anterior al corte. Por eso NO entra el histórico de Google (Oropesa 1.622, Castellón 516…) ni dispara alertas ≤2★ retroactivas. ⚠️ Si algún día se quiere importar histórico, subir/quitar el corte con cuidado (suprimir alertas durante la carga).
+- **Resource completo**: `locations.google_location_resource` guarda `accounts/{cuenta}/locations/{id}` (lo exige la v4 de reviews y reply). `linkGoogleLocation` lo compone si llega relativo. Cuenta de Google de las 7 fichas: `accounts/111197444117937021993`.
+- **Responder por API** (Bloque G ✅): `/resenas/respuestas` muestra "Publicar en Google" para reseñas BP (`publishReviewReply` → `reply_via='api'`). Las de Places (histórico, `google_review_id` `places:…`) siguen con el flujo asistido manual. Ver §4.48.
+- **Pendientes deliberados**: (a) **deep-link a reseña concreta** — NO se hace: Google no da URL pública por `reviewId` de la API (§4.25); se mantiene "Ver reseña" → lista. (b) **soft-delete automático** (`reconcileRemoved`) — diferido: causó falsos positivos con Places (§4.20); reactivar solo desde el cron BP y con capa `last_seen_at` (threshold de N runs) si se decide. (c) **sync del `reviewReply`** de Google en el cron (auto-marcar como respondidas las que el gestor conteste directo en Google) — pendiente, §4.26 Bloque G punto 18.
+
+⚠️ **Reseñas viejas en BD**: las ~72 de `source='places_api'` (desde 2026-05-23) + las recientes se quedan tal cual (no se borran). Going-forward todo es `business_profile`. No se vuelven a generar clones porque Places está apagado.
+
 ---
 
 ## 5. Setup en otro Mac
@@ -1086,7 +1108,7 @@ Cambio de política de dirección (2026-06-10): a cada productor (sales + office
   - **Reparto total productivo (sales + office_director, no archivados): 51** — nacional 21, internacional 16, castellón 7, valencia 7.
   - **`profiles.joined_at` poblado con fechas reales** desde el Excel `Reseñas MARZO.xlsx` + screenshots Castellón/Valencia (45 de 51) vía `scripts/update-joined-at.mjs` (gitignored — contiene datos reales). 6 perfiles sin fecha confirmada mantienen el `joined_at` del seed: Adina Coman Vasilescu, Alicia Seroczynska, Amber Spurka, Anton Klymenko (internacional); Cristina García Álvarez, Victor Clemente Moro (nacional).
   - **1 cliente** real cargado (el resto pendiente del primer login de cada comercial).
-- **7 fichas**: 5 Inseryal (Oropesa, Pardiñas, Príncipe de Vergara, Leganés, Chamberí) + 2 Marina d'Or Construcciones (Castellón, Valencia). **Todas tienen `google_place_id`** y están sincronizando vía Places API. `oauth_status: disconnected` para Business Profile (esperando cuota Google) — el dashboard y `/fichas` lo reflejan como "Places API" (verde) en la columna Sincronización (ver §4.21).
+- **7 fichas**: 5 Inseryal (Oropesa, Pardiñas, Príncipe de Vergara, Leganés, Chamberí) + 2 Marina d'Or Construcciones (Castellón, Valencia). **Las 7 conectadas vía OAuth Business Profile** desde 2026-06-10 (`oauth_status='connected'`, cuenta `accounts/111197444117937021993`, tokens en `location_secrets`, `google_location_resource` = recurso completo `accounts/.../locations/...`). Pill "Business Profile" (verde) en dashboard y `/fichas`. Sincronizan vía el cron BP (fuente única going-forward, §4.50). Places API apagado.
 - **Reseñas reales en BD**: 72 con `source='places_api'` desde 2026-05-23, todas en estado `unmatched` (no había share_links coincidentes con sus fechas históricas porque los comerciales aún no han activado su acceso). Visibles en `/resenas/verificacion?state=unmatched`. Cuando se activen y empiecen a generar share_links, las reseñas que entren en la ventana 48h se atribuirán automáticamente.
 
 Antes de actuar sobre datos verificar con `curl $NEXT_PUBLIC_SUPABASE_URL/rest/v1/<tabla>?select=... -H "apikey: $SUPABASE_SERVICE_ROLE_KEY"`. La BD evoluciona.

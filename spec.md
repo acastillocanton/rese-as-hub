@@ -36,7 +36,7 @@
 | UI | React 19 + CSS variables (tokens del diseño) + Tailwind | 4.x utility classes |
 | Backend / DB | Supabase (Postgres + Auth + RLS) | hosted |
 | Auth | Magic-link vía Supabase Auth (Brevo SMTP) + roles aplicados con middleware + RLS | — |
-| Integración externa | Google Places API (New) v1 (API key, sin OAuth — vía activa) + Google Business Profile API v1 + OAuth 2.0 (pendiente de cuota) | — |
+| Integración externa | Google Business Profile API v1/v4 + OAuth 2.0 (fuente única de reseñas desde 2026-06-10; Places API legacy apagado pero reactivable) | — |
 | Email transaccional | Brevo SMTP vía Nodemailer (notificaciones al comercial cuando entra reseña counted) | — |
 | Hosting + Cron | Vercel Hobby + dos Vercel Crons diarios (`0 5 * * *` Places, `5 5 * * *` Business Profile UTC) | — |
 | Excel | ExcelJS (server-side, dynamic import) | 4.4 |
@@ -114,7 +114,7 @@ app/                              Next.js App Router
   c/[salesSlug]/                  Landing pública (route handler, sin layout)
   c/[salesSlug]/[clientSlug]/     Landing pública con cliente identificado
   auth/                           callback (magic-link) + signout
-  api/cron/sync-google-reviews/   Cron Business Profile (pendiente cuota)
+  api/cron/sync-google-reviews/   Cron Business Profile (fuente única, activo desde 2026-06-10)
   api/cron/sync-places-reviews/   Cron Places API legacy (activo, reviews_sort=newest)
   api/sync/now/                   Sync manual on-demand (autenticado por sesión)
   login/                          Pantalla de login + server action
