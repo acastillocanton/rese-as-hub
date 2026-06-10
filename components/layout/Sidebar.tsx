@@ -341,16 +341,9 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
     items: [
       { id: "review-list", label: "Lista de reseñas", href: "/manager/resenas", icon: Star },
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
-      // Respuestas deshabilitado hasta que llegue la cuota de la Google
-      // Business Profile API (caso 5-5855000041022, ver CLAUDE.md §4.26/§4.48).
-      {
-        id: "replies",
-        label: "Respuestas",
-        href: "/resenas/respuestas",
-        icon: Reply,
-        disabled: true,
-        disabledHint: "Disponible cuando se active la API de Google Business Profile.",
-      },
+      // Respuestas: activo desde 2026-06-10 (cuota Business Profile concedida,
+      // ver CLAUDE.md §4.50). Publicación por API en reseñas BP.
+      { id: "replies", label: "Respuestas", href: "/resenas/respuestas", icon: Reply },
     ],
   },
   {
@@ -413,16 +406,9 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
       // Verificación: paridad con admin sobre matching manual de reseñas
       // (mig 016 abre /resenas/verificacion al gestor).
       { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
-      // Respuestas deshabilitado hasta que llegue la cuota de la Google
-      // Business Profile API (caso 5-5855000041022, ver CLAUDE.md §4.26/§4.48).
-      {
-        id: "replies",
-        label: "Respuestas",
-        href: "/resenas/respuestas",
-        icon: Reply,
-        disabled: true,
-        disabledHint: "Disponible cuando se active la API de Google Business Profile.",
-      },
+      // Respuestas: activo desde 2026-06-10 (cuota Business Profile concedida,
+      // ver CLAUDE.md §4.50). Publicación por API en reseñas BP.
+      { id: "replies", label: "Respuestas", href: "/resenas/respuestas", icon: Reply },
     ],
   },
 ];
