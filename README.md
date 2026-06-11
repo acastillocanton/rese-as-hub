@@ -188,8 +188,8 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `/comerciales/:slug`           | admin + manager + office_director | Ficha editable: KPIs, clientes, reseñas + bot. "Descargar Excel" individual |
 | `/directores`                  | admin + manager   | Lista + invite + delete de directores de oficina (mig 011)       |
 | `/gestores`                    | admin             | Lista + invite + delete de gestores                              |
-| `/fichas`                      | admin + office_director | Lista + Conectar/Desconectar Google                        |
-| `/fichas/:id/conectar`         | admin + office_director | UI selección de Business Profile location                  |
+| `/fichas`                      | admin             | Lista + Conectar/Desconectar Google (solo-admin desde 2026-06-10) |
+| `/fichas/:id/conectar`         | admin             | UI selección de Business Profile location                        |
 | `/resenas/verificacion`        | 4 roles (mig 016) | Bandeja pending/unmatched/eliminadas/atribuidas + confirm/reject/reassign/marcar eliminada/claim |
 | `/resenas/respuestas`          | admin + manager   | Bandeja de respuestas (recientes primero): redactar + "Publicar en Google" en un clic por API (reseñas BP); flujo manual para históricas de Places; detecta respuestas puestas directo en Google (mig 024) |
 | `/panel`                       | sales             | KPIs propios + RangePicker + proyección ETA + card mobile clientes |

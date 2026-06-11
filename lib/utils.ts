@@ -48,6 +48,38 @@ export function slugify(input: string): string {
     .slice(0, 60);
 }
 
+/**
+ * Partículas de apellido que no cuentan como token "propio": se arrastran
+ * pegadas al siguiente token (p.ej. "Irion de Caetano" → "Irion de Caetano",
+ * no "Irion de"). Cubre castellano/catalán/portugués/italiano/neerlandés.
+ */
+const SURNAME_PARTICLES = new Set([
+  "de", "del", "la", "las", "los", "el", "i", "y",
+  "da", "das", "do", "dos", "di", "van", "von", "der", "den",
+]);
+
+/**
+ * Reduce un nombre completo a "nombre + primer apellido" para generar el slug
+ * público del productor (decisión de negocio 2026-06-11: el enlace /c/{slug}
+ * no debe llevar los dos apellidos). Heurística: primer token + siguiente
+ * token no-partícula (las partículas intermedias se arrastran). NO detecta
+ * nombres de pila compuestos ("María Jesús" saldría "maria-jesus" sin
+ * apellido) — por eso el modal de invitación muestra el slug en un campo
+ * EDITABLE para que el admin lo corrija antes de invitar.
+ */
+export function shortNameForSlug(fullName: string): string {
+  const tokens = fullName.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length <= 2) return tokens.join(" ");
+  const first = tokens[0] as string;
+  const rest: string[] = [];
+  for (let i = 1; i < tokens.length; i++) {
+    const token = tokens[i] as string;
+    rest.push(token);
+    if (!SURNAME_PARTICLES.has(token.toLowerCase())) break;
+  }
+  return [first, ...rest].join(" ");
+}
+
 export function initials(name: string): string {
   return name
     .split(/\s+/)

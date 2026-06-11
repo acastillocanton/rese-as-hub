@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { slugify, transliterateCyrillic } from "@/lib/utils";
+import { shortNameForSlug, slugify, transliterateCyrillic } from "@/lib/utils";
 
 describe("transliterateCyrillic", () => {
   it("transliterates a Belarusian name to its Latin form (caso real)", () => {
@@ -36,5 +36,40 @@ describe("slugify", () => {
 
   it("devuelve '' para alfabetos no mapeados (el caller usa su fallback)", () => {
     expect(slugify("李明")).toBe("");
+  });
+});
+
+describe("shortNameForSlug (nombre + primer apellido, decisión 2026-06-11)", () => {
+  it("recorta dos apellidos al primero", () => {
+    expect(shortNameForSlug("Tono Sanchez Abadia")).toBe("Tono Sanchez");
+    expect(shortNameForSlug("Roberto García Cuellar")).toBe("Roberto García");
+  });
+
+  it("deja intacto nombre + un apellido", () => {
+    expect(shortNameForSlug("Cornel Popescu")).toBe("Cornel Popescu");
+  });
+
+  it("arrastra partículas de apellido", () => {
+    expect(shortNameForSlug("Irion de Caetano")).toBe("Irion de Caetano");
+    expect(shortNameForSlug("Oscar Rodriguez Lopez Del Campo")).toBe("Oscar Rodriguez");
+  });
+
+  it("conserva apellidos con guion como un solo token", () => {
+    expect(shortNameForSlug("Ana Fernandez-Avila de Inza")).toBe("Ana Fernandez-Avila");
+  });
+
+  it("NO detecta nombres de pila compuestos (limitación documentada — campo editable)", () => {
+    // "María Jesús Lozano Giner" debería ser "María Jesús Lozano"; la
+    // heurística devuelve "María Jesús". El admin lo corrige en el modal.
+    expect(shortNameForSlug("María Jesús Lozano Giner")).toBe("María Jesús");
+  });
+
+  it("tolera un solo token y espacios extra", () => {
+    expect(shortNameForSlug("Cher")).toBe("Cher");
+    expect(shortNameForSlug("  Lucía   Gil   Muñoz ")).toBe("Lucía Gil");
+  });
+
+  it("compone con slugify para nombres cirílicos", () => {
+    expect(slugify(shortNameForSlug("Марина Кудраўцава"))).toBe("marina-kudrautsava");
   });
 });
