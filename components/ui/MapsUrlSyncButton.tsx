@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Link2 } from "lucide-react";
 
 /**
  * Botón "Sincronizar enlaces de reseñas" (§4.54). NO cosecha en el servidor
@@ -59,6 +60,9 @@ export function MapsUrlSyncButton({
         disabled={isPending}
         aria-busy={isPending}
         style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
           padding: size === "sm" ? "6px 11px" : "7px 13px",
           fontSize: size === "sm" ? 12.5 : 13,
           fontWeight: 500,
@@ -69,6 +73,7 @@ export function MapsUrlSyncButton({
         }}
         title="Pide al PC de oficina que rellene los enlaces directos a cada reseña en Google"
       >
+        <Link2 size={14} aria-hidden />
         {isPending ? "Solicitando…" : label}
       </button>
       {feedback && (

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { MessageSquareText } from "lucide-react";
 
 type SyncNowResult = {
   ok: boolean;
@@ -135,6 +136,9 @@ export function SyncNowButton({
         disabled={isPending}
         aria-busy={isPending}
         style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
           padding,
           fontSize,
           fontWeight: 500,
@@ -145,6 +149,7 @@ export function SyncNowButton({
         }}
         title="Trae las últimas reseñas de Google ahora mismo"
       >
+        <MessageSquareText size={14} aria-hidden />
         {isPending ? "Sincronizando…" : label}
       </button>
       {feedback && (
