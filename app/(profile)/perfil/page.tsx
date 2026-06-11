@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOut } from "lucide-react";
+import { LifeBuoy, LogOut, MessageCircle } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
@@ -70,6 +70,13 @@ export default async function PerfilPage() {
   const profile = profileRes.data;
   if (!profile) redirect("/login");
   const brand: Brand = profile.locations?.brand ?? DEFAULT_BRAND;
+
+  // Conversaciones de soporte sin leer — alimenta el badge de la tarjeta
+  // "Ayuda y soporte". En mobile esta tarjeta es el ÚNICO punto de entrada
+  // a /soporte y /ayuda (el footer del sidebar está oculto, ver §4.45).
+  let supportUnread = 0;
+  const { data: unreadData } = await supabase.rpc("support_unread_count");
+  if (typeof unreadData === "number") supportUnread = unreadData;
 
   const memberSince = user.created_at
     ? new Date(user.created_at).toLocaleDateString("es-ES", {
@@ -206,6 +213,36 @@ export default async function PerfilPage() {
               fontWeight: 600,
             }}
           >
+            Ayuda y soporte
+          </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            <HelpLink
+              href="/soporte"
+              icon={<MessageCircle size={17} strokeWidth={1.75} aria-hidden="true" />}
+              title="Soporte"
+              description="Abre una consulta o sigue tus conversaciones con el equipo."
+              badge={supportUnread}
+            />
+            <HelpLink
+              href="/ayuda"
+              icon={<LifeBuoy size={17} strokeWidth={1.75} aria-hidden="true" />}
+              title="Centro de ayuda"
+              description="Manual paso a paso de la plataforma, con capturas."
+            />
+          </div>
+        </Card>
+
+        <Card padding={28} className="profile-card">
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "var(--ink-4)",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              marginBottom: 14,
+              fontWeight: 600,
+            }}
+          >
             Sesión
           </div>
           <div
@@ -247,6 +284,90 @@ export default async function PerfilPage() {
         </Card>
       </div>
     </>
+  );
+}
+
+function HelpLink({
+  href,
+  icon,
+  title,
+  description,
+  badge,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  badge?: number;
+}) {
+  return (
+    <Link
+      href={href}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "12px 14px",
+        border: "1px solid var(--line)",
+        borderRadius: 10,
+        textDecoration: "none",
+        background: "#fff",
+      }}
+    >
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 34,
+          height: 34,
+          borderRadius: 9,
+          background: "var(--bg)",
+          border: "1px solid var(--line)",
+          color: "var(--ink-3)",
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ display: "grid", gap: 2, minWidth: 0 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 14,
+            fontWeight: 600,
+            color: "var(--ink)",
+          }}
+        >
+          {title}
+          {badge !== undefined && badge > 0 && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 18,
+                height: 18,
+                padding: "0 5px",
+                borderRadius: 999,
+                background: "#2563eb",
+                color: "#fff",
+                fontSize: 10.5,
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+            >
+              {badge > 99 ? "99+" : badge}
+            </span>
+          )}
+        </span>
+        <span style={{ fontSize: 12.5, color: "var(--ink-4)", lineHeight: 1.45 }}>
+          {description}
+        </span>
+      </span>
+    </Link>
   );
 }
 

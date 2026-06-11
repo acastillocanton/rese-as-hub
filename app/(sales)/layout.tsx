@@ -96,6 +96,7 @@ export default async function SalesLayout({
         <MobileProfileAvatar
           name={profile?.full_name ?? fallbackName}
           avatarUrl={profile?.avatar_url ?? null}
+          supportUnread={supportUnread}
         />
         <MobileTabBar tabs={tabs} />
       </div>

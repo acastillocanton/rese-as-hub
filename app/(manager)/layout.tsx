@@ -110,6 +110,7 @@ export default async function ManagerLayout({
           <MobileProfileAvatar
             name={user.name}
             avatarUrl={user.avatarUrl ?? null}
+            supportUnread={supportUnread}
           />
           <MobileTabBar tabs={DIRECTOR_MOBILE_TABS} />
         </div>

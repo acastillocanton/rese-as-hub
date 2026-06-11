@@ -4,6 +4,11 @@ import { Avatar } from "@/components/ui/Avatar";
 type Props = {
   name: string;
   avatarUrl: string | null;
+  /** Conversaciones de soporte sin leer. >0 pinta un punto de aviso azul
+   *  sobre el avatar — en mobile la entrada a /soporte vive en /perfil
+   *  (tarjeta "Ayuda y soporte", ver §4.45), y este punto es la señal de
+   *  que hay respuestas nuevas esperando. */
+  supportUnread?: number;
 };
 
 /**
@@ -16,11 +21,15 @@ type Props = {
  * `m-topbar-compact` en globals.css) para que sus controles no se
  * solapen con este avatar.
  */
-export function MobileProfileAvatar({ name, avatarUrl }: Props) {
+export function MobileProfileAvatar({ name, avatarUrl, supportUnread = 0 }: Props) {
   return (
     <Link
       href="/perfil"
-      aria-label="Ver mi perfil"
+      aria-label={
+        supportUnread > 0
+          ? `Ver mi perfil (${supportUnread} mensajes de soporte sin leer)`
+          : "Ver mi perfil"
+      }
       style={{
         position: "fixed",
         top: "calc(12px + env(safe-area-inset-top, 0px))",
@@ -32,6 +41,21 @@ export function MobileProfileAvatar({ name, avatarUrl }: Props) {
       }}
     >
       <Avatar name={name} src={avatarUrl} size={34} />
+      {supportUnread > 0 && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: -2,
+            right: -2,
+            width: 12,
+            height: 12,
+            borderRadius: 999,
+            background: "#2563eb",
+            border: "2px solid #fff",
+          }}
+        />
+      )}
     </Link>
   );
 }
