@@ -71,6 +71,11 @@ describe("pathAllowedForRole — reviews_manager", () => {
     expect(pathAllowedForRole("/resenas/verificacion", "reviews_manager")).toBe(true);
     // mig 024: bandeja de respuestas a reseñas de Google.
     expect(pathAllowedForRole("/resenas/respuestas", "reviews_manager")).toBe(true);
+    // Botón "Sincronizar" (reseñas) y "Sincronizar enlaces" (deep-links): el
+    // gestor sincroniza todas las fichas. Sin /api/sync el POST se redirige a
+    // /dashboard (HTML) → "No se pudo sincronizar (HTTP 200)".
+    expect(pathAllowedForRole("/api/sync/now", "reviews_manager")).toBe(true);
+    expect(pathAllowedForRole("/api/sync/maps-urls", "reviews_manager")).toBe(true);
   });
   it("NO entra a /fichas, /gestores, /ajustes", () => {
     expect(pathAllowedForRole("/fichas", "reviews_manager")).toBe(false);

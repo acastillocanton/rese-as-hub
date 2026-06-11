@@ -125,7 +125,11 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
       // Bandeja de respuestas a reseñas de Google (mig 024, §4.48). Solo
       // admin + reviews_manager; sales/director NO (no se añade en sus ramas).
       pathname.startsWith("/resenas/respuestas") ||
-      pathname.startsWith("/api/export")
+      pathname.startsWith("/api/export") ||
+      // Botón "Sincronizar" (reseñas, /api/sync/now) y "Sincronizar enlaces"
+      // (deep-links, /api/sync/maps-urls). Sin esto el POST se redirige a
+      // /dashboard y el fetch recibe HTML → "No se pudo sincronizar (HTTP 200)".
+      pathname.startsWith("/api/sync")
     );
   }
   if (role === "office_director") {
