@@ -183,7 +183,7 @@ export default async function ManagerResenasPage({
         breadcrumb={getBrandBreadcrumb(brand)}
         right={
           <>
-            <SyncNowButton label="Sincronizar" variant="ghost" />
+            <SyncNowButton label="Sincronizar reseñas" variant="ghost" />
             <MapsUrlSyncButton label="Sincronizar enlaces" variant="ghost" />
             <RangePicker
               from={range.from}
