@@ -7,6 +7,7 @@ import {
   type LucideIcon,
   LayoutDashboard,
   Users,
+  Contact,
   UserCog,
   Briefcase,
   MapPin,
@@ -415,8 +416,11 @@ export const MANAGER_SIDEBAR_GROUPS: SidebarGroup[] = [
 
 // Director de oficina: rol DUAL — productor (sales-like, con su /c/{slug}
 // y sus reseñas) + admin de su equipo (sales con director_id = él).
-// Sidebar refleja la dualidad: "Mi panel" (productor) arriba, "Mi oficina"
-// (gestor) abajo. NO ve /gestores ni /directores ni /ajustes.
+// Sidebar refleja la dualidad del responsable: "Mi oficina" (lo que gestiona:
+// equipo, verificación, ranking) y "Mi actividad" (lo que vende él como
+// comercial: enlace, clientes, reseñas). NO ve /gestores ni /directores ni
+// /ajustes. Iconos distintos para "Mis clientes" (Contact) y "Comerciales"
+// (Users) — antes compartían icono y se confundían.
 export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
   {
     id: "home",
@@ -426,23 +430,23 @@ export const OFFICE_DIRECTOR_SIDEBAR_GROUPS: SidebarGroup[] = [
     ],
   },
   {
-    id: "panel",
-    label: "Mi panel",
-    items: [
-      { id: "link", label: "Mi enlace", href: "/panel/enlace", icon: Link2 },
-      { id: "myclients", label: "Mis clientes", href: "/clientes", icon: Users },
-      { id: "myreviews", label: "Mis reseñas", href: "/panel/resenas", icon: Star },
-    ],
-  },
-  {
     id: "team",
     label: "Mi oficina",
     items: [
-      { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
       { id: "sales", label: "Comerciales", href: "/comerciales", icon: Users },
-      // Ranking del equipo del director (filtrado por RLS) — él mismo
+      { id: "verification", label: "Verificación", href: "/resenas/verificacion", icon: ListChecks },
+      // Ranking del equipo del responsable (filtrado por RLS) — él mismo
       // aparece como una fila más del leaderboard porque es productor.
-      { id: "team-ranking", label: "Ranking", href: "/ranking", icon: Trophy },
+      { id: "team-ranking", label: "Ranking del equipo", href: "/ranking", icon: Trophy },
+    ],
+  },
+  {
+    id: "activity",
+    label: "Mi actividad",
+    items: [
+      { id: "link", label: "Mi enlace", href: "/panel/enlace", icon: Link2 },
+      { id: "myclients", label: "Mis clientes", href: "/clientes", icon: Contact },
+      { id: "myreviews", label: "Mis reseñas", href: "/panel/resenas", icon: Star },
     ],
   },
 ];
