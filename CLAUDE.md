@@ -1114,6 +1114,21 @@ Decisión de negocio (2026-06-11): el enlace público `/c/{slug}` debe llevar so
 - **Seguridad (regla §4.36)**: la mig 027 reescribe `profiles_self_update` congelando `previous_slug` — sin esto un sales podría auto-asignarse el slug viejo de otro vía PostgREST y secuestrar sus visitas. `previous_slug` está en `FROZEN_COLUMNS` del test de regresión.
 - ⚠️ Solo se guarda **UN** alias. Si algún día se renombra por segunda vez, el alias más viejo se pierde (aceptado). Los bookmarks internos a `/comerciales/{slug-viejo}` dan 404 (los listados regeneran el link) — sin alias interno, aceptado.
 
+### 4.54 Enlace directo a la reseña concreta en Google Maps (mig 029) — EN CURSO
+
+Hasta ahora los listados/Excel solo enlazaban a la **lista** de reseñas de la ficha (`buildGoogleReviewListUrl`). Objetivo: que cada reseña tenga su **deep-link a la reseña concreta** (`https://www.google.com/maps/reviews/data=…`, el que genera "Compartir reseña" en Maps).
+
+**Hallazgo del spike (2026-06-11):** ninguna API oficial de Google da URL por reseña (ni Business Profile ni Places New — esta última solo da `googleMapsUri` de ~5 reseñas "destacadas" por ficha). El `reviewId` que guardamos (`AbFvOqm…`) **no** se relaciona con el token del enlace de compartir (`Ci9DQUlR…`): son espacios distintos, no hay conversión. La ÚNICA vía completa+automática es el **feed interno de Maps** (decisión de negocio consciente: endpoint no documentado, zona gris de ToS, solo-lectura; riesgo a la ficha bajo). Verificado E2E contra Oropesa: el FID se resuelve de la página de ficha (`0xd60489fe4101153:0xe9174fc12c1908e8`, coincide con los share-links reales) y "Compartir reseña" produce `maps.app.goo.gl/…` que expande al deep-link.
+
+⚠️ **El feed cambió:** Maps ya no sirve las reseñas por el `listugcposts` GET simple sino por `batchexecute` (rpcid `T4jwAf`), un RPC interno protobuf — más frágil. Por eso el **extractor** se decide según un test de IP (¿Google bloquea desde datacenter?): si pasa → headless (Playwright en GitHub Action, robusto a cambios del RPC); la vía "parser del batchexecute" se descartó por frágil. Test en `.github/workflows/ip-probe-maps.yml` (temporal).
+
+**Lo YA entregado (commit `40d65d5`, desplegable sin regresión):**
+- **Migración 029**: `locations.google_fid` (FID hex cacheado) + `reviews.google_maps_url` (deep-link, NULL = sin enriquecer) + `reviews.maps_url_matched_at` + índice parcial `reviews_maps_url_pending_idx` (cola). ⚠️ **PENDIENTE de aplicar en Supabase.**
+- **Degradación transparente**: [`buildGoogleReviewUrl({mapsUrl, placeId})`](lib/google/review-url.ts) devuelve el deep-link si existe, si no cae a la lista de la ficha, si no null. `buildGoogleReviewListUrl` se conserva. `<GoogleReviewLink mapsUrl=…>` ajusta copy/aria ("Ver reseña" vs "Ver en Google"). Propagado a los 7 call sites + Excel individual ([sales-report.ts](lib/reports/sales-report.ts)) + email ≤2★ (opcional). Mientras el deep-link no esté, todo sigue llevando a la lista → activar el enriquecimiento NO produce regresión.
+- **Matcher puro** [lib/google/maps-url-matching.ts](lib/google/maps-url-matching.ts): casa reseñas del feed ↔ filas de BD por autor (`nameSimilarity` ≥90) + rating + ventana 48h, SOLO si el match es único en ambos sentidos (conservador: falso negativo > falso positivo). Tests propios.
+
+**Pendiente (siguiente commit, tras el veredicto de IP):** extractor del feed (headless Playwright en Action o parser) + orquestador "nunca lanza" + runner. Resolver/cachear FID por ficha, paginar el feed, matchear, `UPDATE` solo donde `google_maps_url IS NULL` (race-safe, idempotente), backfill suave vía el índice parcial. Audit `review_maps_url_matched`.
+
 ---
 
 ## 5. Setup en otro Mac
