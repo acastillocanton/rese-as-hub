@@ -89,7 +89,7 @@ export function Topbar({
       </div>
       <div
         className={compact ? "m-topbar-right" : undefined}
-        style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+        style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}
       >
         {range !== null && <DateRange value={range} />}
         {right}

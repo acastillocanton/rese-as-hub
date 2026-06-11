@@ -37,8 +37,8 @@ export function MapsUrlSyncButton({
         setTone("ok");
         setFeedback(
           (data.pending ?? 0) === 0
-            ? "No hay enlaces pendientes. Todo al día."
-            : `Solicitado · ${data.pending} reseña${data.pending === 1 ? "" : "s"} sin enlace. El PC de oficina lo procesará en ~1 min (si está encendido).`,
+            ? "Los enlaces ya están al día."
+            : "Solicitado · los enlaces se completarán en unos minutos.",
         );
       } catch (err) {
         setTone("warn");

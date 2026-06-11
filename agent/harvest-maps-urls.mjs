@@ -91,7 +91,10 @@ function buildMapsReviewUrl(token, fid) {
 const NAME_THRESHOLD = 90;
 const DATE_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
 function normTokens(s) {
-  return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+  // Unicode-aware: conserva letras de cualquier alfabeto (cirílico, etc.) — no
+  // solo a-z — para poder casar nombres como "Светлана Костырко". \p{M} quita
+  // diacríticos; \p{L}\p{N} mantiene letras/números de cualquier idioma.
+  return (s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
 }
 function nameMatches(stored, dom) {
   const a = normTokens(stored), b = normTokens(dom);
