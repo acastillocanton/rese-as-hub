@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { Topbar } from "@/components/layout/Topbar";
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { ConversationRow } from "@/components/soporte/ConversationRow";
+import { SupportHoursNotice } from "@/components/soporte/SupportHoursNotice";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Role, SupportCategory, SupportStatus } from "@/lib/supabase/types";
@@ -135,6 +136,9 @@ export default async function SoportePage() {
         }
       />
       <div style={{ padding: "24px 32px", maxWidth: 800 }} className="m-page-pad">
+        <div style={{ marginBottom: 16 }}>
+          <SupportHoursNotice />
+        </div>
         {rows.length === 0 ? (
           <div
             style={{

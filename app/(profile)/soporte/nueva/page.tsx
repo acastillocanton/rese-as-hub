@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/Topbar";
 import { NewConversationForm } from "@/components/soporte/NewConversationForm";
+import { SupportHoursNotice } from "@/components/soporte/SupportHoursNotice";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { isProducer, type Role } from "@/lib/supabase/types";
@@ -81,6 +82,9 @@ export default async function NuevaConsultaPage() {
         compact
       />
       <div style={{ padding: "24px 32px" }} className="m-page-pad">
+        <div style={{ marginBottom: 16 }}>
+          <SupportHoursNotice />
+        </div>
         <NewConversationForm reviews={reviews} clients={clients} />
       </div>
     </>
