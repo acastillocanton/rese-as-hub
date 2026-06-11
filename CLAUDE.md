@@ -1143,6 +1143,8 @@ Hasta ahora los listados/Excel solo enlazaban a la **lista** de reseñas de la f
 
 - **El runner por navegador** [jobs/enrich-review-urls.mjs](jobs/enrich-review-urls.mjs) se deja como herramienta experimental (el muro de arriba). La variante `connectOverCDP` a Chrome real quedó **fuera de alcance**; se retoma si Capa 1 + pegado no bastan.
 
+- **Cosecha COMPLETA vía Chrome real del MCP (2026-06-11) — 153/175 deep-links (~87%).** El muro de Playwright NO aplica al **Chrome real del MCP chrome-devtools**: renderiza el módulo de reseñas perfectamente (verificado: abre la reseña exacta). Procedimiento (scripts en `scripts/`, **gitignored** → no viajan entre Macs; reconstruibles): por ficha, navegar a `maps/place/?q=place_id:{id}`, abrir pestaña "Reseñas", ordenar "Más recientes", hacer scroll, y extraer de cada `div[data-review-id][aria-label]` el `{token, autor (aria-label), rating, fecha}` + el FID del `!1s` de la URL (⚠️ NO el primer `0x…:0x…` — Chamberí trae un `!5s` secundario delante). Luego `scripts/write-harvested-urls.mjs <harvest.json> <location_id> [fidOverride]` casa (matcher conservador único 1↔1) y escribe con el builder de [maps-ugc.ts](lib/google/maps-ugc.ts). Las 22 que faltan son anónimas (sin nombre que casar) o anteriores al tramo de feed cargado. **Going-forward**: el cron diario cubre las destacadas; para cobertura total de las nuevas hay que **repetir esta cosecha** (necesita un Chrome real; no CI). Resultado por ficha: Oropesa 54/76, Valencia/Castellón 19/19, Chamberí 14/14, Leganés 5/5, Príncipe 7/7, Pardiñas 5/5.
+
 ---
 
 ## 5. Setup en otro Mac
