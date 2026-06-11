@@ -42,20 +42,25 @@ describe("matchUgcToReviews", () => {
     expect(m).toEqual({ reviewId: "r1", skipped: "no_candidate" });
   });
 
-  it("fuera de la ventana de 48h → no casa", () => {
+  it("fuera de la guarda laxa (>31 días) → no casa", () => {
     const [m] = matchUgcToReviews(
       [stored()],
-      [ugc({ createdAtMs: TMS + 72 * 3600 * 1000 })],
+      [ugc({ createdAtMs: TMS + 60 * 24 * 3600 * 1000 })],
     );
     expect(m).toEqual({ reviewId: "r1", skipped: "no_candidate" });
   });
 
-  it("diferencia >1h pero <48h → strong (no exact)", () => {
+  it("diferencia >1h pero dentro de 31 días → strong (no exact)", () => {
     const [m] = matchUgcToReviews(
       [stored()],
-      [ugc({ createdAtMs: TMS + 5 * 3600 * 1000 })],
+      [ugc({ createdAtMs: TMS + 5 * 24 * 3600 * 1000 })],
     );
     expect(m).toMatchObject({ confidence: "strong" });
+  });
+
+  it("fecha nula (DOM solo da relativa) → casa por autor+rating, confidence strong", () => {
+    const [m] = matchUgcToReviews([stored()], [ugc({ createdAtMs: null })]);
+    expect(m).toEqual({ reviewId: "r1", url: "https://maps.app.goo.gl/AAA", confidence: "strong" });
   });
 
   it("anónimo → skip sin intentar casar", () => {

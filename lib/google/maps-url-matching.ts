@@ -30,14 +30,17 @@ export type StoredReviewForMatch = {
   createdAtIso: string;
 };
 
-/** Reseña tal cual viene del feed de Maps, ya con su enlace público. */
+/** Reseña tal cual viene del feed/DOM de Maps, ya con su enlace público. */
 export type UgcReviewForMatch = {
   /** Deep-link a la reseña concreta (/maps/reviews/data=… o maps.app.goo.gl/…). */
   url: string;
   authorName: string;
   rating: number;
-  /** Epoch ms de publicación de la reseña en Google. */
-  createdAtMs: number;
+  /** Epoch ms APROXIMADO de publicación. El DOM de Maps solo da fecha relativa
+   *  ("hace 8 meses"), así que esto es una estimación gruesa o `null` si no se
+   *  pudo parsear. Por eso la guarda temporal es laxa (ver DATE_WINDOW_MS) y se
+   *  omite cuando es null — la identidad la fija autor+rating+unicidad. */
+  createdAtMs?: number | null;
 };
 
 export type UrlMatch =
@@ -55,10 +58,14 @@ export type SkipReason =
  *  persona. */
 const NAME_IDENTITY_THRESHOLD = 90;
 
-/** Ventana temporal: el `createTime` de BP y el del feed pueden diferir algo
- *  (redondeos, ediciones). 48h es coherente con el resto del proyecto y, junto
- *  con autor idéntico + rating, basta para identidad. */
-const DATE_WINDOW_MS = 48 * 60 * 60 * 1000;
+/** Guarda temporal LAXA: el DOM de Maps solo da fecha relativa ("hace 8
+ *  meses"), imprecisa. 31 días absorbe esa imprecisión y solo sirve para
+ *  rechazar mismatches groseros (reseña de esta semana vs "hace 3 años"). La
+ *  identidad fina la dan autor + rating + unicidad, no la fecha. Se omite si la
+ *  fecha del DOM no se pudo parsear (createdAtMs null). */
+const DATE_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
+/** Si las fechas casan al minuto-hora, el match es "exact"; si no, "strong". */
+const EXACT_WINDOW_MS = 60 * 60 * 1000;
 
 function isAnonymous(name: string): boolean {
   const n = name.trim().toLowerCase();
@@ -67,9 +74,12 @@ function isAnonymous(name: string): boolean {
 
 function passesBar(stored: StoredReviewForMatch, ugc: UgcReviewForMatch): boolean {
   if (stored.rating !== ugc.rating) return false;
-  const storedMs = new Date(stored.createdAtIso).getTime();
-  if (!Number.isFinite(storedMs)) return false;
-  if (Math.abs(storedMs - ugc.createdAtMs) > DATE_WINDOW_MS) return false;
+  // Guarda temporal solo si el DOM dio una fecha utilizable.
+  if (ugc.createdAtMs != null) {
+    const storedMs = new Date(stored.createdAtIso).getTime();
+    if (!Number.isFinite(storedMs)) return false;
+    if (Math.abs(storedMs - ugc.createdAtMs) > DATE_WINDOW_MS) return false;
+  }
   return nameSimilarity(stored.authorName, ugc.authorName) >= NAME_IDENTITY_THRESHOLD;
 }
 
@@ -124,7 +134,10 @@ export function matchUgcToReviews(
     }
     const u = ugc[ui]!;
     const storedMs = new Date(s.createdAtIso).getTime();
-    const exact = Math.abs(storedMs - u.createdAtMs) <= 60 * 60 * 1000;
+    const exact =
+      u.createdAtMs != null &&
+      Number.isFinite(storedMs) &&
+      Math.abs(storedMs - u.createdAtMs) <= EXACT_WINDOW_MS;
     out.push({ reviewId: s.id, url: u.url, confidence: exact ? "exact" : "strong" });
   }
   return out;
