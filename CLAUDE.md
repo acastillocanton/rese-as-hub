@@ -115,6 +115,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat(soporte) · Aviso informativo del horario de atención en `/soporte` y `/soporte/nueva` (intensivo jul/ago, partido el resto; solo el mes en curso) — §4.45 | ✅ (2026-06-11) |
 | feat(sync) · Soft-delete AUTOMÁTICO de reseñas borradas en Google (mig 028): sello `missing_since` + umbral 24h, solo cron BP, restauración manual — §4.20 | ✅ (2026-06-11) |
 | feat(slugs) · Slug del productor = nombre + primer apellido (33 renombrados via one-shot) + alias `previous_slug` con fallback en landing (mig 027) + campo slug editable en los modales de invitación — §4.53 | ✅ (2026-06-11) |
+| feat(reviews) · Deep-link por reseña a Google Maps (mig 029): base + degradación + matcher + URL verificada E2E. ⚠️ Harvest automático BLOQUEADO por anti-automatización de Maps — pendiente decidir pegado manual / CDP — §4.54 + [docs/deep-link-resenas-google.md](docs/deep-link-resenas-google.md) | ⏳ base lista (2026-06-11) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
