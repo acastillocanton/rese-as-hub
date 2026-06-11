@@ -612,9 +612,13 @@ export async function restoreReview(reviewId: string) {
   if (!inScope.ok) return { ok: false as const, error: inScope.error };
 
   const writer = await writerForActor(actor);
+  // missing_since también se limpia (mig 028): si la reseña fue auto-removed
+  // por el reconcile del cron BP (§4.20), restaurar sin limpiar el sello haría
+  // que el siguiente run la re-marcara al instante (ausencia "sostenida" vieja).
+  // Así la restauración manual gana un periodo de gracia fresco de 24h.
   const { error } = await writer
     .from("reviews")
-    .update({ removed_at: null } as never)
+    .update({ removed_at: null, missing_since: null } as never)
     .eq("id", parsed.data)
     .not("removed_at", "is", null);
   if (error) {

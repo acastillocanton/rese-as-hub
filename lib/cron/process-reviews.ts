@@ -69,6 +69,9 @@ export type LocationSummary = {
   /** Reseñas BP ya en BD cuyo contenido (rating/texto) cambió en Google y se
    *  actualizó in-place (reviewId estable → no pasan por `fresh`). Ver §4.41. */
   edited?: number;
+  /** Reseñas BP soft-deleted automáticamente por ausencia sostenida (>24h) de
+   *  la ventana de fetch — desaparecieron de Google. Ver §4.20. */
+  auto_removed?: number;
   error?: string;
 };
 

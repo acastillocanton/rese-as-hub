@@ -9,6 +9,7 @@ import {
 import { stripGoogleTranslation } from "@/lib/google/strip-translation";
 import { normalizeOwnerReply } from "@/lib/google/owner-reply";
 import { decideBpEditSync } from "@/lib/cron/edit-merge";
+import { decideReconcileRemoved } from "@/lib/cron/reconcile-removed";
 import {
   processFreshReviews,
   flushNotifications,
@@ -300,6 +301,19 @@ export async function syncBusinessProfile(
       lowRatingAlerts.push(...editRes.alerts);
       for (const a of editRes.alerts) {
         if (a.clientId) clientIdsSeen.add(a.clientId);
+      }
+
+      // Soft-delete automático (§4.20, reactivado 2026-06-11): detecta reseñas
+      // BP que desaparecieron de Google. try/catch propio: NO debe tumbar el
+      // sync de la location (p.ej. si la migración 028 aún no está aplicada).
+      try {
+        const autoRemoved = await reconcileRemovedBp(admin, loc.id, googleReviews);
+        if (autoRemoved > 0) entry.auto_removed = autoRemoved;
+      } catch (err) {
+        console.error(
+          `[sync-bp] reconcile removed failed for location ${loc.id}:`,
+          err instanceof Error ? err.message : err,
+        );
       }
 
       // Going-forward only (§4.26): además de filtrar las ya existentes,
@@ -636,6 +650,99 @@ async function syncExistingEdits(
     await admin.from("audit_log").insert(auditRows as never);
   }
   return { edited: auditRows.length, alerts };
+}
+
+/**
+ * Soft-delete automático de reseñas borradas en Google (§4.20, reactivado
+ * 2026-06-11 — solo cron BP, las históricas de Places quedan fuera).
+ *
+ * Invariante de ventana: la API lista por `updateTime` desc y el fetch es un
+ * prefijo de ese orden → contiene TODAS las reseñas con `updateTime >=
+ * min(updateTime bajado)`. Como updateTime >= createTime, toda fila BP de BD
+ * con `google_created_at > minFetchedUpdateTime` debería estar en el fetch.
+ * Si no está, ha desaparecido de Google (autor la borró / Google la retiró).
+ * Las filas más antiguas que la ventana NO son evaluables (no se tocan).
+ *
+ * Anti-falsos-positivos (la lección de Places, §4.20): primera ausencia →
+ * sella `missing_since`; soft-delete (`removed_at`) solo tras 24h de ausencia
+ * sostenida (≥ varios runs horarios); si reaparece, se limpia el sello. La
+ * decisión vive en el helper puro `decideReconcileRemoved`. La restauración
+ * sigue siendo manual (`restoreReview`, que limpia también `missing_since`
+ * para dar gracia fresca); este flujo NUNCA limpia un removed_at.
+ *
+ * Audit: `action='review_auto_removed'` por fila soft-deleted.
+ */
+async function reconcileRemovedBp(
+  admin: ReturnType<typeof createServiceClient>,
+  locationId: string,
+  googleReviews: GoogleReview[],
+): Promise<number> {
+  if (googleReviews.length === 0) return 0;
+
+  let minFetchedUpdateTime = googleReviews[0]!.updateTime;
+  for (const gr of googleReviews) {
+    if (gr.updateTime < minFetchedUpdateTime) minFetchedUpdateTime = gr.updateTime;
+  }
+  const fetchedIds = new Set(googleReviews.map((gr) => gr.reviewId));
+
+  const { data: candidates, error: candErr } = await admin
+    .from("reviews")
+    .select("id, google_review_id, missing_since")
+    .eq("location_id", locationId)
+    // `source` no está en los types hand-maintained de lib/supabase/types.ts
+    // (añadirlo cuando ese archivo quede libre) — cast como en otros filtros.
+    .eq("source" as string & keyof never, "business_profile")
+    .is("removed_at", null)
+    .gt("google_created_at", minFetchedUpdateTime)
+    .returns<
+      { id: string; google_review_id: string; missing_since: string | null }[]
+    >();
+  if (candErr) throw new Error(`reconcile candidates query failed: ${candErr.message}`);
+  if (!candidates || candidates.length === 0) return 0;
+
+  const now = new Date().toISOString();
+  const decision = decideReconcileRemoved({
+    candidates,
+    fetchedIds,
+    nowIso: now,
+  });
+
+  if (decision.reappeared.length > 0) {
+    await admin
+      .from("reviews")
+      .update({ missing_since: null } as never)
+      .in("id", decision.reappeared);
+  }
+  if (decision.firstMiss.length > 0) {
+    await admin
+      .from("reviews")
+      .update({ missing_since: now } as never)
+      .in("id", decision.firstMiss);
+  }
+  if (decision.toRemove.length > 0) {
+    // `missing_since` se conserva como traza de cuándo desapareció.
+    const { error: rmErr } = await admin
+      .from("reviews")
+      .update({ removed_at: now } as never)
+      .in("id", decision.toRemove);
+    if (rmErr) throw new Error(`reconcile remove update failed: ${rmErr.message}`);
+
+    const byRowId = new Map(candidates.map((c) => [c.id, c]));
+    await admin.from("audit_log").insert(
+      decision.toRemove.map((id) => ({
+        entity_type: "review",
+        entity_id: id,
+        action: "review_auto_removed",
+        payload: {
+          google_review_id: byRowId.get(id)?.google_review_id ?? null,
+          missing_since: byRowId.get(id)?.missing_since ?? null,
+          source: "business_profile",
+        },
+      })) as never,
+    );
+  }
+
+  return decision.toRemove.length;
 }
 
 async function markSyncOk(
