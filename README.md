@@ -299,7 +299,7 @@ lib/
   url-validation.ts     ─ isSafeNext / isValidSlug
   date-range.ts         ─ parseRange (+fallback), commissionPeriodRange (20→20), bucketByMonth, …
   __tests__/            ─ Tests Vitest: date-range, leaderboard, panel-badges, sales-schemas, rls-self-update, …
-  utils.ts              ─ cn, slugify (translitera cirílico→latino), transliterateCyrillic, initials, avatarColor, formatEuro
+  utils.ts              ─ cn, slugify (translitera cirílico→latino), shortNameForSlug (nombre + primer apellido), transliterateCyrillic, initials, avatarColor, formatEuro
 supabase/migrations/    ─ 001 schema, 002 RLS, 003 seed, 004 google_oauth,
                          005 manager_sales_admin, 006 profile_avatars,
                          007 reviews_composite_indices, 008 audit_log_insert_policy,
@@ -318,7 +318,8 @@ supabase/migrations/    ─ 001 schema, 002 RLS, 003 seed, 004 google_oauth,
                          023 support_helpdesk (soporte interno: 3 tablas + RLS + unread_count),
                          024 review_replies (reply_text/replied_at/reply_by/reply_via en reviews),
                          025 reviews_manager_write (policy UPDATE del gestor sobre reviews),
-                         026 commission_cap (profiles.commission_cap — tope reseñas bonificables)
+                         026 commission_cap (profiles.commission_cap — tope reseñas bonificables),
+                         027 previous_slug (alias del slug viejo tras renombrar a nombre+primer apellido)
 e2e/                    ─ Playwright specs (login + admin-nav) + helpers/auth.ts
 test/                   ─ server-only-stub.ts (para que Vitest importe módulos server-only)
 middleware.ts           ─ Auth + roles + redirección por rol

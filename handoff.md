@@ -4,11 +4,25 @@
 >
 > **Fuentes de verdad permanentes**: [`CLAUDE.md`](CLAUDE.md) (estado + workarounds) y [`spec.md`](spec.md) (producto). Este archivo resume la **última tanda de trabajo** y el estado operativo para retomar rápido. Las memorias locales (`~/.claude/projects/.../memory/`) NO viajan entre máquinas — la continuidad cross-máquina es CLAUDE.md + spec.md + este handoff.
 
-**Última actualización**: 2026-06-10 · **Rama**: `main` · **HEAD**: `cbed0e2` — respuestas v2 (paginación + filtro + limpieza Places) + intento §4.47→pending revertido
+**Última actualización**: 2026-06-11 · **Rama**: `main` · **HEAD**: `33c7ef6` — slugs nombre+primer-apellido + alias previous_slug (mig 027)
 
 ---
 
-## 1. Qué se hizo en esta sesión (2026-06-10)
+## 0. Qué se hizo en la sesión del 2026-06-11 (slugs)
+
+### Slug del productor = nombre + primer apellido + alias `previous_slug` (mig 027) — §4.53
+Dirección pidió que el enlace público `/c/{slug}` lleve solo **nombre y primer apellido** (33 de 53 productores tenían dos apellidos: `tono-sanchez-abadia`…).
+- **mig 027** (aplicada): `profiles.previous_slug` + índice único parcial + `profiles_self_update` reescrita congelando la columna (regla §4.36 — un sales no puede secuestrar el enlace viejo de otro).
+- **Fallback de alias** en [lib/landing.ts](lib/landing.ts): si el lookup por `slug` falla, segundo lookup por `previous_slug` → **los QRs impresos y WhatsApps ya enviados siguen redirigiendo Y atribuyendo** al mismo comercial. Colisiones comprobadas contra slug+alias en `createInvitedProfile` y `restoreSales`/`restoreDirector`; `archiveSales`/`archiveDirector` limpian el alias.
+- **Renombrado one-shot aplicado** (script gitignored `scripts/rename-producer-slugs.mjs`, dry-run + `audit_log action='slug_renamed'`): 33/33. Compuestos conservados (`maria-jesus-lozano`, `ana-isabel-prior`, `jefferson-javier-piguave`); `victor-clemente-moro` → `victor-clemente` (decisión admin).
+- **Altas futuras**: campo "Enlace (slug)" **editable** en los modales de invitación (comerciales + directores), auto-rellenado con `shortNameForSlug` ([lib/utils.ts](lib/utils.ts)). ⚠️ La heurística no detecta nombres compuestos ("María Jesús" → sin apellido) — el admin lo corrige en el campo. Server: `inviteSlugSchema`.
+- **Verificado E2E en prod**: `/c/tono-sanchez-abadia` (alias) y `/c/tono-sanchez` → 302 a writereview + visita en `share_links` con el `sales_id` correcto.
+- Commits `377f169` (feature), `33c7ef6` (docs). Detalle: **CLAUDE.md §4.53**.
+- ⚠️ Incidente menor de la mañana: otra sesión arrastró con `git add -A` esta feature A MEDIO HACER (commit `c8021bf` → **build rojo en Vercel, ignorable, quedó Stale**); se revirtió en `f3c7c35` y la feature completa entró después con gate verde. Lección en memoria: nunca `git add -A` con sesiones paralelas en el mismo working tree.
+
+---
+
+## 1. Qué se hizo en la sesión del 2026-06-10
 
 Sesión grande: un bugfix de RLS, una feature de comisión, y **la activación end-to-end de Google Business Profile** (el bloqueo de meses).
 
@@ -55,10 +69,10 @@ Tras detectar un falso positivo (reseña rusa "Елена Тесля" atribuida 
 
 ## 2. Estado operativo
 
-- **Migraciones 001–026 aplicadas** en Supabase (023 helpdesk, 024 review replies, 025 reviews_manager write, 026 commission_cap — todas confirmadas por el usuario). **No queda ninguna pendiente.**
+- **Migraciones 001–027 aplicadas** en Supabase (026 commission_cap, **027 previous_slug** confirmada por el usuario el 2026-06-11). ⚠️ La **028** (`missing_since`, soft-delete automático, de la sesión paralela) estaba **pendiente de aplicar** según CLAUDE.md §7 — verificar antes de retomar.
 - **Business Profile**: cuota ACTIVA. 7 fichas conectadas por OAuth (`accounts/111197444117937021993`), `google_location_resource` = recurso completo. Fuente única. Places apagado. Diagnóstico: `node scripts/check-bp-quota.mjs` → 200 en todas.
 - **Tope de comisión**: productores con `commission_cap = 5` (default).
-- **Tests**: `npm test` → **329 verdes** (+strip-translation +owner-reply). `npm run typecheck` ✅.
+- **Tests**: `npm test` → **355+ verdes** (+shortNameForSlug +previous_slug en FROZEN_COLUMNS +reconcile-removed). `npm run typecheck` ✅.
 - **Deploy**: todo pusheado a `main`. Verificar en Vercel que el último deploy está **Ready** (especialmente el de la activación BP, para que el cron horario use el código con corte).
 
 ---

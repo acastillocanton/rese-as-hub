@@ -135,7 +135,7 @@ lib/
   cron/                           process-reviews.ts (helper compartido)
   landing.ts                      Lógica del /c/* (service-role insert + redirect)
   url-validation.ts               isSafeNext, isValidSlug
-  utils.ts                        cn, slugify (translitera cirílico→latino), transliterateCyrillic, initials, avatarColor
+  utils.ts                        cn, slugify (translitera cirílico→latino), shortNameForSlug (nombre + primer apellido), transliterateCyrillic, initials, avatarColor
   demo-data.ts                    Datos placeholder (modo demo sin Supabase)
 
 supabase/
@@ -306,6 +306,8 @@ El MVP está hecho cuando **todas** estas condiciones son verdad:
 Cuestiones sin resolver que necesitan input antes (o durante) la implementación. Las marcadas con ~~tachado~~ se cerraron en v1; las abiertas pasan al **backlog v2** (`CLAUDE.md` §8).
 
 **Cerrada en v2 (2026-05-26) · Anti-fraude por enlace de cliente**: cuando un cliente reenvía su enlace a familia/amigos, varias reseñas pueden llegar al mismo `client_id`. **Decisión**: todas se atribuyen al mismo `sales_id` (correcto — el comercial sabe que su cliente trajo más gente), pero solo la primera por `google_created_at` cuenta en KPIs/pagos. Migración 015 introduce `reviews.is_duplicate boolean`. Ver `CLAUDE.md` §4.23 para el flujo completo (cron + server actions + UI badge + Excel).
+
+**Cerrada en v2 (2026-06-11) · Slug del productor = nombre + primer apellido**: dirección pidió que el enlace público `/c/{slug}` no llevara los dos apellidos. **Decisiones**: (a) los 33 productores con dos apellidos se renombraron via one-shot; el slug viejo queda como **alias** (`profiles.previous_slug`, migración 027) con lookup de respaldo en `lib/landing.ts` → los QRs impresos y enlaces ya enviados siguen redirigiendo Y atribuyendo al mismo comercial; (b) los nombres de pila compuestos conservan el compuesto + primer apellido (`maria-jesus-lozano`); (c) las altas futuras auto-rellenan el slug con la heurística `shortNameForSlug` en un campo **editable** del modal de invitación (el admin corrige los compuestos); (d) `previous_slug` congelado en `profiles_self_update` (anti-secuestro de visitas). El `full_name` visible NO cambia. Ver `CLAUDE.md` §4.53.
 
 **Cerrada en v2 (2026-06-01) · Modelo de comisión por reseña**: a los productores (comerciales + directores) se les abona una **comisión por cada reseña verificada**. **Decisiones de negocio**: (a) el **periodo de liquidación va del día 20 al día 19 del mes siguiente** (no el mes natural) — el día 20 abre periodo nuevo, sin solapamientos; (b) **abonable = solo `match_state='counted'`, no-duplicada, no-eliminada** (las `pending` son "potenciales" hasta verificarse); (c) **tarifa €/reseña por productor** (`profiles.commission_rate`, migración 020); (d) **tope de reseñas bonificables por periodo** (`profiles.commission_cap`, default 5, configurable por productor, migración 026, 2026-06-10): se abona un máximo de N reseñas/periodo → importe estimado = `min(counted, commission_cap) × commission_rate`. El comercial puede conseguir más (suman a producción/ranking/insignias) pero solo cobra hasta el tope; la UI muestra las reales + cuántas van bonificadas + aviso. El panel del comercial muestra ese periodo por defecto + el importe estimado. ⚠️ La app **solo muestra** el estimado; **no** calcula nóminas ni registra pagos reales (la liquidación final sigue siendo externa). Ver `CLAUDE.md` §4.35 y §4.49.
 
