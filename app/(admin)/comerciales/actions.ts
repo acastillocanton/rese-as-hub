@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createInvitedProfile } from "@/lib/invite";
 import { generateAccessLink } from "@/lib/auth/resend-link";
-import { shortNameForSlug, slugify } from "@/lib/utils";
+import { slugify } from "@/lib/utils";
 import { recordAudit } from "@/lib/audit";
 import { storeUserAvatar, removeUserAvatarObjects } from "@/lib/avatar";
 import type { Role } from "@/lib/supabase/types";
@@ -15,7 +15,6 @@ import {
   commissionCapSchema,
   commissionRateSchema,
   departmentSchema,
-  inviteSlugSchema,
   pauseReasonSchema,
 } from "@/lib/validation/sales-schemas";
 
@@ -126,9 +125,6 @@ const ymdSchema = z
 const inviteSchema = z
   .object({
     fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
-    /** Slug público editable (decisión 2026-06-11: nombre + primer apellido).
-     *  null → la action lo genera con shortNameForSlug. */
-    slug: inviteSlugSchema,
     email: z.string().email("Email inválido."),
     phone: z
       .string()

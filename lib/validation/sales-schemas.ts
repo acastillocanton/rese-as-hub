@@ -7,33 +7,6 @@ import { z } from "zod";
  * antes estaban duplicados en cada actions.ts.
  */
 
-/**
- * Slug público del productor en el alta (decisión 2026-06-11: nombre +
- * primer apellido). El modal lo auto-rellena con la heurística
- * `shortNameForSlug` y el admin puede corregirlo (nombres compuestos).
- * Reglas:
- *  - vacío / null / undefined → null (la action genera con la heurística).
- *  - debe ser un slug válido: minúsculas a-z, dígitos y guiones, máx 60.
- */
-export const inviteSlugSchema = z
-  .string()
-  .optional()
-  .nullable()
-  .transform((v, ctx) => {
-    if (v === null || v === undefined) return null;
-    const s = v.trim();
-    if (s === "") return null;
-    if (!/^[a-z0-9-]{1,60}$/.test(s)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "El enlace solo puede llevar minúsculas, números y guiones (ej.: maria-jesus-lozano).",
-      });
-      return z.NEVER;
-    }
-    return s;
-  });
-
 export const departmentSchema = z.enum([
   "nacional",
   "internacional",

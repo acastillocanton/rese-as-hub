@@ -36,14 +36,10 @@ export async function createInvitedProfile(
 > {
   const admin = createServiceClient();
 
-  // Colisión contra slug ACTUAL y contra alias antiguos (previous_slug,
-  // mig 027): un alta nueva no puede reutilizar el enlace viejo de alguien
-  // renombrado — seguiría capturando sus visitas vía el fallback de landing.
   const { data: existing } = await admin
     .from("profiles")
     .select("id")
-    .or(`slug.eq.${args.slug},previous_slug.eq.${args.slug}`)
-    .limit(1)
+    .eq("slug", args.slug)
     .maybeSingle<{ id: string }>();
   if (existing) {
     return {

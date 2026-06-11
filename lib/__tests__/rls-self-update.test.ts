@@ -21,7 +21,6 @@ const MIGRATIONS_DIR = join(process.cwd(), "supabase", "migrations");
 const FROZEN_COLUMNS = [
   "role",
   "slug",
-  "previous_slug",
   "monthly_goal",
   "commission_rate",
   "commission_cap",
