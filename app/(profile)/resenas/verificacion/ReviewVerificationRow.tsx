@@ -31,6 +31,7 @@ type Review = {
   match_evidence: Record<string, unknown> | null;
   removed_at: string | null;
   is_duplicate: boolean;
+  google_maps_url: string | null;
   sales: { id: string; full_name: string; slug: string } | null;
   client: { id: string; full_name: string } | null;
   location: { id: string; name: string; google_place_id: string | null } | null;
@@ -620,6 +621,7 @@ function ReviewHeader({ review }: { review: Review }) {
         </span>
         <GoogleReviewLink
           placeId={review.location?.google_place_id}
+          mapsUrl={review.google_maps_url}
           variant="compact"
         />
       </div>

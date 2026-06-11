@@ -123,6 +123,7 @@ function buildDemoInsights(now: Date): PanelInsights {
         google_created_at: "2026-05-30T10:00:00.000Z",
         client_name: "Andrea Pinto",
         place_id: null,
+        maps_url: null,
       },
       {
         id: "demo-2",
@@ -131,6 +132,7 @@ function buildDemoInsights(now: Date): PanelInsights {
         google_created_at: "2026-05-28T16:30:00.000Z",
         client_name: "Familia Soriano",
         place_id: null,
+        maps_url: null,
       },
       {
         id: "demo-3",
@@ -139,6 +141,7 @@ function buildDemoInsights(now: Date): PanelInsights {
         google_created_at: "2026-05-26T09:15:00.000Z",
         client_name: null,
         place_id: null,
+        maps_url: null,
       },
     ],
     lifetimeCounted: 74,
@@ -296,7 +299,7 @@ async function loadPanelInsights(
       supabase
         .from("reviews")
         .select(
-          "id, author_name, rating, google_created_at, client:clients(full_name), location:locations(google_place_id)",
+          "id, author_name, rating, google_created_at, google_maps_url, client:clients(full_name), location:locations(google_place_id)",
         )
         .eq("sales_id", userId)
         .eq("match_state", "counted")
@@ -310,6 +313,7 @@ async function loadPanelInsights(
             author_name: string;
             rating: number;
             google_created_at: string;
+            google_maps_url: string | null;
             client: { full_name: string } | null;
             location: { google_place_id: string | null } | null;
           }[]
@@ -338,6 +342,7 @@ async function loadPanelInsights(
     google_created_at: r.google_created_at,
     client_name: r.client?.full_name ?? null,
     place_id: r.location?.google_place_id ?? null,
+    maps_url: r.google_maps_url ?? null,
   }));
 
   const selfIdx = leaderboard.findIndex((row) => row.isSelf);

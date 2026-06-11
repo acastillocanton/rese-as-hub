@@ -39,6 +39,7 @@ type ReviewRow = {
   reply_via: string | null;
   source: string;
   google_review_id: string;
+  google_maps_url: string | null;
   location: { id: string; name: string; google_place_id: string | null } | null;
   replier: { full_name: string } | null;
 };
@@ -120,7 +121,7 @@ export default async function RespuestasPage({
   let listQuery = supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, replied_at, reply_text, reply_via, source, google_review_id, location:locations(id, name, google_place_id), replier:profiles!reviews_reply_by_fkey(full_name)",
+      "id, author_name, rating, text, google_created_at, replied_at, reply_text, reply_via, source, google_review_id, google_maps_url, location:locations(id, name, google_place_id), replier:profiles!reviews_reply_by_fkey(full_name)",
     )
     .is("removed_at", null);
   listQuery =
@@ -360,7 +361,7 @@ export default async function RespuestasPage({
                     <span style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
                       {r.location?.name ?? "—"} · {fmtDateTime(r.google_created_at)}
                     </span>
-                    <GoogleReviewLink placeId={r.location?.google_place_id} variant="compact" />
+                    <GoogleReviewLink placeId={r.location?.google_place_id} mapsUrl={r.google_maps_url} variant="compact" />
                   </div>
                   {r.text && (
                     <p
@@ -379,6 +380,7 @@ export default async function RespuestasPage({
               <ReviewReplyComposer
                 reviewId={r.id}
                 placeId={r.location?.google_place_id}
+                mapsUrl={r.google_maps_url}
                 replied={r.replied_at !== null}
                 initialText={r.reply_text ?? ""}
                 repliedAt={r.replied_at}

@@ -26,10 +26,12 @@
  * formato Google Search (no en Maps): el usuario llega de un click a
  * las reseñas, que es lo que pidió.
  *
- * Pre-condicionado: cuando llegue cuota de Google Business Profile API
- * y las reseñas lleguen con `reviewId` raw (no el sintético `places:...`
- * de Places API — ver §4.17 del CLAUDE.md), extender este helper a un
- * deep-link de la reseña concreta combinando place_id + reviewId.
+ * Deep-link a la reseña concreta (§4.54): la Business Profile API NO expone
+ * URL por reseña, pero el enlace de "Compartir reseña" de Google Maps sí
+ * (`/maps/reviews/data=…`). Lo obtenemos automáticamente por otra vía
+ * (ver lib/google/maps-ugc.ts) y lo guardamos en `reviews.google_maps_url`.
+ * Para el render se usa `buildGoogleReviewUrl` (abajo), que cae a la lista
+ * cuando aún no hay deep-link.
  *
  * NO confundir con `buildGoogleReviewUrl` de [lib/landing.ts](lib/landing.ts),
  * que construye la URL pública de Google para ESCRIBIR una reseña
@@ -41,4 +43,31 @@ export function buildGoogleReviewListUrl(
 ): string | null {
   if (!placeId) return null;
   return `https://search.google.com/local/reviews?placeid=${encodeURIComponent(placeId)}`;
+}
+
+/**
+ * URL para VER una reseña en Google, con degradación transparente:
+ *   - Si la reseña tiene `google_maps_url` (deep-link a la reseña concreta,
+ *     obtenido por el enriquecimiento de §4.54) → se devuelve ese.
+ *   - Si no (aún sin enriquecer, o el match no fue concluyente) → se cae al
+ *     enlace de la LISTA de reseñas de la ficha (`buildGoogleReviewListUrl`).
+ *   - Si no hay ni deep-link ni place_id → null (el caller omite el enlace).
+ *
+ * Esta es la función que deben usar todos los call sites de `<GoogleReviewLink>`
+ * (las 5 pantallas de listados + Excel + email de alerta). El deep-link va
+ * rellenándose en segundo plano; mientras tanto el usuario sigue llegando a
+ * la lista, así que activar el enriquecimiento no produce regresión.
+ */
+export function buildGoogleReviewUrl(args: {
+  mapsUrl?: string | null;
+  placeId?: string | null;
+}): string | null {
+  const mapsUrl = args.mapsUrl?.trim();
+  if (mapsUrl) return mapsUrl;
+  return buildGoogleReviewListUrl(args.placeId);
+}
+
+/** True si la URL es un deep-link a la reseña concreta (no el de lista). */
+export function isDeepReviewUrl(url: string | null | undefined): boolean {
+  return !!url && url.includes("/maps/reviews/");
 }

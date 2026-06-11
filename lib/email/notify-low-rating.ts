@@ -1,7 +1,7 @@
 import "server-only";
 import { sendEmail } from "./brevo";
 import { getBrandEmailLogo, getBrandLabel } from "@/lib/branding";
-import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
+import { buildGoogleReviewUrl } from "@/lib/google/review-url";
 import type { Brand, MatchState } from "@/lib/supabase/types";
 
 /**
@@ -32,6 +32,11 @@ export type LowRatingNotificationInput = {
   reviewId: string;
   /** place_id de la ficha — para CTA "Ver en Google". Si null, omitir. */
   placeId: string | null;
+  /** Deep-link a la reseña concreta (§4.54). En la alerta de una reseña
+   *  recién entrada suele ser null (el enriquecimiento corre después); el
+   *  CTA cae a la lista de la ficha. Si llega (p.ej. re-alerta de una edición
+   *  ya enriquecida) aterriza en la reseña exacta. */
+  mapsUrl?: string | null;
   appBase: string;
   brand: Brand;
   /** Lista de emails (ya deduplicada por resolveLowRatingRecipients).
@@ -55,7 +60,7 @@ export async function notifyLowRating(input: LowRatingNotificationInput) {
   }
   const subject = `⚠️ Reseña ${input.rating}★ recibida — ${input.locationName}`;
   const verificationUrl = `${input.appBase}/resenas/verificacion`;
-  const googleUrl = buildGoogleReviewListUrl(input.placeId);
+  const googleUrl = buildGoogleReviewUrl({ mapsUrl: input.mapsUrl, placeId: input.placeId });
 
   const html = renderHtml(input, verificationUrl, googleUrl);
   const text = renderText(input, verificationUrl, googleUrl);

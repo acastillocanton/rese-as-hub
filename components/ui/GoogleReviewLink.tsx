@@ -1,43 +1,46 @@
 import { ExternalLink } from "lucide-react";
-import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
+import { buildGoogleReviewUrl, isDeepReviewUrl } from "@/lib/google/review-url";
 
 /**
- * Enlace a la ficha pública de Google con el panel de reseñas abierto.
- * Devuelve null si la location no tiene `google_place_id` configurado
- * (caso defensivo — las 7 fichas de prod lo tienen).
- *
- * Hoy enlaza a la LISTA de reseñas de la ficha; cuando llegue Business
- * Profile API y tengamos `reviewId` raw podremos deep-linkar a la reseña
- * concreta (ver JSDoc de `buildGoogleReviewListUrl`).
+ * Enlace a la reseña en Google. Si la reseña tiene `mapsUrl` (deep-link a la
+ * reseña concreta, §4.54) aterriza justo en ella; si no, cae al panel de
+ * reseñas de la ficha por `placeId`. Devuelve null si no hay ninguno de los
+ * dos (caso defensivo — las 7 fichas de prod tienen place_id).
  *
  * Variantes:
  *   • compact (default) — solo icono. Para grid de tabla denso
  *     (/manager/resenas) o headers de cards.
- *   • default — icono + texto "Ver en Google". Para footers de cards
- *     con espacio.
+ *   • default — icono + texto. Para footers de cards con espacio.
  *
  * Server component-safe: no usa hooks ni event handlers (es un <a>
  * estándar con target=_blank).
  */
 export function GoogleReviewLink({
   placeId,
+  mapsUrl,
   variant = "compact",
 }: {
   placeId: string | null | undefined;
+  /** Deep-link a la reseña concreta (reviews.google_maps_url). §4.54 */
+  mapsUrl?: string | null;
   variant?: "compact" | "default";
 }) {
-  const href = buildGoogleReviewListUrl(placeId);
+  const href = buildGoogleReviewUrl({ mapsUrl, placeId });
   if (!href) return null;
 
   const isCompact = variant === "compact";
+  const deep = isDeepReviewUrl(href);
+  // Con deep-link el copy es preciso ("esta reseña"); sin él, lista de la ficha.
+  const label = deep ? "Ver esta reseña en Google" : "Ver reseñas en Google";
+  const text = deep ? "Ver reseña" : "Ver en Google";
 
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Ver reseña en Google"
-      title="Ver en Google"
+      aria-label={label}
+      title={label}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -58,7 +61,7 @@ export function GoogleReviewLink({
         strokeWidth={1.75}
         aria-hidden="true"
       />
-      {!isCompact && <span>Ver en Google</span>}
+      {!isCompact && <span>{text}</span>}
     </a>
   );
 }

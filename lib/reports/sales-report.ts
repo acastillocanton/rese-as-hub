@@ -13,7 +13,7 @@
  * la producción de un comercial o pasar el detalle al área de pagos.
  */
 
-import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
+import { buildGoogleReviewUrl } from "@/lib/google/review-url";
 import { excelSafe } from "@/lib/reports/excel-safe";
 import { payableCount } from "@/lib/commission";
 import type { SalesDepartment } from "@/lib/supabase/types";
@@ -50,6 +50,9 @@ export type SalesReportReview = {
   rating: number;
   author_name: string;
   place_id: string | null;
+  /** Deep-link a la reseña concreta (§4.54). Si existe, el hyperlink del
+   *  Excel aterriza en ella; si no, cae a la lista de la ficha. */
+  maps_url: string | null;
 };
 
 export type SalesReportRange = {
@@ -227,7 +230,7 @@ export async function buildSalesReport(
       ws.getCell(rowIdx, 3).value = excelSafe(r.author_name);
       ws.getCell(rowIdx, 4).value = formatRatingForExcel(r.rating);
       const linkCell = ws.getCell(rowIdx, 5);
-      const url = buildGoogleReviewListUrl(r.place_id);
+      const url = buildGoogleReviewUrl({ mapsUrl: r.maps_url, placeId: r.place_id });
       if (url) {
         linkCell.value = { text: "Ver en Google", hyperlink: url };
         linkCell.font = { color: { argb: "FF1A73E8" }, underline: true };

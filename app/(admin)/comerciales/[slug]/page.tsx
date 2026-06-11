@@ -95,6 +95,7 @@ type ReviewRow = {
   match_confidence: number;
   client_id: string | null;
   is_duplicate: boolean;
+  google_maps_url: string | null;
   location: { id: string; name: string; google_place_id: string | null } | null;
 };
 
@@ -334,7 +335,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("reviews")
       .select(
-        "id, author_name, rating, text, google_created_at, match_state, match_confidence, client_id, is_duplicate, location:locations(id, name, google_place_id)",
+        "id, author_name, rating, text, google_created_at, match_state, match_confidence, client_id, is_duplicate, google_maps_url, location:locations(id, name, google_place_id)",
       )
       .eq("sales_id", sales.id)
       .is("removed_at", null)
@@ -841,6 +842,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
                     {r.is_duplicate && <DuplicateBadge />}
                     <GoogleReviewLink
                       placeId={r.location?.google_place_id}
+                      mapsUrl={r.google_maps_url}
                       variant="compact"
                     />
                   </div>

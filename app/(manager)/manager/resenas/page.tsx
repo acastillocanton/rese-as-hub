@@ -40,6 +40,7 @@ type ReviewRow = {
   match_confidence: number;
   removed_at: string | null;
   is_duplicate: boolean;
+  google_maps_url: string | null;
   sales: { full_name: string; slug: string } | null;
   client: { full_name: string } | null;
   location: { name: string; google_place_id: string | null } | null;
@@ -85,7 +86,7 @@ export default async function ManagerResenasPage({
   let query = supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, match_state, match_confidence, removed_at, is_duplicate, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name, google_place_id)",
+      "id, author_name, rating, text, google_created_at, match_state, match_confidence, removed_at, is_duplicate, google_maps_url, sales:profiles!reviews_sales_id_fkey(full_name, slug), client:clients(full_name), location:locations(name, google_place_id)",
     )
     .gte("google_created_at", range.startIso)
     .lt("google_created_at", range.endIso)
@@ -431,7 +432,7 @@ export default async function ManagerResenasPage({
                   )}
                 </div>
                 <div>
-                  <GoogleReviewLink placeId={r.location?.google_place_id} variant="compact" />
+                  <GoogleReviewLink placeId={r.location?.google_place_id} mapsUrl={r.google_maps_url} variant="compact" />
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
                   {r.sales ? (

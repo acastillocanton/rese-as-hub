@@ -49,6 +49,7 @@ type ReviewRow = {
   google_created_at: string;
   rating: number;
   author_name: string;
+  google_maps_url: string | null;
   client: { full_name: string } | null;
   location: { google_place_id: string | null } | null;
 };
@@ -132,7 +133,7 @@ export async function GET(
   const { data: reviewsRaw, error: reviewsErr } = await admin
     .from("reviews")
     .select(
-      "google_created_at, rating, author_name, client:clients(full_name), location:locations(google_place_id)",
+      "google_created_at, rating, author_name, google_maps_url, client:clients(full_name), location:locations(google_place_id)",
     )
     .eq("sales_id", salesId)
     .eq("match_state", "counted")
@@ -154,6 +155,7 @@ export async function GET(
     author_name: r.author_name,
     client_name: r.client?.full_name ?? null,
     place_id: r.location?.google_place_id ?? null,
+    maps_url: r.google_maps_url ?? null,
   }));
 
   const buffer = await buildSalesReport({

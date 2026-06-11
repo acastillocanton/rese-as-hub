@@ -11,6 +11,7 @@ export type RecentReview = {
   google_created_at: string;
   client_name: string | null;
   place_id: string | null;
+  maps_url: string | null;
 };
 
 function fmtDate(iso: string): string {
@@ -123,7 +124,7 @@ export function RecentReviewsCard({ reviews }: { reviews: RecentReview[] }) {
                   </div>
                 )}
               </div>
-              <GoogleReviewLink placeId={r.place_id} variant="compact" />
+              <GoogleReviewLink placeId={r.place_id} mapsUrl={r.maps_url} variant="compact" />
             </div>
           ))}
         </div>

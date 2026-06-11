@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Copy, Check, MessageSquareReply, Send } from "lucide-react";
 import { saveReviewReply, clearReviewReply, publishReviewReply } from "./actions";
-import { buildGoogleReviewListUrl } from "@/lib/google/review-url";
+import { buildGoogleReviewUrl } from "@/lib/google/review-url";
 
 const MAX_LEN = 4096;
 
@@ -32,6 +32,7 @@ const GBP_REVIEWS_URL = "https://business.google.com/reviews";
 export function ReviewReplyComposer({
   reviewId,
   placeId,
+  mapsUrl,
   replied,
   initialText,
   repliedAt,
@@ -41,6 +42,8 @@ export function ReviewReplyComposer({
 }: {
   reviewId: string;
   placeId: string | null | undefined;
+  /** Deep-link a la reseña concreta (reviews.google_maps_url). §4.54 */
+  mapsUrl?: string | null;
   replied: boolean;
   initialText: string;
   repliedAt: string | null;
@@ -55,7 +58,7 @@ export function ReviewReplyComposer({
   const [text, setText] = useState(initialText);
   const [copied, setCopied] = useState(false);
 
-  const googleUrl = buildGoogleReviewListUrl(placeId);
+  const googleUrl = buildGoogleReviewUrl({ mapsUrl, placeId });
   const showComposer = !replied || editing;
 
   function onSave() {

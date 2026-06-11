@@ -43,6 +43,7 @@ type ReviewRow = {
   match_state: string;
   match_confidence: number;
   is_duplicate: boolean;
+  google_maps_url: string | null;
   client: { full_name: string; slug: string } | null;
   location: { name: string; google_place_id: string | null } | null;
 };
@@ -100,7 +101,7 @@ export default async function MisResenasPage({
   const reviewsRes = await supabase
     .from("reviews")
     .select(
-      "id, author_name, rating, text, google_created_at, match_state, match_confidence, is_duplicate, client:clients(full_name, slug), location:locations(name, google_place_id)",
+      "id, author_name, rating, text, google_created_at, match_state, match_confidence, is_duplicate, google_maps_url, client:clients(full_name, slug), location:locations(name, google_place_id)",
     )
     .eq("sales_id", user.id)
     .is("removed_at", null)
@@ -395,6 +396,7 @@ function ReviewItem({
         {review.is_duplicate && <DuplicateBadge />}
         <GoogleReviewLink
           placeId={review.location?.google_place_id}
+          mapsUrl={review.google_maps_url}
           variant="compact"
         />
       </div>

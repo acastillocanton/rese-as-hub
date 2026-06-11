@@ -70,6 +70,9 @@ export type Database = {
           google_account_id: string | null;
           google_location_resource: string | null;
           google_account_email: string | null;
+          /** Migración 029. Feature ID hex de Maps (0x…:0x…), cacheado para el
+           *  feed interno de reseñas (§4.54). Distinto del place_id. */
+          google_fid: string | null;
           oauth_status: OauthStatus;
           oauth_last_sync_at: string | null;
           oauth_last_sync_error: string | null;
@@ -87,6 +90,7 @@ export type Database = {
           google_account_id?: string | null;
           google_location_resource?: string | null;
           google_account_email?: string | null;
+          google_fid?: string | null;
           oauth_status?: OauthStatus;
           oauth_last_sync_at?: string | null;
           oauth_last_sync_error?: string | null;
@@ -256,6 +260,10 @@ export type Database = {
           reply_by: string | null;
           reply_via: "manual" | "api" | "google_detected" | null;
           reply_synced_at: string | null;
+          /** Migración 029. Deep-link a la reseña concreta en Google Maps
+           *  (/maps/reviews/data=…). NULL = aún sin enriquecer (§4.54). */
+          google_maps_url: string | null;
+          maps_url_matched_at: string | null;
         };
         Insert: {
           id?: string;
@@ -278,6 +286,8 @@ export type Database = {
           reply_by?: string | null;
           reply_via?: "manual" | "api" | "google_detected" | null;
           reply_synced_at?: string | null;
+          google_maps_url?: string | null;
+          maps_url_matched_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["reviews"]["Insert"]>;
         Relationships: [];
