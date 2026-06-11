@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createInvitedProfile } from "@/lib/invite";
 import { generateAccessLink } from "@/lib/auth/resend-link";
-import { slugify } from "@/lib/utils";
+import { shortNameForSlug, slugify } from "@/lib/utils";
 import { recordAudit } from "@/lib/audit";
 import { storeUserAvatar, removeUserAvatarObjects } from "@/lib/avatar";
 import type { Role } from "@/lib/supabase/types";
@@ -15,6 +15,7 @@ import {
   commissionCapSchema,
   commissionRateSchema,
   departmentSchema,
+  inviteSlugSchema,
   pauseReasonSchema,
 } from "@/lib/validation/sales-schemas";
 
@@ -125,6 +126,9 @@ const ymdSchema = z
 const inviteSchema = z
   .object({
     fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
+    /** Slug público editable (decisión 2026-06-11: nombre + primer apellido).
+     *  null → la action lo genera con shortNameForSlug. */
+    slug: inviteSlugSchema,
     email: z.string().email("Email inválido."),
     phone: z
       .string()
@@ -201,7 +205,10 @@ export async function inviteSales(input: InviteSalesInput): Promise<
     parsed.data.locationId,
   );
   if (!dirCheck.ok) return { ok: false, error: dirCheck.error };
-  const baseSlug = slugify(parsed.data.fullName);
+  // Slug público: el que tecleó/aceptó el admin en el modal, o la heurística
+  // "nombre + primer apellido" como fallback (decisión 2026-06-11).
+  const baseSlug =
+    parsed.data.slug ?? slugify(shortNameForSlug(parsed.data.fullName));
   if (!baseSlug) {
     return { ok: false, error: "No se pudo generar el identificador del comercial." };
   }
@@ -427,6 +434,9 @@ export async function archiveSales(id: string) {
       archived_at: new Date().toISOString(),
       email: null,
       slug: archivedSlug,
+      // Un archivado no debe seguir capturando visitas por su enlace viejo
+      // (alias de mig 027) — se limpia junto con el slug.
+      previous_slug: null,
       // Coherencia con paused_requires_reason: si estaba pausado, limpiamos.
       paused_reason: null,
     } as never)
@@ -509,13 +519,15 @@ export async function restoreSales(id: string) {
   if (target.status !== "archived") return { ok: true };
 
   // Intenta recuperar el slug original quitando el sufijo `-archived-XXXXXXXX`.
+  // Colisión contra slug actual Y alias antiguos (previous_slug, mig 027).
   const originalSlug = target.slug.replace(/-archived-[a-f0-9]{8}$/, "");
   let finalSlug = target.slug;
   if (originalSlug !== target.slug) {
     const { data: collision } = await admin
       .from("profiles")
       .select("id")
-      .eq("slug", originalSlug)
+      .or(`slug.eq.${originalSlug},previous_slug.eq.${originalSlug}`)
+      .limit(1)
       .maybeSingle<{ id: string }>();
     if (!collision) finalSlug = originalSlug;
   }

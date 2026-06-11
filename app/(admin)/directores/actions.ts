@@ -6,13 +6,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createInvitedProfile } from "@/lib/invite";
 import { generateAccessLink } from "@/lib/auth/resend-link";
-import { slugify } from "@/lib/utils";
+import { shortNameForSlug, slugify } from "@/lib/utils";
 import { recordAudit } from "@/lib/audit";
 import { storeUserAvatar, removeUserAvatarObjects } from "@/lib/avatar";
 import {
   commissionCapSchema,
   commissionRateSchema,
   departmentSchema,
+  inviteSlugSchema,
 } from "@/lib/validation/sales-schemas";
 
 /**
@@ -47,6 +48,9 @@ async function assertCanManageDirectors(): Promise<
 const inviteDirectorSchema = z
   .object({
     fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
+    /** Slug público editable (decisión 2026-06-11: nombre + primer apellido).
+     *  null → la action lo genera con shortNameForSlug. */
+    slug: inviteSlugSchema,
     email: z.string().email("Email inválido."),
     phone: z
       .string()
@@ -86,7 +90,10 @@ export async function inviteOfficeDirector(input: InviteDirectorInput): Promise<
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
-  const baseSlug = slugify(parsed.data.fullName);
+  // Slug público: el que tecleó/aceptó el admin en el modal, o la heurística
+  // "nombre + primer apellido" como fallback (decisión 2026-06-11).
+  const baseSlug =
+    parsed.data.slug ?? slugify(shortNameForSlug(parsed.data.fullName));
   if (!baseSlug) {
     return { ok: false, error: "No se pudo generar el identificador del director." };
   }
@@ -253,6 +260,9 @@ export async function archiveDirector(id: string) {
       archived_at: new Date().toISOString(),
       email: null,
       slug: archivedSlug,
+      // Un archivado no debe seguir capturando visitas por su enlace viejo
+      // (alias de mig 027) — se limpia junto con el slug.
+      previous_slug: null,
     } as never)
     .eq("id", id)
     .eq("role", "office_director");
@@ -288,13 +298,15 @@ export async function restoreDirector(id: string) {
   if (!target) return { error: "Director no encontrado." };
   if (target.status !== "archived") return { ok: true };
 
+  // Colisión contra slug actual Y alias antiguos (previous_slug, mig 027).
   const originalSlug = target.slug.replace(/-archived-[a-f0-9]{8}$/, "");
   let finalSlug = target.slug;
   if (originalSlug !== target.slug) {
     const { data: collision } = await admin
       .from("profiles")
       .select("id")
-      .eq("slug", originalSlug)
+      .or(`slug.eq.${originalSlug},previous_slug.eq.${originalSlug}`)
+      .limit(1)
       .maybeSingle<{ id: string }>();
     if (!collision) finalSlug = originalSlug;
   }

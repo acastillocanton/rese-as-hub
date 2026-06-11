@@ -5,6 +5,7 @@ import { FormField as Field, formInputStyle as inputStyle } from "@/components/u
 import { GhostBtn } from "@/components/ui/GhostBtn";
 import { SALES_LANGUAGES, type SalesDepartment } from "@/lib/supabase/types";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
+import { shortNameForSlug, slugify } from "@/lib/utils";
 import { inviteOfficeDirector } from "./actions";
 
 type LocationOption = { id: string; name: string };
@@ -23,6 +24,11 @@ export function InviteDirectorButton({
   const [success, setSuccess] = useState<{ link: string; email: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [department, setDepartment] = useState<SalesDepartment | "">("");
+  // Slug público (decisión 2026-06-11: nombre + primer apellido). Se
+  // auto-rellena con la heurística mientras el admin no lo toque a mano
+  // (nombres de pila compuestos como "María Jesús" necesitan corrección).
+  const [slug, setSlug] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function close() {
@@ -31,6 +37,8 @@ export function InviteDirectorButton({
     setSuccess(null);
     setCopied(false);
     setDepartment("");
+    setSlug("");
+    setSlugTouched(false);
   }
 
   function handleSubmit(formData: FormData) {
@@ -40,6 +48,7 @@ export function InviteDirectorButton({
       const dept = String(formData.get("department") ?? "") as SalesDepartment | "";
       const input = {
         fullName: String(formData.get("fullName") ?? ""),
+        slug: String(formData.get("slug") ?? "") || null,
         email: String(formData.get("email") ?? ""),
         phone: String(formData.get("phone") ?? ""),
         locationId: String(formData.get("locationId") ?? ""),
@@ -227,6 +236,29 @@ export function InviteDirectorButton({
                       minLength={2}
                       maxLength={120}
                       style={inputStyle}
+                      onChange={(e) => {
+                        if (!slugTouched) {
+                          setSlug(slugify(shortNameForSlug(e.target.value)));
+                        }
+                      }}
+                    />
+                  </Field>
+                  <Field
+                    label="Enlace (slug)"
+                    hint="Nombre + primer apellido. Corrígelo si el nombre es compuesto (ej.: maria-jesus-lozano)."
+                  >
+                    <input
+                      name="slug"
+                      required
+                      maxLength={60}
+                      pattern="[a-z0-9-]+"
+                      title="Solo minúsculas, números y guiones"
+                      value={slug}
+                      onChange={(e) => {
+                        setSlugTouched(true);
+                        setSlug(e.target.value);
+                      }}
+                      style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
                     />
                   </Field>
                   <Field label="Email" hint="Donde recibirá el acceso">

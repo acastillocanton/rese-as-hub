@@ -58,12 +58,26 @@ export async function recordOpenAndRedirect(opts: {
   // tienen su enlace /c/{director-slug} (dualidad gestor + comercial). La
   // tabla share_links y reviews son agnósticas al role, así que `sales_id`
   // del director funciona idéntico que para un comercial.
-  const { data: sales } = await supabase
+  let { data: sales } = await supabase
     .from("profiles")
     .select("id, location_id")
     .eq("slug", opts.salesSlug)
     .in("role", ["sales", "office_director"])
     .maybeSingle<{ id: string; location_id: string | null }>();
+
+  // Alias de slug antiguo (mig 027): los productores renombrados a
+  // "nombre + primer apellido" (2026-06-11) guardan su slug viejo en
+  // previous_slug. Los QRs impresos y los WhatsApps ya enviados con el
+  // enlace viejo siguen redirigiendo Y atribuyendo al mismo comercial.
+  if (!sales) {
+    const fallback = await supabase
+      .from("profiles")
+      .select("id, location_id")
+      .eq("previous_slug", opts.salesSlug)
+      .in("role", ["sales", "office_director"])
+      .maybeSingle<{ id: string; location_id: string | null }>();
+    sales = fallback.data;
+  }
 
   if (!sales || !sales.location_id) {
     return { redirectTo: buildGoogleReviewUrl(null), recorded: false };

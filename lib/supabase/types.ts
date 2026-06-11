@@ -128,6 +128,10 @@ export type Database = {
            *  Para el resto de roles: NULL. */
           director_id: string | null;
           slug: string;
+          /** Alias del slug anterior tras un renombrado (mig 027). El enlace
+           *  público /c/{previous_slug} sigue resolviendo via fallback en
+           *  lib/landing.ts. NULL = nunca renombrado. */
+          previous_slug: string | null;
           email: string | null;
           phone: string | null;
           monthly_goal: number;
@@ -157,6 +161,7 @@ export type Database = {
           location_id?: string | null;
           director_id?: string | null;
           slug: string;
+          previous_slug?: string | null;
           email?: string | null;
           phone?: string | null;
           monthly_goal?: number;
