@@ -59,3 +59,8 @@ e2e/.auth/
 
 # Mensajes de commit temporales (se usan con git commit -F y se borran)
 .commit-msg.tmp
+
+# Agente de cosecha de deep-links (§4.54): perfil de Chrome dedicado + logs.
+# El código del agente (agent/*.mjs, *.cmd, README) SÍ se versiona.
+agent/.chrome-profile/
+agent/*.log
