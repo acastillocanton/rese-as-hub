@@ -246,7 +246,7 @@ async function harvestFicha(page, placeId) {
   return page.evaluate(extractReviewsInPage);
 }
 
-async function main() {
+async function runPass() {
   const nowMs = Date.now();
   const { data: pending, error } = await sb
     .from("reviews")
@@ -254,8 +254,8 @@ async function main() {
     .is("google_maps_url", null)
     .is("removed_at", null)
     .limit(5000);
-  if (error) { console.error("query pending falló:", error.message); process.exit(1); }
-  if (!pending || pending.length === 0) { log("Nada pendiente. Fin."); return; }
+  if (error) { console.error("query pending falló:", error.message); return 0; }
+  if (!pending || pending.length === 0) { log("Nada pendiente."); return 0; }
 
   const byLoc = new Map();
   for (const r of pending) {
@@ -297,6 +297,45 @@ async function main() {
   // Si lo lanzamos nosotros, lo cerramos (el perfil en disco conserva el consent).
   if (launchedChild) killSpawnedChrome();
   log(`Total deep-links nuevos: ${totalMatched}.`);
+  return totalMatched;
+}
+
+// ── modo escucha: lee el "buzón" (botón web → audit_log) + pasada periódica ──
+const WATCH = process.argv.includes("--watch") || process.env.HARVEST_WATCH === "1";
+const POLL_MS = 60_000;
+const PERIOD_MS = Number(process.env.HARVEST_PERIOD_HOURS || 4) * 3600_000;
+
+/** Timestamp de la última petición del botón web (action='harvest_requested'). */
+async function latestRequestTs() {
+  const { data } = await sb
+    .from("audit_log")
+    .select("created_at")
+    .eq("action", "harvest_requested")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  return data && data[0] ? data[0].created_at : null;
+}
+
+async function main() {
+  if (!WATCH) { await runPass(); return; }
+  log(`Modo escucha activo. Pasada inicial + atento al botón web cada ${POLL_MS / 1000}s; pasada periódica cada ${PERIOD_MS / 3600000}h.`);
+  await runPass().catch((e) => console.error("pass inicial:", e && e.message));
+  let lastReq = await latestRequestTs().catch(() => null);
+  let lastPass = Date.now();
+  // bucle infinito: el proceso vive mientras el PC esté encendido (lo lanza el
+  // acceso directo de Inicio). Cada vuelta: ¿hay petición nueva o toca periódica?
+  for (;;) {
+    await sleep(POLL_MS);
+    let req = lastReq;
+    try { req = await latestRequestTs(); } catch { continue; }
+    const newRequest = req && req !== lastReq;
+    const periodic = Date.now() - lastPass > PERIOD_MS;
+    if (!newRequest && !periodic) continue;
+    log(newRequest ? "Petición del botón web detectada." : "Pasada periódica.");
+    lastReq = req || lastReq;
+    try { await runPass(); } catch (e) { console.error("pass:", e && e.message); }
+    lastPass = Date.now();
+  }
 }
 
 main().catch((e) => { console.error("Fatal:", e); process.exit(1); });

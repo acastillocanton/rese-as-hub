@@ -32,12 +32,24 @@ Corre en el **PC de oficina** (Windows). **No necesita permisos de administrador
 
 ## Uso
 
-- **A demanda:** doble clic en `agent\run-harvest.cmd` (o `node agent/harvest-maps-urls.mjs`).
-- **Automático al encender:** hay un acceso directo en la carpeta de Inicio de
-  Windows que ejecuta `run-harvest.cmd` al iniciar sesión (sin admin). Para
-  verlo/quitarlo: tecla Windows → `shell:startup` → borra
-  "ReseñaHub - Cosechar enlaces". Para recrearlo, ver el comando de abajo.
-- **Registro:** cada ejecución añade su salida a `agent\harvest.log`.
+- **Modo escucha (recomendado, el que arranca solo):** `agent\watch-harvest.cmd`
+  (= `node agent/harvest-maps-urls.mjs --watch`). Hace una pasada inicial y queda
+  **escuchando** en segundo plano: cada ~60s mira si un gestor pulsó el botón web
+  **"Sincronizar enlaces"** (deja una señal `harvest_requested` en `audit_log`) y,
+  si la hay, cosecha al momento; además hace una pasada periódica cada
+  `HARVEST_PERIOD_HOURS` (4 por defecto). Si el PC está apagado cuando se pulsa el
+  botón, la petición espera y se procesa al encender (recupera el backlog).
+- **Una sola pasada (a demanda):** doble clic en `agent\run-harvest.cmd`
+  (= `node agent/harvest-maps-urls.mjs`), hace una pasada y termina.
+- **Automático al encender:** acceso directo en la carpeta de Inicio de Windows
+  que ejecuta `watch-harvest.cmd` al iniciar sesión (sin admin). Para verlo/quitarlo:
+  tecla Windows → `shell:startup` → "ReseñaHub - Cosechar enlaces". Para recrearlo,
+  ver el comando de abajo (apuntando a `watch-harvest.cmd`).
+- **Registro:** la salida se añade a `agent\harvest.log`.
+
+El botón web vive en `/manager/resenas` (lo ven admin + gestor) y llama a
+`POST /api/sync/maps-urls`, que solo registra la petición — el trabajo lo hace
+ESTE agente. Un solo PC sirve a todos los gestores.
 
 ### Recrear el acceso directo de inicio (PowerShell, sin admin)
 

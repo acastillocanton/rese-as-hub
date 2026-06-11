@@ -9,6 +9,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { parseRange, commissionShortcuts, commissionPeriodRange } from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
 import { SyncNowButton } from "@/components/ui/SyncNowButton";
+import { MapsUrlSyncButton } from "@/components/ui/MapsUrlSyncButton";
 import { RemovalControls } from "@/components/ui/RemovalControls";
 import { MapsUrlControl } from "@/components/ui/MapsUrlControl";
 import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
@@ -183,6 +184,7 @@ export default async function ManagerResenasPage({
         right={
           <>
             <SyncNowButton label="Sincronizar" variant="ghost" />
+            <MapsUrlSyncButton label="Sincronizar enlaces" variant="ghost" />
             <RangePicker
               from={range.from}
               to={range.to}
