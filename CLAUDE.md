@@ -116,6 +116,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat(sync) · Soft-delete AUTOMÁTICO de reseñas borradas en Google (mig 028): sello `missing_since` + umbral 24h, solo cron BP, restauración manual — §4.20 | ✅ (2026-06-11) |
 | feat(slugs) · Slug del productor = nombre + primer apellido (33 renombrados via one-shot) + alias `previous_slug` con fallback en landing (mig 027) + campo slug editable en los modales de invitación — §4.53 | ✅ (2026-06-11) |
 | feat(reviews) · Deep-link por reseña a Google Maps (mig 029): base + degradación + matcher + URL verificada E2E. ⚠️ Harvest automático BLOQUEADO por anti-automatización de Maps — pendiente decidir pegado manual / CDP — §4.54 + [docs/deep-link-resenas-google.md](docs/deep-link-resenas-google.md) | ⏳ base lista (2026-06-11) |
+| feat(reviews) · Deep-link §4.54 RESUELTO sin scraping: spike de derivación offline refutado a nivel de byte (reviewId BP opaco) + Capa 1 cosecha oficial Places API New (`googleMapsUri`, ~5/ficha) + Capa 3 pegado manual (server actions + `<MapsUrlControl>` en /manager/resenas). Capa 1 requiere `GOOGLE_PLACES_API_KEY` para correr | ✅ (2026-06-11) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -1115,7 +1116,7 @@ Decisión de negocio (2026-06-11): el enlace público `/c/{slug}` debe llevar so
 - **Seguridad (regla §4.36)**: la mig 027 reescribe `profiles_self_update` congelando `previous_slug` — sin esto un sales podría auto-asignarse el slug viejo de otro vía PostgREST y secuestrar sus visitas. `previous_slug` está en `FROZEN_COLUMNS` del test de regresión.
 - ⚠️ Solo se guarda **UN** alias. Si algún día se renombra por segunda vez, el alias más viejo se pierde (aceptado). Los bookmarks internos a `/comerciales/{slug-viejo}` dan 404 (los listados regeneran el link) — sin alias interno, aceptado.
 
-### 4.54 Enlace directo a la reseña concreta en Google Maps (mig 029) — BASE LISTA, harvest bloqueado
+### 4.54 Enlace directo a la reseña concreta en Google Maps (mig 029) — RESUELTO sin scraping (Places New oficial + pegado manual)
 
 Hasta ahora los listados/Excel solo enlazaban a la **lista** de reseñas de la ficha (`buildGoogleReviewListUrl`). Objetivo: que cada reseña tenga su **deep-link a la reseña concreta** (`https://www.google.com/maps/reviews/data=…`, el que genera "Compartir reseña" en Maps).
 
@@ -1132,10 +1133,15 @@ Hasta ahora los listados/Excel solo enlazaban a la **lista** de reseñas de la f
 - **Matcher puro** [lib/google/maps-url-matching.ts](lib/google/maps-url-matching.ts): casa DOM↔BD por autor (`nameSimilarity`≥90) + rating + fecha **opcional** (guarda laxa ±31d, porque el DOM solo da fecha relativa), SOLO match único en ambos sentidos (conservador). Tests propios.
 - **Runner** [jobs/enrich-review-urls.mjs](jobs/enrich-review-urls.mjs): orquesta resolver-FID → extraer DOM → matchear → escribir (`UPDATE … WHERE google_maps_url IS NULL`, race-safe; audit `review_maps_url_matched`). ⚠️ **No funciona con navegador automatizado** (ver muro arriba) — queda como herramienta experimental hasta tener un runner sobre Chrome real vía `connectOverCDP`.
 
-**Cómo poblar `google_maps_url` HOY (opciones, decisión de producto pendiente):**
-1. **Pegar a mano** el enlace de "Compartir reseña" en la reseña que importe (falta un campo + server action; el resto del pipeline ya deep-linka). Robusto, cero fricción con Google, para las pocas reseñas de alto valor.
-2. **`connectOverCDP` a un Chrome real** ya abierto por el usuario (con su perfil), corriendo `jobs/enrich-review-urls.mjs` adaptado. Automático y completo, pero local (no CI) y frágil a cambios de Google; pendiente de verificar que CDP-a-Chrome-real renderiza las reseñas.
-3. **Parar aquí**: la base queda lista; se retoma si el negocio lo pide.
+**Solución implementada (2026-06-11, sin scraping) — dos capas + spike concluido:**
+
+- **Spike de derivación offline — REFUTADO a nivel de byte (definitivo).** `scripts/crack-review-token.mjs` (gitignored) decodifica los `google_review_id` reales de `business_profile`: todos son `01 b1 6f 3a a9` (prefijo de versión constante) + ~48 bytes de **alta entropía sin ningún ASCII** → identificador opaco, con pinta de cifrado/HMAC, **sin el post-id de Maps embebido**. El token de Maps, en cambio, lleva el post-id en CLARO (`rp_h:G2YuBxj44kGJ2CrgrM0SYg`, decodificado del INNER). Confirma lo que el matcher ya afirmaba: **no hay transformación offline `reviewId → token`**. Por eso NO existe `buildMapsReviewUrlFromApiId` ni cableado al cron — sería imposible. (La reseña "verificada E2E" de Lisset Miguel resultó ser `source='places_api'` con el token COMO id sintético — no servía de par; la refutación viene de la estructura de los ids `business_profile`.)
+
+- **Capa 1 — cosecha OFICIAL vía Places API (New).** [lib/google/places-new.ts](lib/google/places-new.ts) (cliente v1, `X-Goog-FieldMask`, funciones puras + tests) lee las ~5 reseñas DESTACADAS por ficha, cada una con su `googleMapsUri` (deep-link OFICIAL por reseña). [jobs/enrich-review-urls-official.mjs](jobs/enrich-review-urls-official.mjs) las casa con nuestras filas (matcher conservador único 1↔1, fecha ABSOLUTA de `publishTime` → guarda estricta ±2d) y escribe `google_maps_url` (`UPDATE … WHERE google_maps_url IS NULL`, race-safe; audit `review_maps_url_matched` `source:'places_new_official'`). Robusto, repetible, cron-friendly, cero ToS-grey. Cubre solo las destacadas (~5/ficha; la API New no pagina). ⚠️ **Requiere `GOOGLE_PLACES_API_KEY` en el entorno** para correr (ya habilitada "Places API (New)", §4.18).
+
+- **Capa 3 — pegado manual** (la base para reseñas de alto valor fuera de las destacadas). Server actions `setReviewMapsUrl`/`clearReviewMapsUrl` ([app/(profile)/resenas/maps-url-actions.ts](app/(profile)/resenas/maps-url-actions.ts), gating admin+manager vía [lib/auth/maps-url-gating.ts](lib/auth/maps-url-gating.ts)): aceptan el enlace de "Compartir reseña" (corto `maps.app.goo.gl/…`, que se EXPANDE server-side siguiendo el redirect, con whitelist de host anti-SSRF) o el deep-link canónico; validan que la URL final contenga `/maps/reviews/`. Validadores puros `isMapsShortShareUrl`/`isMapsShareUrlInput` en [lib/google/review-url.ts](lib/google/review-url.ts) (+ tests). UI: [components/ui/MapsUrlControl.tsx](components/ui/MapsUrlControl.tsx) inline por fila en `/manager/resenas` (toggle "+ Enlace directo" / "Cambiar" / "Quitar"). Funciona sin la key de Places.
+
+- **El runner por navegador** [jobs/enrich-review-urls.mjs](jobs/enrich-review-urls.mjs) se deja como herramienta experimental (el muro de arriba). La variante `connectOverCDP` a Chrome real quedó **fuera de alcance**; se retoma si Capa 1 + pegado no bastan.
 
 ---
 

@@ -3,6 +3,8 @@ import {
   buildGoogleReviewListUrl,
   buildGoogleReviewUrl,
   isDeepReviewUrl,
+  isMapsShortShareUrl,
+  isMapsShareUrlInput,
 } from "@/lib/google/review-url";
 
 const DEEP =
@@ -67,5 +69,29 @@ describe("isDeepReviewUrl", () => {
     expect(isDeepReviewUrl("https://search.google.com/local/reviews?placeid=x")).toBe(false);
     expect(isDeepReviewUrl(null)).toBe(false);
     expect(isDeepReviewUrl(undefined)).toBe(false);
+  });
+});
+
+describe("isMapsShortShareUrl", () => {
+  it("true para enlaces cortos de compartir", () => {
+    expect(isMapsShortShareUrl("https://maps.app.goo.gl/AbCdEf123")).toBe(true);
+    expect(isMapsShortShareUrl("https://goo.gl/maps/xyz")).toBe(true);
+  });
+  it("false para deep-link directo, lista u otros hosts", () => {
+    expect(isMapsShortShareUrl(DEEP)).toBe(false);
+    expect(isMapsShortShareUrl("https://evil.com/maps.app.goo.gl/x")).toBe(false);
+    expect(isMapsShortShareUrl(null)).toBe(false);
+  });
+});
+
+describe("isMapsShareUrlInput (acepta deep-link o corto)", () => {
+  it("true para deep-link y para corto", () => {
+    expect(isMapsShareUrlInput(DEEP)).toBe(true);
+    expect(isMapsShareUrlInput("https://maps.app.goo.gl/AbCdEf123")).toBe(true);
+  });
+  it("false para basura o enlace de lista", () => {
+    expect(isMapsShareUrlInput("https://search.google.com/local/reviews?placeid=x")).toBe(false);
+    expect(isMapsShareUrlInput("ftp://nope")).toBe(false);
+    expect(isMapsShareUrlInput("")).toBe(false);
   });
 });

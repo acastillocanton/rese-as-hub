@@ -10,6 +10,7 @@ import { parseRange, commissionShortcuts, commissionPeriodRange } from "@/lib/da
 import { RangePicker } from "@/components/ui/RangePicker";
 import { SyncNowButton } from "@/components/ui/SyncNowButton";
 import { RemovalControls } from "@/components/ui/RemovalControls";
+import { MapsUrlControl } from "@/components/ui/MapsUrlControl";
 import { GoogleReviewLink } from "@/components/ui/GoogleReviewLink";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
@@ -489,6 +490,11 @@ export default async function ManagerResenasPage({
                   <div style={{ marginTop: 6 }}>
                     <RemovalControls reviewId={r.id} removedAt={r.removed_at} size="sm" />
                   </div>
+                  {!r.removed_at && (
+                    <div style={{ marginTop: 6 }}>
+                      <MapsUrlControl reviewId={r.id} mapsUrl={r.google_maps_url} />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

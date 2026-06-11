@@ -71,3 +71,25 @@ export function buildGoogleReviewUrl(args: {
 export function isDeepReviewUrl(url: string | null | undefined): boolean {
   return !!url && url.includes("/maps/reviews/");
 }
+
+/**
+ * True si la URL es un enlace CORTO de compartir de Google Maps
+ * (`maps.app.goo.gl/…` o `goo.gl/maps/…`). Estos enlazan a una reseña/sitio y
+ * hay que **expandirlos** (seguir el redirect) para obtener la URL canónica.
+ * El whitelisting de host es además la guarda anti-SSRF del expandidor:
+ * `setReviewMapsUrl` solo hace fetch a estos dominios.
+ */
+export function isMapsShortShareUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /^https:\/\/(maps\.app\.goo\.gl|goo\.gl)\//i.test(url.trim());
+}
+
+/**
+ * True si el texto pegado es un input ACEPTABLE para el deep-link manual
+ * (§4.54, Capa 3): o ya es un deep-link `/maps/reviews/…`, o es un enlace
+ * corto de compartir que expandiremos. Cualquier otra cosa se rechaza en el
+ * borde sin tocar la red.
+ */
+export function isMapsShareUrlInput(url: string | null | undefined): boolean {
+  return isDeepReviewUrl(url) || isMapsShortShareUrl(url);
+}

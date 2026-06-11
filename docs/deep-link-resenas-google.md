@@ -264,6 +264,67 @@ salvo necesidad (deuda de mantenimiento alta).
 
 ---
 
+## 9. Resolución (2026-06-11) — solución implementada sin scraping
+
+Tras el informe de arriba se resolvió el problema **sin tocar el navegador**, con
+dos capas + un spike concluyente. Resumen:
+
+### 9.1 Spike de derivación offline — REFUTADO a nivel de byte (definitivo)
+
+La pregunta clave que el informe daba por cerrada "de vista" se comprobó con
+datos: ¿se puede **derivar el token desde el `reviewId` que ya guardamos**, sin
+cosechar nada? Se decodificaron los `reviewId` reales de Business Profile en BD:
+
+```
+AbFvOqm… → 01 b1 6f 3a a9 <~48 bytes de ALTA ENTROPÍA, sin ningún ASCII>
+```
+
+Todos comparten el prefijo de versión `01 b1 6f 3a a9` y el resto es opaco (con
+pinta de cifrado/HMAC). El token de Maps, en cambio, lleva el post-id en CLARO
+(`rp_h:G2YuBxj44kGJ2CrgrM0SYg`). **No hay nada que transformar**: el `reviewId`
+no contiene el post-id de Maps. Veredicto firme: **la derivación offline es
+imposible** (confirma, ahora a nivel de byte, lo que el matcher ya afirmaba).
+Por eso NO se construyó ningún `buildMapsReviewUrlFromApiId`.
+
+*(Nota: la reseña "verificada E2E" de Lisset Miguel resultó estar guardada como
+`source='places_api'` con el token COMO id sintético — no servía de par. La
+refutación viene de la estructura de los `reviewId` de `business_profile`.)*
+
+### 9.2 Capa 1 — cosecha OFICIAL vía Places API (New)
+
+El informe (§3.1) descartó `googleMapsUri` por cobertura baja (~5/ficha), pero
+es la **única fuente oficial y robusta** de deep-links por reseña. Se aprovecha:
+
+- Cliente nuevo `lib/google/places-new.ts` (Place Details v1, `X-Goog-FieldMask`).
+- Job `jobs/enrich-review-urls-official.mjs`: lee las ~5 destacadas con su
+  `googleMapsUri`, las casa con nuestras filas (autor ≥90 + rating + fecha
+  ABSOLUTA de `publishTime`, match único 1↔1) y escribe `google_maps_url`.
+- Robusto, repetible, cron-friendly, **cero zona gris de ToS**. Cubre las
+  reseñas más visibles. Requiere `GOOGLE_PLACES_API_KEY` (ya habilitada).
+
+### 9.3 Capa 3 — pegado manual (Option A del informe)
+
+Para reseñas de alto valor fuera de las destacadas:
+
+- Server actions `setReviewMapsUrl` / `clearReviewMapsUrl`
+  (`app/(profile)/resenas/maps-url-actions.ts`, gating admin+manager).
+- Acepta el enlace de "Compartir reseña" (corto `maps.app.goo.gl/…`, que se
+  **expande** server-side; whitelist de host anti-SSRF) o el deep-link canónico;
+  valida que la URL final contenga `/maps/reviews/`.
+- UI inline por fila en `/manager/resenas` (`components/ui/MapsUrlControl.tsx`).
+- Funciona **sin** la key de Places.
+
+### 9.4 Por qué esto cierra el problema
+
+La capa de presentación (`buildGoogleReviewUrl`) ya estaba cableada para leer
+`google_maps_url` con degradación a la lista. Poblarlo por **cualquiera** de las
+dos capas enciende el deep-link al instante, sin tocar más código y **sin
+regresión**. El harvester por navegador queda como herramienta experimental; la
+variante `connectOverCDP` a Chrome real se descartó por fragilidad/ToS y solo se
+retomaría si Capa 1 + pegado no bastan.
+
+---
+
 ## Apéndice — punteros al código (por si quieres mirarlo)
 
 - Constructor de URL (verificado) + parsing FID/token: `lib/google/maps-ugc.ts`
