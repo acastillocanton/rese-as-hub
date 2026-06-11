@@ -70,3 +70,69 @@ export function decideEditMerge(p: {
 
   return { action: "merge", incumbentId: inc.id, clearRemovedAt, reAlertLowRating };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Variante Business Profile: el reviewId ES estable, así que una edición llega
+// con el MISMO google_review_id → el filtro de "fresh" la descarta y la BD se
+// quedaría con la versión vieja (rating/texto desactualizados — el gap que en
+// Places resolvía la fusión por autor de arriba). Aquí no hay nada que casar
+// por autor: la fila ya está identificada; solo hay que decidir si su contenido
+// cambió y qué efectos colaterales aplicar. Misma semántica que el merge:
+// preservar atribución, revivir soft-deleted, re-alertar si baja a ≤2★.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Datos mínimos de la fila ya almacenada para una reseña BP. */
+export type BpStoredReview = {
+  id: string;
+  rating: number;
+  text: string | null;
+  removed_at: string | null;
+  low_rating_alerted_at: string | null;
+};
+
+export type BpEditSyncDecision =
+  | { action: "skip" }
+  | {
+      action: "update";
+      ratingChanged: boolean;
+      textChanged: boolean;
+      /** La fila estaba soft-deleted y la edición demuestra que sigue viva en Google. */
+      clearRemovedAt: boolean;
+      /** La edición baja el rating a ≤2★ por primera vez → re-alertar. */
+      reAlertLowRating: boolean;
+    };
+
+/** Normaliza el texto para comparar: trim y vacío→null (evita updates espurios
+ *  por diferencias de whitespace entre lo guardado y lo que devuelve la API). */
+function normText(t: string | null | undefined): string | null {
+  const trimmed = t?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * Decide si una reseña BP ya existente debe ACTUALIZARSE porque el autor la
+ * editó en Google (cambió rating y/o texto).
+ *
+ *   - Rating entrante fuera de 1..5 (respuesta malformada) → skip defensivo.
+ *   - Sin cambios reales → skip (idempotente: tras un update, el siguiente
+ *     cron compara igual y no toca nada).
+ */
+export function decideBpEditSync(p: {
+  stored: BpStoredReview;
+  incomingRating: number;
+  incomingText: string | null;
+}): BpEditSyncDecision {
+  if (p.incomingRating < 1 || p.incomingRating > 5) return { action: "skip" };
+
+  const ratingChanged = p.stored.rating !== p.incomingRating;
+  const textChanged = normText(p.stored.text) !== normText(p.incomingText);
+  if (!ratingChanged && !textChanged) return { action: "skip" };
+
+  const clearRemovedAt = p.stored.removed_at !== null;
+  const reAlertLowRating =
+    isLowRating(p.incomingRating) &&
+    !isLowRating(p.stored.rating) &&
+    p.stored.low_rating_alerted_at === null;
+
+  return { action: "update", ratingChanged, textChanged, clearRemovedAt, reAlertLowRating };
+}

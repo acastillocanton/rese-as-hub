@@ -66,6 +66,9 @@ export type LocationSummary = {
    *  autor+ficha) y se fusionaron en vez de insertarse. Opcional para no
    *  obligar a tocar todos los sitios que construyen el summary. Ver §4.41. */
   merged?: number;
+  /** Reseñas BP ya en BD cuyo contenido (rating/texto) cambió en Google y se
+   *  actualizó in-place (reviewId estable → no pasan por `fresh`). Ver §4.41. */
+  edited?: number;
   error?: string;
 };
 

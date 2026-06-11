@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { decideEditMerge, type IncumbentLite } from "@/lib/cron/edit-merge";
+import {
+  decideBpEditSync,
+  decideEditMerge,
+  type BpStoredReview,
+  type IncumbentLite,
+} from "@/lib/cron/edit-merge";
 
 const inc = (over: Partial<IncumbentLite> = {}): IncumbentLite => ({
   id: "inc-1",
@@ -122,5 +127,129 @@ describe("decideEditMerge", () => {
       clearRemovedAt: false,
       reAlertLowRating: false,
     });
+  });
+});
+
+const stored = (over: Partial<BpStoredReview> = {}): BpStoredReview => ({
+  id: "rev-1",
+  rating: 5,
+  text: "Muy buen trato",
+  removed_at: null,
+  low_rating_alerted_at: null,
+  ...over,
+});
+
+describe("decideBpEditSync", () => {
+  it("sin cambios → skip (idempotente tras un update previo)", () => {
+    const r = decideBpEditSync({
+      stored: stored(),
+      incomingRating: 5,
+      incomingText: "Muy buen trato",
+    });
+    expect(r).toEqual({ action: "skip" });
+  });
+
+  it("diferencias solo de whitespace/vacío NO cuentan como cambio", () => {
+    expect(
+      decideBpEditSync({
+        stored: stored({ text: "  Muy buen trato  " }),
+        incomingRating: 5,
+        incomingText: "Muy buen trato",
+      }),
+    ).toEqual({ action: "skip" });
+    expect(
+      decideBpEditSync({
+        stored: stored({ text: null }),
+        incomingRating: 5,
+        incomingText: "   ",
+      }),
+    ).toEqual({ action: "skip" });
+  });
+
+  it("rating entrante fuera de 1..5 (malformado) → skip defensivo", () => {
+    const r = decideBpEditSync({
+      stored: stored(),
+      incomingRating: 0,
+      incomingText: "lo que sea",
+    });
+    expect(r).toEqual({ action: "skip" });
+  });
+
+  it("cambio de texto con mismo rating → update sin re-alert", () => {
+    const r = decideBpEditSync({
+      stored: stored(),
+      incomingRating: 5,
+      incomingText: "Muy buen trato, repetiré seguro",
+    });
+    expect(r).toEqual({
+      action: "update",
+      ratingChanged: false,
+      textChanged: true,
+      clearRemovedAt: false,
+      reAlertLowRating: false,
+    });
+  });
+
+  it("1★→5★ (caso Cornel/Nuria) → update sin re-alert", () => {
+    const r = decideBpEditSync({
+      stored: stored({ rating: 1, low_rating_alerted_at: "2026-06-01T00:00:00Z" }),
+      incomingRating: 5,
+      incomingText: "Muy buen trato",
+    });
+    expect(r).toEqual({
+      action: "update",
+      ratingChanged: true,
+      textChanged: false,
+      clearRemovedAt: false,
+      reAlertLowRating: false,
+    });
+  });
+
+  it("5★→1★ (baja a low por primera vez) → update con re-alert", () => {
+    const r = decideBpEditSync({
+      stored: stored(),
+      incomingRating: 1,
+      incomingText: "Muy buen trato",
+    });
+    expect(r).toEqual({
+      action: "update",
+      ratingChanged: true,
+      textChanged: false,
+      clearRemovedAt: false,
+      reAlertLowRating: true,
+    });
+  });
+
+  it("2★→1★ (ya era low) → update sin re-alert (anti-spam)", () => {
+    const r = decideBpEditSync({
+      stored: stored({ rating: 2 }),
+      incomingRating: 1,
+      incomingText: "Muy buen trato",
+    });
+    expect(r).toEqual({
+      action: "update",
+      ratingChanged: true,
+      textChanged: false,
+      clearRemovedAt: false,
+      reAlertLowRating: false,
+    });
+  });
+
+  it("baja a low pero ya había alerta previa → no re-alert", () => {
+    const r = decideBpEditSync({
+      stored: stored({ low_rating_alerted_at: "2026-06-01T00:00:00Z" }),
+      incomingRating: 1,
+      incomingText: "Muy buen trato",
+    });
+    expect(r).toMatchObject({ action: "update", reAlertLowRating: false });
+  });
+
+  it("fila soft-deleted editada → update con clearRemovedAt=true (revive)", () => {
+    const r = decideBpEditSync({
+      stored: stored({ removed_at: "2026-06-01T00:00:00Z" }),
+      incomingRating: 4,
+      incomingText: "Muy buen trato",
+    });
+    expect(r).toMatchObject({ action: "update", clearRemovedAt: true });
   });
 });

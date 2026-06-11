@@ -8,6 +8,7 @@ import {
 } from "@/lib/google/business-profile";
 import { stripGoogleTranslation } from "@/lib/google/strip-translation";
 import { normalizeOwnerReply } from "@/lib/google/owner-reply";
+import { decideBpEditSync } from "@/lib/cron/edit-merge";
 import {
   processFreshReviews,
   flushNotifications,
@@ -290,6 +291,17 @@ export async function syncBusinessProfile(
       // ANTES del filtro `fresh` y del early-return de abajo.
       await syncExistingReplies(admin, loc.id, googleReviews, existingSet);
 
+      // Ediciones (§4.41 variante BP): el reviewId es estable, así que una
+      // reseña editada en Google (rating/texto) NUNCA entra como fresh — hay
+      // que actualizar la fila in-place. Igual que las replies, va antes del
+      // early-return (el caso típico no trae ninguna fresh).
+      const editRes = await syncExistingEdits(admin, loc, googleReviews, existingSet);
+      if (editRes.edited > 0) entry.edited = editRes.edited;
+      lowRatingAlerts.push(...editRes.alerts);
+      for (const a of editRes.alerts) {
+        if (a.clientId) clientIdsSeen.add(a.clientId);
+      }
+
       // Going-forward only (§4.26): además de filtrar las ya existentes,
       // descartamos las creadas ANTES del corte de activación.
       const fresh = googleReviews.filter(
@@ -494,6 +506,136 @@ async function syncExistingReplies(
     await admin.from("audit_log").insert(auditRows as never);
   }
   return auditRows.length;
+}
+
+/**
+ * Ediciones de reseña en Google sobre filas que ya tenemos (§4.41, variante BP).
+ *
+ * Business Profile mantiene el `reviewId` estable cuando el autor EDITA su
+ * reseña (p.ej. 1★→5★ tras hablar con el comercial — caso real de Cornel), así
+ * que la edición jamás pasa el filtro de `fresh` y, sin esto, la BD se quedaría
+ * con el rating/texto viejos (falseando medias y comisiones). En Places el
+ * problema era el inverso (id sintético → fila fantasma) y lo resuelve la
+ * fusión por autor de `process-reviews.ts`; aquí la fila ya está identificada.
+ *
+ * Semántica (espejo del merge de Places):
+ *   - Solo toca `rating`, `text` y `fetched_at` — la atribución (sales_id,
+ *     client_id, match_state, is_duplicate, evidencia) se PRESERVA intacta.
+ *   - Si la fila estaba soft-deleted (`removed_at`), la edición la revive
+ *     (demuestra que sigue existiendo en Google).
+ *   - Si la edición baja a ≤2★ por primera vez, re-encola la alerta temprana
+ *     (limpia `low_rating_alerted_at`; `flushLowRatingAlerts` lo re-sella).
+ *   - Prefiltro por `updateTime !== createTime` (Google lo bumpea al editar;
+ *     también al responder, pero esos casos caen a `skip` al comparar valores).
+ *   - Idempotente: tras el UPDATE, el siguiente cron compara igual → skip.
+ *
+ * Audit: `action='review_edit_synced'` por fila actualizada.
+ */
+async function syncExistingEdits(
+  admin: ReturnType<typeof createServiceClient>,
+  loc: { id: string; name: string; google_place_id: string | null },
+  googleReviews: GoogleReview[],
+  existingSet: Set<string>,
+): Promise<{ edited: number; alerts: LowRatingAlert[] }> {
+  const candidates = googleReviews.filter(
+    (gr) => existingSet.has(gr.reviewId) && gr.updateTime !== gr.createTime,
+  );
+  if (candidates.length === 0) return { edited: 0, alerts: [] };
+
+  const byId = new Map(candidates.map((gr) => [gr.reviewId, gr]));
+  const { data: stored } = await admin
+    .from("reviews")
+    .select(
+      "id, google_review_id, author_name, rating, text, removed_at, low_rating_alerted_at, match_state, sales_id, client_id",
+    )
+    .eq("location_id", loc.id)
+    .in("google_review_id", [...byId.keys()])
+    .returns<
+      {
+        id: string;
+        google_review_id: string;
+        author_name: string;
+        rating: number;
+        text: string | null;
+        removed_at: string | null;
+        low_rating_alerted_at: string | null;
+        match_state: "counted" | "pending" | "unmatched";
+        sales_id: string | null;
+        client_id: string | null;
+      }[]
+    >();
+  if (!stored || stored.length === 0) return { edited: 0, alerts: [] };
+
+  const now = new Date().toISOString();
+  const alerts: LowRatingAlert[] = [];
+  const auditRows: Record<string, unknown>[] = [];
+
+  await Promise.all(
+    stored.map(async (row) => {
+      const gr = byId.get(row.google_review_id);
+      if (!gr) return;
+      const incomingRating = starRatingToInt(gr.starRating);
+      const incomingText = stripGoogleTranslation(gr.comment ?? null);
+      const decision = decideBpEditSync({
+        stored: row,
+        incomingRating,
+        incomingText,
+      });
+      if (decision.action !== "update") return;
+
+      const patch: Record<string, unknown> = {
+        rating: incomingRating,
+        text: incomingText,
+        fetched_at: now,
+      };
+      if (decision.clearRemovedAt) patch.removed_at = null;
+      if (decision.reAlertLowRating) patch.low_rating_alerted_at = null;
+
+      const { error } = await admin
+        .from("reviews")
+        .update(patch as never)
+        .eq("id", row.id);
+      if (error) {
+        console.error(`[sync-bp] edit sync failed for review ${row.id}:`, error);
+        return;
+      }
+
+      auditRows.push({
+        entity_type: "review",
+        entity_id: row.id,
+        action: "review_edit_synced",
+        payload: {
+          google_review_id: row.google_review_id,
+          source: "business_profile",
+          old_rating: row.rating,
+          new_rating: incomingRating,
+          text_changed: decision.textChanged,
+          cleared_removed_at: decision.clearRemovedAt,
+          re_alert_low_rating: decision.reAlertLowRating,
+        },
+      });
+
+      if (decision.reAlertLowRating) {
+        alerts.push({
+          reviewId: row.id,
+          rating: incomingRating,
+          authorName: row.author_name,
+          reviewText: incomingText,
+          locationId: loc.id,
+          locationName: loc.name,
+          placeId: loc.google_place_id,
+          matchState: row.match_state,
+          salesId: row.sales_id,
+          clientId: row.client_id,
+        });
+      }
+    }),
+  );
+
+  if (auditRows.length > 0) {
+    await admin.from("audit_log").insert(auditRows as never);
+  }
+  return { edited: auditRows.length, alerts };
 }
 
 async function markSyncOk(
