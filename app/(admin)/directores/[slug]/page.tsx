@@ -72,15 +72,15 @@ export default async function DirectorDetailPage({ params }: PageProps) {
     return (
       <>
         <Topbar
-          title="Director"
+          title="Responsable"
           subtitle="Modo demo — sin base de datos"
-          breadcrumb="Directores"
+          breadcrumb="Responsables"
           breadcrumbHref="/directores"
         />
         <div style={{ padding: "24px 32px" }}>
           <Card>
             <div style={{ fontSize: 13, color: "var(--ink-3)" }}>
-              Configura Supabase para ver el detalle del director.
+              Configura Supabase para ver el detalle del responsable.
             </div>
           </Card>
         </div>
@@ -142,8 +142,8 @@ export default async function DirectorDetailPage({ params }: PageProps) {
     <>
       <Topbar
         title={director.full_name}
-        subtitle={`Director · ${director.location?.name ?? "sin ficha"} · ${statusLabel(director.status)}`}
-        breadcrumb="Directores"
+        subtitle={`Responsable · ${director.location?.name ?? "sin ficha"} · ${statusLabel(director.status)}`}
+        breadcrumb="Responsables"
         breadcrumbHref="/directores"
         range={null}
         right={
@@ -186,7 +186,7 @@ export default async function DirectorDetailPage({ params }: PageProps) {
         <div style={{ display: "grid", gap: 18, alignContent: "start" }}>
           {!isArchived && (
             <Card>
-              <div style={sectionLabel}>Foto del director</div>
+              <div style={sectionLabel}>Foto del responsable</div>
               <div style={{ marginTop: 14 }}>
                 <AvatarUploader
                   name={director.full_name}
@@ -219,7 +219,7 @@ export default async function DirectorDetailPage({ params }: PageProps) {
           />
         ) : (
           <Card>
-            <div style={sectionLabel}>Director archivado</div>
+            <div style={sectionLabel}>Responsable archivado</div>
             <p
               style={{
                 margin: "10px 0 0",
@@ -228,8 +228,8 @@ export default async function DirectorDetailPage({ params }: PageProps) {
                 lineHeight: 1.55,
               }}
             >
-              Este director está archivado. Para editar sus datos restáuralo
-              primero con el botón &quot;Restaurar director&quot; del topbar.
+              Este responsable está archivado. Para editar sus datos restáuralo
+              primero con el botón &quot;Restaurar responsable&quot; del topbar.
             </p>
             <dl style={{ marginTop: 14, display: "grid", rowGap: 10 }}>
               <Row label="Nombre" value={director.full_name} />
@@ -274,12 +274,12 @@ export default async function DirectorDetailPage({ params }: PageProps) {
                   lineHeight: 1.55,
                 }}
               >
-                Este director aún no tiene comerciales asignados. Para añadir
+                Este responsable aún no tiene comerciales asignados. Para añadir
                 uno, edita un comercial desde{" "}
                 <Link href="/comerciales" style={{ color: "var(--ink)" }}>
                   /comerciales
                 </Link>{" "}
-                y selecciónalo en &quot;Director responsable&quot;.
+                y selecciónalo en &quot;Responsable&quot;.
               </p>
             </div>
           ) : (

@@ -465,7 +465,7 @@ function SalesRow({
               alignItems: "center",
               gap: 6,
             }}
-            title={s.role === "office_director" ? "Director de oficina (productor)" : undefined}
+            title={s.role === "office_director" ? "Responsable de oficina (productor)" : undefined}
           >
             {s.role === "office_director" && (
               <span aria-hidden style={{ color: "var(--accent, #b8860b)", fontSize: 13 }}>★</span>
@@ -522,7 +522,7 @@ function SalesRow({
               overflow: "hidden",
               textOverflow: "ellipsis",
             }}
-            title={`Director responsable: ${directorName}`}
+            title={`Responsable: ${directorName}`}
           >
             👤 {directorName}
           </span>
@@ -571,7 +571,7 @@ function SalesRow({
                 borderRadius: 8,
                 whiteSpace: "nowrap",
               }}
-              title="Gestionar este director en /directores"
+              title="Gestionar este responsable en /directores"
             >
               Gestionar en /directores
             </Link>

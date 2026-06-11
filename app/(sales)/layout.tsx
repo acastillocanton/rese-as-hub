@@ -68,8 +68,8 @@ export default async function SalesLayout({
   const tabs = isDirector ? DIRECTOR_MOBILE_TABS : SALES_MOBILE_TABS;
   const brand: Brand = profile?.locations?.brand ?? DEFAULT_BRAND;
   const brandLabel = getBrandLabel(brand);
-  const subtitle = isDirector ? `Director · ${brandLabel}` : `Comercial · ${brandLabel}`;
-  const fallbackName = isDirector ? "Director de oficina" : "Comercial";
+  const subtitle = isDirector ? `Responsable · ${brandLabel}` : `Comercial · ${brandLabel}`;
+  const fallbackName = isDirector ? "Responsable de oficina" : "Comercial";
 
   return (
     <Frame>

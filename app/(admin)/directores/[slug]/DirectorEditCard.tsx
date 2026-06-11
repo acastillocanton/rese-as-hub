@@ -101,7 +101,7 @@ export function DirectorEditCard({
       return;
     }
     if (department === "internacional" && !language) {
-      setError("Selecciona el idioma del director internacional.");
+      setError("Selecciona el idioma del responsable internacional.");
       return;
     }
     const payload: UpdateDirectorInput = {
@@ -144,7 +144,7 @@ export function DirectorEditCard({
           marginBottom: 14,
         }}
       >
-        <div style={sectionLabel}>Datos del director</div>
+        <div style={sectionLabel}>Datos del responsable</div>
         {!editing && <GhostBtn onClick={() => setEditing(true)}>Editar</GhostBtn>}
       </div>
 

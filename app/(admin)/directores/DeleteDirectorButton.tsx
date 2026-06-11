@@ -15,7 +15,7 @@ export function DeleteDirectorButton({ id, name }: Props) {
 
   function onClick() {
     const ok = window.confirm(
-      `¿Eliminar al director ${name}?\n\nPerderá el acceso a ReseñaHub. Los comerciales de su oficina y las reseñas no se ven afectados.`,
+      `¿Eliminar al responsable ${name}?\n\nPerderá el acceso a ReseñaHub. Los comerciales de su oficina y las reseñas no se ven afectados.`,
     );
     if (!ok) return;
     startTransition(async () => {

@@ -12,7 +12,7 @@ type LocationOption = { id: string; name: string };
 
 export function InviteDirectorButton({
   locations,
-  label = "+ Invitar director",
+  label = "+ Invitar responsable",
   primary = false,
 }: {
   locations: LocationOption[];
@@ -127,7 +127,7 @@ export function InviteDirectorButton({
               }}
             >
               <div style={{ fontSize: 12.5, color: "var(--ink-3)", fontWeight: 500 }}>
-                Nuevo director de oficina
+                Nuevo responsable de oficina
               </div>
               <div
                 style={{
@@ -149,7 +149,7 @@ export function InviteDirectorButton({
                     lineHeight: 1.55,
                   }}
                 >
-                  El director gestiona su oficina como un admin: invita
+                  El responsable gestiona su oficina como un admin: invita
                   comerciales, conecta Google y verifica reseñas — todo
                   restringido a su ficha. No accede a /gestores, /ajustes ni a
                   datos de otras oficinas.

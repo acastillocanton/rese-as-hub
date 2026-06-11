@@ -354,7 +354,7 @@ export const ADMIN_SIDEBAR_GROUPS: SidebarGroup[] = [
       // Pagina dedicada desde la migración 013: /directores.
       {
         id: "directors",
-        label: "Directores",
+        label: "Responsables",
         href: "/directores",
         icon: Briefcase,
       },

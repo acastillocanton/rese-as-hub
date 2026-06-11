@@ -117,10 +117,10 @@ export function SalesFilters({ locations, directors, current }: Props) {
       <select
         value={current.director_id ?? ""}
         onChange={(e) => push({ director_id: e.target.value || null })}
-        aria-label="Filtrar por director"
+        aria-label="Filtrar por responsable"
         style={selectStyle}
       >
-        <option value="">Todos los directores</option>
+        <option value="">Todos los responsables</option>
         {visibleDirectors.map((d) => (
           <option key={d.id} value={d.id}>
             {d.full_name}

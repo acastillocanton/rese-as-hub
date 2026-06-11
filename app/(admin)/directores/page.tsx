@@ -108,13 +108,13 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
   return (
     <>
       <Topbar
-        title="Directores de oficina"
+        title="Responsables de oficina"
         subtitle={
           filterStatus
-            ? `Directores · ${STATUS_LABELS[filterStatus] ?? filterStatus}`
-            : "Cada director gestiona su propio equipo de comerciales"
+            ? `Responsables · ${STATUS_LABELS[filterStatus] ?? filterStatus}`
+            : "Cada responsable gestiona su propio equipo de comerciales"
         }
-        range={`${directors.length} directores`}
+        range={`${directors.length} responsables`}
         breadcrumb={getBrandBreadcrumb(brand)}
         right={!showArchived ? <InviteDirectorButton locations={locations} primary /> : undefined}
       />
@@ -123,7 +123,7 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
         {dbError && (
           <Card>
             <div style={{ fontSize: 13, color: "var(--warn)", fontWeight: 500 }}>
-              Error al cargar directores
+              Error al cargar responsables
             </div>
             <p
               style={{
@@ -152,7 +152,7 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
                 <MiniStat
                   label="Total"
                   value={stats.total}
-                  sub={`director${stats.total === 1 ? "" : "es"} en plantilla`}
+                  sub={`responsable${stats.total === 1 ? "" : "s"} en plantilla`}
                 />
                 <MiniStat
                   label="Activos"
@@ -179,7 +179,7 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
             {directors.length === 0 ? (
               <Card padding={32}>
                 <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
-                  Sin directores todavía
+                  Sin responsables todavía
                 </div>
                 <div
                   style={{
@@ -189,7 +189,7 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
                     letterSpacing: "-0.02em",
                   }}
                 >
-                  Crea el primer director y asígnale comerciales
+                  Crea el primer responsable y asígnale comerciales
                 </div>
                 <p
                   style={{
@@ -200,15 +200,15 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
                     maxWidth: 620,
                   }}
                 >
-                  Un director gestiona su propio equipo de comerciales dentro de
-                  una ficha. Puedes tener varios directores en la misma oficina
+                  Un responsable gestiona su propio equipo de comerciales dentro de
+                  una ficha. Puedes tener varios responsables en la misma oficina
                   (p.ej. uno por idioma en Internacional). Cada uno solo ve y
                   edita los comerciales que tenga asignados (<code>director_id</code>).
                   Tras crearlo, asígnale comerciales desde{" "}
                   <Link href="/comerciales" style={{ color: "var(--ink)" }}>
                     /comerciales
                   </Link>{" "}
-                  con el selector &quot;Director responsable&quot;.
+                  con el selector &quot;Responsable&quot;.
                 </p>
                 <InviteDirectorButton locations={locations} primary />
               </Card>
@@ -227,7 +227,7 @@ export default async function DirectoresPage({ searchParams }: PageProps) {
                     letterSpacing: "0.04em",
                   }}
                 >
-                  <span>Director</span>
+                  <span>Responsable</span>
                   <span>Oficina</span>
                   <span>Equipo</span>
                   <span>Email</span>
@@ -317,7 +317,7 @@ function DirectorRowView({
             {d.full_name}
           </div>
           <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
-            Director de oficina
+            Responsable de oficina
           </div>
         </div>
       </Link>

@@ -79,8 +79,8 @@ export default async function ManagerLayout({
         }
       : role === "office_director"
         ? {
-            name: profile?.full_name ?? "Director de oficina",
-            subtitle: `Director · ${brandLabel}`,
+            name: profile?.full_name ?? "Responsable de oficina",
+            subtitle: `Responsable · ${brandLabel}`,
             avatarUrl: profile?.avatar_url,
           }
         : {

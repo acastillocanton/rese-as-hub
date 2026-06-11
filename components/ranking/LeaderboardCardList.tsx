@@ -100,7 +100,7 @@ export function LeaderboardCardList({ rows }: { rows: LeaderboardRow[] }) {
                     textOverflow: "ellipsis",
                   }}
                 >
-                  {p.isDirector ? "★ Director · " : ""}
+                  {p.isDirector ? "★ Responsable · " : ""}
                   {p.branch}
                 </div>
               </div>

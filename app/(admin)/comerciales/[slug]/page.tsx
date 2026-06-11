@@ -443,7 +443,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
         title={sales.full_name}
         subtitle={
           // Director productor → "★ Director · Internacional"; comercial → "Comercial · Internacional".
-          (sales.role === "office_director" ? "★ Director" : "Comercial") +
+          (sales.role === "office_director" ? "★ Responsable" : "Comercial") +
           (sales.department ? ` · ${DEPARTMENT_LABELS[sales.department]}` : "")
         }
         breadcrumb="Comerciales"
@@ -499,7 +499,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
               // Los directores se invitan/editan/archivan/eliminan desde
               // /directores (sus actions tienen scope distinto al de sales).
               // Aquí solo se les ve como productores read-only.
-              <Link href="/directores" style={linkBtn} title="Gestionar este director en /directores">
+              <Link href="/directores" style={linkBtn} title="Gestionar este responsable en /directores">
                 Gestionar en /directores
               </Link>
             )}

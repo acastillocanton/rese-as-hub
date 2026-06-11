@@ -373,15 +373,15 @@ export function InviteSalesButton({
                           la lista por la ficha actual para no asignar un director
                           de otra location por error. */}
                       <Field
-                        label="Director responsable (opcional)"
+                        label="Responsable (opcional)"
                         hint={
                           eligibleDirectors.length === 0
-                            ? "No hay directores en esa ficha. Créalos en /directores."
-                            : "Solo se listan directores de la ficha seleccionada."
+                            ? "No hay responsables en esa ficha. Créalos en /directores."
+                            : "Solo se listan responsables de la ficha seleccionada."
                         }
                       >
                         <select name="directorId" style={inputStyle} defaultValue="">
-                          <option value="">— Sin director asignado —</option>
+                          <option value="">— Sin responsable asignado —</option>
                           {eligibleDirectors.map((d) => (
                             <option key={d.id} value={d.id}>
                               {d.full_name}

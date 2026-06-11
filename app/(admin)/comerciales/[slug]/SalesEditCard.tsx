@@ -327,7 +327,7 @@ export function SalesEditCard({
             misma ficha; "Sin director" deja al comercial en el pool del
             admin/reviews_manager. */}
         <div style={rowGrid}>
-          <dt style={dtStyle}>Director responsable</dt>
+          <dt style={dtStyle}>Responsable</dt>
           <dd style={{ margin: 0 }}>
             {editing && lockScope ? (
               // Director: el comercial sigue siendo de su equipo (no puede
@@ -341,7 +341,7 @@ export function SalesEditCard({
                 onChange={(e) => setDirectorId(e.target.value)}
                 style={inputStyle}
               >
-                <option value="">— Sin director asignado —</option>
+                <option value="">— Sin responsable asignado —</option>
                 {eligibleDirectors.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.full_name}
@@ -350,7 +350,7 @@ export function SalesEditCard({
               </select>
             ) : (
               <span style={{ fontSize: 13.5, color: currentDirector ? "var(--ink)" : "var(--ink-4)" }}>
-                {currentDirector?.full_name ?? "Sin director asignado"}
+                {currentDirector?.full_name ?? "Sin responsable asignado"}
               </span>
             )}
           </dd>

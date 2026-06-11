@@ -17,7 +17,7 @@ function roleLabel(role: Role): string {
     case "reviews_manager":
       return "Gestor";
     case "office_director":
-      return "Director";
+      return "Responsable";
     case "sales":
       return "Comercial";
   }

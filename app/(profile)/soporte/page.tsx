@@ -152,7 +152,7 @@ export default async function SoportePage() {
             </div>
             <div style={{ fontSize: 13 }}>
               {isResponder
-                ? "Cuando un comercial o director abra una consulta, aparecerá aquí."
+                ? "Cuando un comercial o responsable abra una consulta, aparecerá aquí."
                 : "Si tienes alguna duda o problema, abre una consulta y te responderemos."}
             </div>
           </div>

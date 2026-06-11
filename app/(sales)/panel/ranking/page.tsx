@@ -123,7 +123,7 @@ export default async function SalesRankingPage({
               }}
             >
               {profile.director_id === null
-                ? "Aún no tienes director asignado"
+                ? "Aún no tienes responsable asignado"
                 : "Aún no tienes compañeros en tu equipo"}
             </div>
             <p

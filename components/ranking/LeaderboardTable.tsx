@@ -88,7 +88,7 @@ export function LeaderboardTable({
                 {p.name}
               </div>
               <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>
-                {p.isDirector ? "★ Director · " : ""}
+                {p.isDirector ? "★ Responsable · " : ""}
                 {p.status === "active"
                   ? "Activo"
                   : p.status === "paused"

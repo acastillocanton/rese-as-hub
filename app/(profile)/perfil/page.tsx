@@ -24,7 +24,7 @@ type ProfileRow = {
 function roleLabel(role: ProfileRow["role"]): string {
   if (role === "admin") return "Administrador";
   if (role === "reviews_manager") return "Gestor de reseñas";
-  if (role === "office_director") return "Director de oficina";
+  if (role === "office_director") return "Responsable de oficina";
   return "Comercial";
 }
 

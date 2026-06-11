@@ -31,15 +31,15 @@ export function ArchiveDirectorButton({
   function onClick() {
     const teamWarning =
       mode === "archive" && teamCount && teamCount > 0
-        ? `\n\n⚠️ Tiene ${teamCount} comercial${teamCount === 1 ? "" : "es"} asignado${teamCount === 1 ? "" : "s"} — al archivarlo dejarán de tener director responsable. Recuerda reasignarlos.`
+        ? `\n\n⚠️ Tiene ${teamCount} comercial${teamCount === 1 ? "" : "es"} asignado${teamCount === 1 ? "" : "s"} — al archivarlo dejarán de tener responsable. Recuerda reasignarlos.`
         : "";
     const ok =
       mode === "archive"
         ? window.confirm(
-            `¿Archivar al director ${name}?\n\nNo podrá iniciar sesión y desaparece del listado activo. Sus comerciales asignados conservan la atribución de reseñas pero quedan sin director. Puedes restaurarlo desde "Ver archivados".${teamWarning}`,
+            `¿Archivar al responsable ${name}?\n\nNo podrá iniciar sesión y desaparece del listado activo. Sus comerciales asignados conservan la atribución de reseñas pero quedan sin responsable. Puedes restaurarlo desde "Ver archivados".${teamWarning}`,
           )
         : window.confirm(
-            `¿Restaurar al director ${name}? Volverá al listado como Invitado y podrás reenviarle acceso.`,
+            `¿Restaurar al responsable ${name}? Volverá al listado como Invitado y podrás reenviarle acceso.`,
           );
     if (!ok) return;
     startTransition(async () => {
@@ -58,7 +58,7 @@ export function ArchiveDirectorButton({
 
   const isProminent = variant === "prominent";
   const compactLabel = mode === "archive" ? "Archivar" : "Restaurar";
-  const prominentLabel = mode === "archive" ? "Archivar director" : "Restaurar director";
+  const prominentLabel = mode === "archive" ? "Archivar responsable" : "Restaurar responsable";
   const pendingLabel = mode === "archive" ? "Archivando…" : "Restaurando…";
 
   return (

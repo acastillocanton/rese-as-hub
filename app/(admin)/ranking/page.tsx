@@ -98,10 +98,10 @@ export default async function RankingPage({
               Aún no hay productores en plantilla
             </div>
             <p style={{ margin: "10px 0 0", color: "var(--ink-3)", fontSize: 13.5, lineHeight: 1.55, maxWidth: 560 }}>
-              Invita comerciales y directores desde{" "}
+              Invita comerciales y responsables desde{" "}
               <Link href="/comerciales" style={{ color: "var(--ink)" }}>Comerciales</Link>{" "}
               y{" "}
-              <Link href="/directores" style={{ color: "var(--ink)" }}>Directores</Link>.
+              <Link href="/directores" style={{ color: "var(--ink)" }}>Responsables</Link>.
             </p>
           </Card>
         ) : !hasActivity ? (

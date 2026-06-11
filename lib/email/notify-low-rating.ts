@@ -182,7 +182,7 @@ function renderHtml(
           </table>
         </td></tr>
         <tr><td style="padding:24px 8px 0 8px;font-size:11.5px;line-height:1.6;color:#a8a294;">
-          Recibes este correo porque tu rol (admin / gestor / director / comercial atribuido) recibe alertas por reseñas con rating bajo. Si quieres que dejen de llegar, contacta con admin.
+          Recibes este correo porque tu rol (admin / gestor / responsable / comercial atribuido) recibe alertas por reseñas con rating bajo. Si quieres que dejen de llegar, contacta con admin.
           <br><br>
           ReseñaHub · ${brandLabel}
         </td></tr>

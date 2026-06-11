@@ -89,7 +89,7 @@ export default async function ProfileLayout({
       : role === "reviews_manager"
         ? `Gestor · ${brandLabel}`
         : role === "office_director"
-          ? `Director · ${brandLabel}`
+          ? `Responsable · ${brandLabel}`
           : `Comercial · ${brandLabel}`;
 
   return (
