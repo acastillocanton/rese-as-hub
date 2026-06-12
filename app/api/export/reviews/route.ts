@@ -600,12 +600,12 @@ function renderDetailSheet(workbook: ExcelJS.Workbook, reviews: ReviewDetailRow[
   const sheet = workbook.addWorksheet("Detalle");
   sheet.columns = [
     { header: "Fecha", key: "fecha", width: 18 },
-    { header: "Autor", key: "autor", width: 24 },
+    { header: "Nombre en Google", key: "autor", width: 24 },
     { header: "Estrellas", key: "estrellas", width: 10 },
     { header: "Comentario", key: "comentario", width: 60 },
     { header: "Ficha", key: "ficha", width: 32 },
     { header: "Comercial", key: "comercial", width: 22 },
-    { header: "Cliente atribuido", key: "cliente", width: 22 },
+    { header: "Cliente ReseñasHub", key: "cliente", width: 22 },
     { header: "Estado matching", key: "match", width: 22 },
     { header: "Duplicada", key: "duplicada", width: 12 },
     { header: "Confianza", key: "confianza", width: 12 },
