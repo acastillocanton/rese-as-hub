@@ -158,8 +158,8 @@ export async function buildSalesReport(
   // Anchos de columna (orientativo, Excel los respeta).
   ws.columns = [
     { width: 22 }, // A · Fecha o Label
-    { width: 28 }, // B · Cliente o Valor cabecera
-    { width: 22 }, // C · Autor
+    { width: 28 }, // B · Cliente ReseñasHub o Valor cabecera
+    { width: 22 }, // C · Nombre en Google
     { width: 14 }, // D · Valoración
     { width: 22 }, // E · Enlace
     { width: 16 }, // F · Comisión €
@@ -190,7 +190,7 @@ export async function buildSalesReport(
 
   // Fila vacía (10) y tabla a partir de la 11.
   const tableHeaderRow = 11;
-  const headers = ["Fecha", "Cliente", "Autor", "Valoración", "Enlace", "Comisión €"];
+  const headers = ["Fecha", "Cliente ReseñasHub", "Nombre en Google", "Valoración", "Enlace", "Comisión €"];
   headers.forEach((label, col) => {
     const cell = ws.getCell(tableHeaderRow, col + 1);
     cell.value = label;
