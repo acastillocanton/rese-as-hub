@@ -624,7 +624,7 @@ Hasta v2 había un item "Exportar Excel" en el sidebar (admin + manager + direct
 
 - 1 sola hoja "Reseñas". Bloque cabecera (filas 3-7):
   - Comercial · Fecha incorporación (DD/MM/YYYY) · Zona ("Nacional (Pardiñas)") · Periodo · Total reseñas.
-- Tabla (fila 9+): Fecha · Cliente · Autor · Valoración (`★★★★☆ (4)`) · Enlace.
+- Tabla (fila 9+): Fecha · Cliente ReseñasHub · Nombre en Google · Valoración (`★★★★☆ (4)`) · Enlace. (Los encabezados "Cliente"→"Cliente ReseñasHub" y "Autor"→"Nombre en Google" se renombraron el 2026-06-12 para distinguir el cliente de nuestro sistema del nombre que muestra Google; mismo cambio en la hoja "Detalle" del parte global.)
 - Columna Enlace: hyperlink Excel a `buildGoogleReviewListUrl(place_id)` (§4.25). Si la ficha no tiene place_id, muestra "—".
 - **Reseñas incluidas**: solo `counted` + `is_duplicate=false` + `removed_at IS NULL` (KPI-grade, mig 015 anti-fraude aplicado). Si no hay nada en el rango, la tabla muestra "Sin reseñas atribuidas en este periodo.".
 
