@@ -121,6 +121,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | feat(ui) · Nomenclatura visible "Director"→"Responsable" (rol `office_director` intacto, §4.55) + menú del responsable reorganizado (Mi oficina / Mi actividad) | ✅ (2026-06-11) |
 | feat(ui) · Botones "Sincronizar reseñas" / "Sincronizar enlaces" con iconos + Topbar derecho fijo · fix(middleware) reviews_manager faltaba `/api/sync` (§4.56) | ✅ (2026-06-11) |
 | chore(respuestas) · Limpieza one-shot: 1 clon Places/BP eliminado + 3 reconciliadas por API + 12 históricas marcadas respondidas → "Sin responder" 17→1 (§4.48) | ✅ (2026-06-11) |
+| feat(alertas) · Chequeo de salud diario por email (cron `45 5 * * *`, solo a admins, solo si hay algo): agente parado/DOM roto · fichas sin sincronizar · backlog de huérfanas · emails fallidos. Latido `harvest_ran` en el agente. Sin migración (§4.57) | ✅ (2026-06-12) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -1166,6 +1167,24 @@ En la **UI** el rol `office_director` se muestra como **"Responsable"** (antes "
 ### 4.56 Fix: el `reviews_manager` no podía sincronizar (middleware, 2026-06-11)
 
 `pathAllowedForRole` ([lib/supabase/middleware.ts](lib/supabase/middleware.ts)) no incluía `/api/sync` en la rama `reviews_manager` → al pulsar "Sincronizar" (reseñas) o "Sincronizar enlaces" el POST se redirigía a `/dashboard` (HTML) y el botón mostraba el engañoso "No se pudo sincronizar (HTTP 200)" (el fetch parseaba HTML como JSON). admin ya pasaba todo; sales/office_director ya tenían `/api/sync`. Fix: añadir `pathname.startsWith("/api/sync")` a la rama del gestor. Test de regresión en [lib/__tests__/route-access.test.ts](lib/__tests__/route-access.test.ts). (Los botones de sincronizar también ganaron iconos lucide: `MessageSquareText` reseñas, `Link2` enlaces; y el grupo derecho del Topbar queda `justify-content:flex-end` para no descolocarse con el feedback largo.)
+
+### 4.57 Chequeo de salud diario por email (alertas de sistema, 2026-06-12)
+
+Alertas proactivas para fallos **silenciosos** (cosas que no rompen la app pero nos dejan a ciegas). Distinto de las alertas instantáneas ≤2★ (mig 017, §4.29), que se mantienen intactas. **Solo va a admins, solo si hay algo que reportar (cadencia diaria). Sin migración** (consulta tablas existentes; el anti-spam lo da la cadencia).
+
+**Cron** [/api/cron/health-check](app/api/cron/health-check/route.ts) — schedule `45 5 * * *` en [vercel.json](vercel.json) (tras sync BP `5` y enrich `30` → ve el estado del día ya actualizado). Mismo patrón `secretMatches()` (Bearer CRON_SECRET) que los otros crons; el middleware ya abre `/api/cron`. Carga datos en paralelo (service-client) → corre checks → si hay findings, manda el digest. `?dryRun=1` (con secret) devuelve los findings en JSON **sin enviar**. Audit: `health_check_run` (siempre) + `health_alert_sent`/`health_alert_failed`; entidad centinela `0000…` como `harvest_requested`.
+
+**Checks puros** (sin I/O, testables) en [lib/monitoring/health-checks.ts](lib/monitoring/health-checks.ts) — tipo `HealthFinding {id, severity, title, detail, cta?}`, umbrales exportados:
+- **`checkHarvestStalled`** — usa el latido del agente (`audit_log action='harvest_ran'`, ver abajo) + nº de deep-links pendientes (live). `pending=0` → null (las ~15 anónimas/antiguas irreparables no encienden alerta). Última pasada con `harvested===0` y pendientes>0 → **critical** (DOM de Maps roto, §4.54). Sin latido / última pasada >`HARVEST_NO_RUN_HOURS`(72h) → **warning** (PC apagado o agente caído; la edad prima sobre el DOM para no asumir DOM roto sobre un dato viejo).
+- **`checkLocationsSyncStale`** — solo fichas `oauth_status='connected'`: `oauth_last_sync_error` no nulo → **critical**; sin sync nunca o >`LOCATION_SYNC_STALE_HOURS`(36h) → **warning**. CTA `/fichas`.
+- **`checkVerificationBacklog`** — unmatched activas **de los últimos `VERIFICATION_BACKLOG_WINDOW_DAYS`(30) días** > `VERIFICATION_BACKLOG_THRESHOLD`(15) → **warning**. ⚠️ La ventana reciente es deliberada: excluye las ~72 huérfanas históricas de Places (§7) que nadie reclamará y que dispararían la alerta cada día.
+- **`checkFailedNotifications`** — `notify_failed` sin `notify_retry_ok` posterior (misma lógica que `loadPending` de [/api/admin/notify-failed](app/api/admin/notify-failed/route.ts)) > 0 → **warning**.
+
+**Email** [lib/email/notify-health.ts](lib/email/notify-health.ts) — `notifyHealthDigest({findings, to, appBase})`, patrón de `notify-low-rating` (BCC, `escapeHtml`, HTML+text), pero **sin branding por marca** (es alerta de sistema). Subject `⚠️ ReseñaHub · N incidencias…`; findings ordenados critical-primero (`sortFindings`), cada uno con su CTA al área de la app. Destinatarios = admins activos (role='admin', email con fallback a `auth.users`, dedupe; loader local en el route, espejo de `getResponderEmails`).
+
+**Latido del agente** [agent/harvest-maps-urls.mjs](agent/harvest-maps-urls.mjs) — `runPass` ahora escribe **siempre** una entrada `harvest_ran {harvested, matched, pending}` al final de cada pasada (aunque case 0), salvo en la salida temprana "nada pendiente / sin fichas con place_id" (escribir un `harvested:0` ahí sería un falso "DOM roto"). `harvested` = total de reseñas extraídas del DOM. ⚠️ **El PC de oficina debe hacer `git pull`** para emitirlo (arranca solo al iniciar sesión; el siguiente arranque tras el pull ya lo trae). Sin el latido, `checkHarvestStalled` solo detectaría "no corrió", no "DOM roto".
+
+**Tests** [lib/monitoring/__tests__/health-checks.test.ts](lib/monitoring/__tests__/health-checks.test.ts) — los 4 checks en sus casos límite + `sortFindings`. **Ampliar a futuro**: añadir un `check*` puro nuevo + sumarlo en el route es todo lo que hace falta (la base no se toca).
 
 ---
 

@@ -67,6 +67,13 @@ $lnk.Save()
 - **Frágil por naturaleza:** si Google cambia el DOM de Maps, la extracción puede
   dejar de casar (el agente registraría 0 casadas, sin romper nada). Entonces hay
   que ajustar los selectores en `harvest-maps-urls.mjs`.
+- **Latido (`harvest_ran`):** cada pasada deja una entrada en `audit_log` con
+  `{harvested, matched, pending}` aunque case 0. Es lo que permite al **chequeo de
+  salud diario** (`/api/cron/health-check`, §4.57) avisar por email si el agente
+  cosechó 0 pese a haber pendientes (DOM roto) o si lleva días sin correr.
+  ⚠️ **Tras actualizar el código hay que hacer `git pull` en este PC** para que el
+  agente emita el latido; arranca solo al iniciar sesión, así que el siguiente
+  arranque tras el pull ya lo trae.
 - La lógica de construcción de URL y de matching es espejo de
   `lib/google/maps-ugc.ts` y `lib/google/maps-url-matching.ts` (canónicas).
 - Variables opcionales (`.env.local`): `CHROME_PATH`, `CDP_PORT` (9222),

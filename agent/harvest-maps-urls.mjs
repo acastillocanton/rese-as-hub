@@ -268,6 +268,10 @@ async function runPass() {
     byLoc.get(loc.id).rows.push(r);
   }
   log(`Pendientes: ${pending.length} reseñas en ${byLoc.size} fichas.`);
+  // Si ninguna pendiente tiene ficha con place_id, no hay nada que cosechar:
+  // NO escribimos latido (un harvested:0 aquí sería un falso "DOM roto" para
+  // la alerta de salud, que asume que un latido = una pasada real con Chrome).
+  if (byLoc.size === 0) { log("Sin fichas con place_id — nada que cosechar."); return 0; }
 
   const launchedChild = await ensureChrome();
   const browser = await chromium.connectOverCDP(`http://localhost:${PORT}`);
@@ -275,9 +279,11 @@ async function runPass() {
   const page = ctx.pages()[0] || (await ctx.newPage());
 
   let totalMatched = 0;
+  let totalHarvested = 0;
   for (const [locationId, { placeId, rows }] of byLoc) {
     try {
       const { fid, reviews } = await harvestFicha(page, placeId);
+      totalHarvested += reviews.length;
       if (!fid) { log(`[${locationId}] sin FID, skip`); continue; }
       const matches = matchUnique(rows, reviews, fid, nowMs);
       let n = 0;
@@ -299,7 +305,15 @@ async function runPass() {
   await browser.close().catch(() => {});
   // Si lo lanzamos nosotros, lo cerramos (el perfil en disco conserva el consent).
   if (launchedChild) killSpawnedChrome();
-  log(`Total deep-links nuevos: ${totalMatched}.`);
+  // Latido de la pasada (SIEMPRE, aunque case 0). `harvested` = total de reseñas
+  // extraídas del DOM: 0 con pendientes>0 = el módulo de reseñas de Maps no
+  // renderizó (cambio de DOM). Lo lee el chequeo de salud diario
+  // (lib/monitoring/health-checks.ts → checkHarvestStalled) para distinguir
+  // "DOM roto" (crítico) de "PC apagado / sin correr" (aviso).
+  try {
+    await sb.from("audit_log").insert({ entity_type: "location", entity_id: "00000000-0000-0000-0000-000000000000", action: "harvest_ran", payload: { harvested: totalHarvested, matched: totalMatched, pending: pending.length } });
+  } catch (e) { console.error("latido falló:", (e && e.message) || e); }
+  log(`Total deep-links nuevos: ${totalMatched} (cosechadas:${totalHarvested}).`);
   return totalMatched;
 }
 
