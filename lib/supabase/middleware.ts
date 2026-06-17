@@ -93,6 +93,12 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
   if (pathname === "/perfil" || pathname.startsWith("/perfil/")) return true;
   if (pathname === "/ayuda" || pathname.startsWith("/ayuda/")) return true;
   if (pathname === "/soporte" || pathname.startsWith("/soporte/")) return true;
+  // Capturas del centro de ayuda (public/help/*): llevan datos de un comercial
+  // real (§4.59), así que se sirven solo a usuarios autenticados de cualquier
+  // rol — nunca como estático sin auth. El matcher de middleware.ts incluye
+  // /help/:path* para que estas imágenes pasen por aquí. Los anónimos caen en el
+  // redirect a /login (no son ruta pública).
+  if (pathname.startsWith("/help/")) return true;
   if (role === "admin") return true;
   if (role === "sales") {
     return (

@@ -8,7 +8,7 @@ Hacer cada captura desde producción (https://resenas.marinadorconstrucciones.co
 
 > **Capturas regeneradas para v2 (2026-06-02).** Todas las pantallas se capturaron desde la cuenta del comercial **Cornel Popescu** (autorizado por el admin) en `localhost:3000` con el código de v2, a 1400×900 (la móvil a 390×844), ocultando el indicador de Next.js DevTools. `06-flujo-atribucion` sigue siendo el diagrama ilustrativo de v1.
 >
-> ⚠️ **Privacidad:** estos PNG viven en `public/`, que se sirve **sin autenticación** (`/help/*.png`). Por eso muestran datos de un comercial real (nombres de reseñas de Google —públicos—, su comisión estimada y los nombres del equipo en el ranking). Si esto no es aceptable, regenerar con una cuenta demo o recortar/difuminar.
+> ✅ **Privacidad (resuelto 2026-06-17, §4.59):** aunque estos PNG viven en `public/`, **ya NO se sirven sin autenticación**. El matcher de [`middleware.ts`](../../middleware.ts) incluye `/help/:path*` y `pathAllowedForRole` permite `/help/*` solo a usuarios autenticados (cualquier rol, igual que `/ayuda`); un anónimo que abra `/help/02-panel-sales.png` es redirigido a `/login`. Por eso pueden contener datos de un comercial real (su comisión estimada, nombres del equipo en el ranking) sin exposición pública. Si aun así prefieres no tener datos reales en el repo, regenerar con una cuenta demo o difuminar.
 
 | Archivo | Qué muestra |
 |---|---|

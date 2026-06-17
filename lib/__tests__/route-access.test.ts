@@ -4,6 +4,15 @@ import { pathAllowedForRole } from "../supabase/middleware";
 // Estos tests fijan la matriz de acceso por rol. Cualquier cambio en
 // pathAllowedForRole debe ir acompañado de un cambio aquí.
 
+describe("pathAllowedForRole — capturas del centro de ayuda (/help/*) (§4.59)", () => {
+  it("permitidas a cualquier rol autenticado (anónimos los bloquea el middleware)", () => {
+    const img = "/help/02-panel-sales.png";
+    for (const role of ["admin", "sales", "reviews_manager", "office_director"] as const) {
+      expect(pathAllowedForRole(img, role), `${img} / ${role}`).toBe(true);
+    }
+  });
+});
+
 describe("pathAllowedForRole — admin", () => {
   it("ve todo (excluyendo público; el middleware ya gestiona eso aparte)", () => {
     const paths = [
