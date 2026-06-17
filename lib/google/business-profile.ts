@@ -66,6 +66,31 @@ function requireEnv(): { clientId: string; clientSecret: string; redirectUri: st
   return { clientId, clientSecret, redirectUri };
 }
 
+/**
+ * Clasifica si un mensaje de error de sincronización corresponde a un fallo de
+ * AUTENTICACIÓN/AUTORIZACIÓN del token (refresh token caducado/revocado, sin
+ * token, credenciales inválidas o scope insuficiente) — frente a un fallo
+ * TRANSITORIO (5xx, 429, red). Conservador a propósito: solo `true` ante firmas
+ * inequívocas de auth, para que `markSyncError` (sync-business-profile.ts) marque
+ * la ficha como `oauth_status='error'` (necesita reconexión manual) sin sacar del
+ * ciclo del cron a una ficha sana por un blip. Ver CLAUDE.md §4.58.
+ */
+export function isOAuthAuthError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    m.includes("invalid_grant") ||
+    m.includes("no_refresh_token") ||
+    m.includes("token refresh failed") ||
+    m.includes("token exchange failed") ||
+    m.includes("invalid_client") ||
+    m.includes("access_token_scope_insufficient") ||
+    m.includes("insufficient authentication scopes") ||
+    m.includes("(401)") ||
+    m.includes("unauthenticated")
+  );
+}
+
 export function getOAuthStartUrl(state: string): string {
   const { clientId, redirectUri } = requireEnv();
   const params = new URLSearchParams({

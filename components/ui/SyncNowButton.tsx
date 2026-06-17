@@ -90,11 +90,24 @@ export function SyncNowButton({
 
         setFeedbackTone(totals.errors > 0 ? "warn" : "ok");
         if (totals.new === 0) {
-          setFeedback(
-            data.locations_processed === 0
-              ? "No hay fichas con Place ID configurado."
-              : `Sin reseñas nuevas (${data.locations_processed} fichas revisadas).`,
-          );
+          if (totals.errors > 0) {
+            // No confundir "no entró nada" con "no se pudo conectar": si alguna
+            // ficha falló (típicamente token de Google caducado/revocado), avisar
+            // claro y mandar a reconectar. Ver CLAUDE.md §4.58.
+            setFeedback(
+              `No se pudo sincronizar: ${totals.errors} ficha${
+                totals.errors === 1 ? "" : "s"
+              } con error de conexión a Google. Reconéctala${
+                totals.errors === 1 ? "" : "s"
+              } en Fichas.`,
+            );
+          } else {
+            setFeedback(
+              data.locations_processed === 0
+                ? "No hay fichas con Place ID configurado."
+                : `Sin reseñas nuevas (${data.locations_processed} fichas revisadas).`,
+            );
+          }
         } else {
           setFeedback(
             `${totals.new} nueva${totals.new === 1 ? "" : "s"} · ${totals.counted} atribuida${

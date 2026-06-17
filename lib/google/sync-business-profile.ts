@@ -2,6 +2,7 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
   getValidAccessTokenForLocation,
+  isOAuthAuthError,
   listReviews,
   starRatingToInt,
   type GoogleReview,
@@ -782,11 +783,20 @@ async function markSyncError(
   locationId: string,
   error: string,
 ) {
+  // Si el fallo es de AUTENTICACIÓN (token caducado/revocado, sin token, scope
+  // insuficiente) marcamos `oauth_status='error'`: así la ficha muestra "Error
+  // OAuth" + botón "Reconectar" en /fichas (en vez de seguir en falso
+  // "connected") y queda fuera del filtro `oauth_status='connected'` del sync
+  // (no se machaca un token muerto cada hora). Un blip transitorio (5xx/429/red)
+  // NO toca el estado. La vuelta a 'connected' la hace linkGoogleLocation al
+  // reconectar. Ver CLAUDE.md §4.58.
+  const update: Record<string, unknown> = {
+    oauth_last_sync_at: new Date().toISOString(),
+    oauth_last_sync_error: error.slice(0, 500),
+  };
+  if (isOAuthAuthError(error)) update.oauth_status = "error";
   await admin
     .from("locations")
-    .update({
-      oauth_last_sync_at: new Date().toISOString(),
-      oauth_last_sync_error: error.slice(0, 500),
-    } as never)
+    .update(update as never)
     .eq("id", locationId);
 }
