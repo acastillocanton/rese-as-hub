@@ -57,6 +57,22 @@ import type { Brand, ProfileStatus } from "@/lib/supabase/types";
  */
 export const BP_GO_LIVE_AT = "2026-06-10T00:00:00.000Z";
 
+/**
+ * Soft-delete AUTOMÁTICO desactivado (2026-06-17). El reconcile (`reconcileRemovedBp`,
+ * mig 028, §4.20) marcó 5 reseñas `counted` legítimas de comerciales (5★, no
+ * duplicadas) como eliminadas en days 06-14..06-16 — falsos positivos. Causa:
+ * la API v4 de Business Profile NO devuelve un snapshot estable/completo del feed
+ * (omite reseñas intermitentemente entre llamadas), así que el "invariante de
+ * ventana" en el que se apoya el reconcile no se sostiene. Es la misma lección
+ * que Places (§4.20). El umbral de 24h no basta: la ausencia puede sostenerse
+ * varios runs por mala suerte. Decisión de producto: el soft-delete vuelve a ser
+ * SOLO MANUAL (estado pre-mig-028). El código del reconcile se conserva, inerte,
+ * por si en el futuro se diseña una detección robusta (p.ej. exigir un fetch
+ * paginado completo + ausencia sostenida de N días). No borrar `missing_since`
+ * (mig 028) — queda como columna durmiente.
+ */
+export const AUTO_REMOVE_ENABLED = false;
+
 export type SyncBusinessProfileArgs = {
   /** Si `null`/`undefined` → todas las fichas conectadas (oauth_status=connected
    *  con google_location_resource). Si array → solo esas IDs (las que no estén
@@ -303,17 +319,20 @@ export async function syncBusinessProfile(
         if (a.clientId) clientIdsSeen.add(a.clientId);
       }
 
-      // Soft-delete automático (§4.20, reactivado 2026-06-11): detecta reseñas
-      // BP que desaparecieron de Google. try/catch propio: NO debe tumbar el
-      // sync de la location (p.ej. si la migración 028 aún no está aplicada).
-      try {
-        const autoRemoved = await reconcileRemovedBp(admin, loc.id, googleReviews);
-        if (autoRemoved > 0) entry.auto_removed = autoRemoved;
-      } catch (err) {
-        console.error(
-          `[sync-bp] reconcile removed failed for location ${loc.id}:`,
-          err instanceof Error ? err.message : err,
-        );
+      // Soft-delete automático DESACTIVADO (2026-06-17, ver AUTO_REMOVE_ENABLED):
+      // generaba falsos positivos sobre reseñas counted legítimas porque la API
+      // de Google no devuelve un feed estable. El soft-delete es ahora solo manual.
+      // El reconcile se conserva inerte (try/catch propio: NO debe tumbar el sync).
+      if (AUTO_REMOVE_ENABLED) {
+        try {
+          const autoRemoved = await reconcileRemovedBp(admin, loc.id, googleReviews);
+          if (autoRemoved > 0) entry.auto_removed = autoRemoved;
+        } catch (err) {
+          console.error(
+            `[sync-bp] reconcile removed failed for location ${loc.id}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
       }
 
       // Going-forward only (§4.26): además de filtrar las ya existentes,
