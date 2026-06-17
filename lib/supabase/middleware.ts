@@ -164,6 +164,14 @@ export function pathAllowedForRole(pathname: string, role: Role): boolean {
 }
 
 export async function updateSession(request: NextRequest) {
+  // robots.txt debe ser legible por crawlers (les dice Disallow: /). Va ANTES
+  // del bot-block y del auth: su extensión .txt NO está excluida del matcher
+  // (solo las de imagen), así que sin esto el middleware lo redirige a /login
+  // y el archivo estático nunca se sirve. Dejar pasar → se sirve public/robots.txt.
+  if (request.nextUrl.pathname === "/robots.txt") {
+    return NextResponse.next({ request });
+  }
+
   // Block bots/crawlers antes que cualquier otra cosa. Garantiza que ni
   // siquiera /login, /c/... o /privacidad les responda con HTML utilizable.
   if (isBlockedBot(request.headers.get("user-agent"))) {
