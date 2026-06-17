@@ -27,6 +27,14 @@ export async function inviteReviewsManager(input: InviteManagerInput): Promise<
   | { ok: true; inviteLink: string; email: string }
   | { ok: false; error: string }
 > {
+  // ⚠️ Crear un reviews_manager es alta de un rol privilegiado: gating de admin
+  // OBLIGATORIO aquí (createInvitedProfile usa service-client y NO comprueba al
+  // caller). Sin esto, un sales podía invocar la action por su id desde una ruta
+  // permitida y autoinvitarse como gestor (el middleware solo mira el pathname,
+  // no qué server action se despacha). Ver CLAUDE.md §4.36 / auditoría 2026-06-17.
+  const guard = await assertAdmin();
+  if (!guard.ok) return { ok: false, error: guard.error };
+
   const parsed = inviteManagerSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
