@@ -14,22 +14,13 @@ export async function HEAD() {
   return new NextResponse(null, { status: 200 });
 }
 
-const ALLOWED_TYPES = new Set([
-  "magiclink",
-  "invite",
-  "recovery",
-  "email",
-  "signup",
-  "email_change",
-]);
+// Solo los tipos OTP que la app emite de verdad (§4.1): magic-link de login
+// (`type=email`), reenvío de acceso (`type=magiclink`) e invitación
+// (`type=invite`). NO admitimos recovery/signup/email_change — no se generan en
+// ningún flujo, así que aceptarlos solo ampliaría la superficie. Auditoría 2026-06-17.
+const ALLOWED_TYPES = new Set(["magiclink", "invite", "email"]);
 
-type EmailOtpType =
-  | "magiclink"
-  | "invite"
-  | "recovery"
-  | "email"
-  | "signup"
-  | "email_change";
+type EmailOtpType = "magiclink" | "invite" | "email";
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);

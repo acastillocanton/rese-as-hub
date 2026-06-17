@@ -37,6 +37,9 @@ async function loadExcelJS() {
 }
 
 export const runtime = "nodejs";
+// Techo explícito de tiempo en Vercel: el Excel se genera en memoria (hasta
+// REVIEWS_HARD_LIMIT filas × varias queries). Está gated a admin/manager/director.
+export const maxDuration = 60;
 
 /**
  * Export Excel "Parte semanal de Raquel". Estructura:
@@ -631,7 +634,7 @@ function renderDetailSheet(workbook: ExcelJS.Workbook, reviews: ReviewDetailRow[
       match: MATCH_LABEL[r.match_state] ?? r.match_state,
       duplicada: r.is_duplicate ? "Sí" : "",
       confianza: r.match_confidence,
-      google_id: r.google_review_id,
+      google_id: excelSafe(r.google_review_id),
     });
   }
 

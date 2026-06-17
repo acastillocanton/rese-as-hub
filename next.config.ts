@@ -5,18 +5,24 @@ import type { NextConfig } from "next";
 //  - img-src https: + data: + blob: para avatares de Storage público
 //    (resenas.marinadorconstrucciones.com/storage/...), QR generados in-line,
 //    placeholders, etc.
-//  - script-src con 'unsafe-inline' + 'unsafe-eval': Next.js 15 necesita
-//    ambos en producción para hidratación de Server Components y RSC payload.
-//    No se puede apretar más sin migrar a nonce-based (Next no lo soporta
-//    aún para todo el árbol). Aceptable porque no aceptamos input HTML.
+//  - script-src con 'unsafe-inline': Next.js 15 lo necesita para hidratación de
+//    Server Components y RSC payload (no soporta aún nonce para todo el árbol).
+//    'unsafe-eval' se quita en PRODUCCIÓN (endurecido en auditoría 2026-06-17):
+//    el build de producción de Next no usa eval; solo Turbopack en dev lo
+//    necesita, así que lo dejamos únicamente en desarrollo. Si tras un deploy
+//    algo no hidrata (pantalla en blanco / errores CSP "eval" en consola),
+//    revertir añadiendo 'unsafe-eval' también en prod.
 //  - style-src 'unsafe-inline': la app usa style={{...}} extensivamente.
 //  - connect-src: Supabase (REST + Realtime WS), Google APIs (mybusiness*).
 //  - frame-ancestors 'none' equivale a X-Frame-Options: DENY moderno.
 //  - form-action 'self' impide secuestros de form submit.
+const IS_DEV = process.env.NODE_ENV !== "production";
 const CSP = [
   "default-src 'self'",
   "img-src 'self' https: data: blob:",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  IS_DEV
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline'",
   // fonts.googleapis.com es el CSS de Google Fonts (Inter); fonts.gstatic.com
   // sirve los .woff2 reales.
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",

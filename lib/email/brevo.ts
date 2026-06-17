@@ -65,14 +65,17 @@ export async function sendEmail(input: SendInput): Promise<SendResult> {
   const from = process.env.BREVO_FROM_EMAIL;
 
   if (!user || !pass || !from) {
+    // No logueamos `input.to` (PII de destinatarios → acaba en logs de Vercel);
+    // solo el nº de destinatarios y qué credencial falta. Auditoría 2026-06-17.
+    const recipientCount = Array.isArray(input.to) ? input.to.length : 1;
     console.warn(
-      "[brevo] credenciales SMTP incompletas — saltando envío a",
-      input.to,
-      "(falta:",
-      [!user && "BREVO_SMTP_USER", !pass && "BREVO_SMTP_PASS", !from && "BREVO_FROM_EMAIL"]
+      `[brevo] credenciales SMTP incompletas — saltando envío a ${recipientCount} destinatario(s) (falta: ${[
+        !user && "BREVO_SMTP_USER",
+        !pass && "BREVO_SMTP_PASS",
+        !from && "BREVO_FROM_EMAIL",
+      ]
         .filter(Boolean)
-        .join(", "),
-      ")",
+        .join(", ")})`,
     );
     return { ok: false, skipped: true, reason: "missing_smtp_config" };
   }

@@ -42,21 +42,60 @@ async function getMapsUrlActor(): Promise<Actor | null> {
 }
 
 /**
- * Expande un enlace corto de compartir (`maps.app.goo.gl/…`) a su URL
- * canónica siguiendo el redirect. Solo se llama con hosts ya validados por
- * `isMapsShortShareUrl` (guarda anti-SSRF). Devuelve null si falla.
+ * Hosts de Google permitidos en CADA salto de la expansión del enlace corto.
+ * Anti-SSRF: nunca se hace fetch ni se sigue un redirect a un host fuera de
+ * esta lista (un enlace corto malicioso/manipulado no puede pivotar a una IP
+ * interna o a un host arbitrario). Ver auditoría de seguridad 2026-06-17.
+ */
+const ALLOWED_EXPAND_HOSTS = new Set([
+  "maps.app.goo.gl",
+  "goo.gl",
+  "www.google.com",
+  "google.com",
+  "maps.google.com",
+]);
+
+/**
+ * Expande un enlace corto de compartir (`maps.app.goo.gl/…`) a su URL canónica.
+ * Sigue los redirects MANUALMENTE re-validando el host de cada salto contra
+ * `ALLOWED_EXPAND_HOSTS` (guarda anti-SSRF: `redirect:"follow"` seguía la cadena
+ * a cualquier host sin re-comprobar). Con timeout y tope de saltos. null si falla
+ * o si algún salto sale de la lista (el caller pide entonces pegar la URL final).
  */
 async function expandShareUrl(shortUrl: string): Promise<string | null> {
-  try {
-    const res = await fetch(shortUrl, {
-      method: "GET",
-      redirect: "follow",
-      headers: { "User-Agent": "Mozilla/5.0", "Accept-Language": "es" },
-    });
-    return res.url || null;
-  } catch {
-    return null;
+  let url = shortUrl;
+  for (let hop = 0; hop < 10; hop++) {
+    let host: string;
+    try {
+      host = new URL(url).hostname.toLowerCase();
+    } catch {
+      return null;
+    }
+    if (!ALLOWED_EXPAND_HOSTS.has(host)) return null;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(5000),
+        headers: { "User-Agent": "Mozilla/5.0", "Accept-Language": "es" },
+      });
+    } catch {
+      return null;
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) return null;
+      try {
+        url = new URL(loc, url).toString();
+      } catch {
+        return null;
+      }
+      continue; // el host del nuevo salto se valida al inicio del bucle
+    }
+    return res.url || url;
   }
+  return null; // demasiados redirects
 }
 
 function revalidateReviewViews() {
