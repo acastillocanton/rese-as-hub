@@ -20,7 +20,14 @@ import { createClientRecord } from "@/app/(sales)/clientes/actions";
 
 const reviewIdSchema = z.string().uuid();
 
-type Actor = { userId: string; role: Role; locationId: string | null };
+type Actor = {
+  userId: string;
+  role: Role;
+  locationId: string | null;
+  /** Comercial multi-oficina (mig 031): reclama huérfanas de cualquier ficha
+   *  de escrituración, no solo de su location (que es null). */
+  crossLocation: boolean;
+};
 
 /**
  * Resuelve el actor autenticado y verifica que su rol puede ejecutar la
@@ -39,12 +46,17 @@ async function getActorForAction(action: VerificationAction): Promise<Actor | nu
   if (!user) return null;
   const { data } = await supabase
     .from("profiles")
-    .select("role, location_id")
+    .select("role, location_id, cross_location")
     .eq("id", user.id)
-    .maybeSingle<{ role: Role; location_id: string | null }>();
+    .maybeSingle<{ role: Role; location_id: string | null; cross_location: boolean }>();
   if (!data) return null;
   if (!canPerformAction(data.role, action)) return null;
-  return { userId: user.id, role: data.role, locationId: data.location_id };
+  return {
+    userId: user.id,
+    role: data.role,
+    locationId: data.location_id,
+    crossLocation: data.cross_location === true,
+  };
 }
 
 /**
@@ -102,6 +114,20 @@ async function assertReviewInScope(
     }
     if (data.sales_id !== null) {
       return { ok: false, error: "Esta reseña ya está atribuida." };
+    }
+    // Comercial multi-oficina (mig 031/032): puede reclamar huérfanas de
+    // CUALQUIER ficha de escrituración (no tiene location_id propia).
+    if (actor.crossLocation) {
+      const { data: loc } = await admin
+        .from("locations")
+        .select("id")
+        .eq("id", data.location_id)
+        .eq("escrituracion_target", true)
+        .maybeSingle<{ id: string }>();
+      if (!loc) {
+        return { ok: false, error: "Esta reseña no es de una de tus oficinas." };
+      }
+      return { ok: true };
     }
     if (!actor.locationId || data.location_id !== actor.locationId) {
       return { ok: false, error: "Esta reseña no es de tu ficha." };
@@ -466,6 +492,19 @@ export async function claimReview(input: ClaimReviewInput) {
     return { ok: false as const, error: "Ese cliente no es tuyo." };
   }
 
+  // Necesitamos la ficha de la reseña ANTES de crear el cliente: para un
+  // comercial multi-oficina (mig 031) el cliente nuevo debe nacer en la MISMA
+  // ficha de la reseña reclamada (createClientRecord exige locationId).
+  const adminSrv = createServiceClient();
+  const { data: current } = await adminSrv
+    .from("reviews")
+    .select("google_created_at, location_id")
+    .eq("id", parsed.data.reviewId)
+    .maybeSingle<{ google_created_at: string; location_id: string }>();
+  if (!current) {
+    return { ok: false as const, error: "Reseña no encontrada." };
+  }
+
   // Resolver el cliente: existente, nuevo o ninguno.
   let clientId: string | null = parsed.data.clientId;
   let wasNewClient = false;
@@ -474,24 +513,14 @@ export async function claimReview(input: ClaimReviewInput) {
       fullName: parsed.data.newClientName,
       phone: null,
       email: null,
+      // Multi-oficina: el cliente hereda la ficha de la reseña reclamada.
+      ...(actor.crossLocation ? { locationId: current.location_id } : {}),
     });
     if (!created.ok) {
       return { ok: false as const, error: created.error };
     }
     clientId = created.client.id;
     wasNewClient = true;
-  }
-
-  // Anti-fraude (mig 015): si la reclamada cae bajo un client_id con
-  // principal previa, decide cuál queda como principal.
-  const adminSrv = createServiceClient();
-  const { data: current } = await adminSrv
-    .from("reviews")
-    .select("google_created_at")
-    .eq("id", parsed.data.reviewId)
-    .maybeSingle<{ google_created_at: string }>();
-  if (!current) {
-    return { ok: false as const, error: "Reseña no encontrada." };
   }
 
   let dup: { newIsDuplicate: boolean; demotedReviewId: string | null } = {
