@@ -2,7 +2,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { NewClientButton } from "./NewClientButton";
+import { NewClientButton, type FichaOption } from "./NewClientButton";
 import { ClientRowItem } from "./ClientRowItem";
 import type { ClientRow } from "./actions";
 import { DEFAULT_BRAND, getBrandBreadcrumb } from "@/lib/branding";
@@ -12,6 +12,7 @@ import type { Brand } from "@/lib/supabase/types";
 type SalesProfile = {
   full_name: string;
   slug: string;
+  cross_location: boolean;
   locations: { brand: Brand } | null;
   message_templates: SavedTemplates;
 };
@@ -19,6 +20,7 @@ type SalesProfile = {
 const DEMO_PROFILE: SalesProfile = {
   full_name: "Mateo Salgado",
   slug: "mateo-salgado",
+  cross_location: false,
   locations: null,
   message_templates: null,
 };
@@ -26,6 +28,7 @@ const DEMO_PROFILE: SalesProfile = {
 export default async function ClientesPage() {
   let salesProfile: SalesProfile | null = null;
   let clients: ClientRow[] = [];
+  let fichaOptions: FichaOption[] = [];
   let dbError: string | null = null;
 
   if (isSupabaseConfigured()) {
@@ -38,12 +41,12 @@ export default async function ClientesPage() {
       const [profileRes, clientsRes] = await Promise.all([
         supabase
           .from("profiles")
-          .select("full_name, slug, message_templates, locations:locations(brand)")
+          .select("full_name, slug, cross_location, message_templates, locations:locations(brand)")
           .eq("id", user.id)
           .maybeSingle<SalesProfile>(),
         supabase
           .from("clients")
-          .select("id, full_name, slug, email, phone, created_at")
+          .select("id, full_name, slug, email, phone, location_id, created_at")
           .eq("sales_id", user.id)
           .order("created_at", { ascending: false })
           .limit(2000), // límite defensivo de la cartera del comercial
@@ -54,14 +57,32 @@ export default async function ClientesPage() {
       } else {
         clients = (clientsRes.data ?? []) as ClientRow[];
       }
+
+      // Comercial multi-oficina (mig 031): cargar las fichas que puede elegir
+      // por cliente (escrituracion_target). Para el resto no hace falta.
+      if (salesProfile?.cross_location) {
+        const { data: fichas } = await supabase
+          .from("locations")
+          .select("id, name, brand")
+          .eq("escrituracion_target", true)
+          .order("name")
+          .returns<FichaOption[]>();
+        fichaOptions = fichas ?? [];
+      }
     }
   } else {
     salesProfile = DEMO_PROFILE;
   }
 
   const profile = salesProfile ?? DEMO_PROFILE;
+  const crossLocation = profile.cross_location === true;
   const brand: Brand = profile.locations?.brand ?? DEFAULT_BRAND;
   const appBase = process.env.NEXT_PUBLIC_APP_URL ?? "https://reseñahub.es";
+  // Marca por ficha (multi-oficina): el mensaje de cada cliente usa la marca de
+  // SU ficha. Para un comercial normal el map está vacío → cae a `brand`.
+  const brandByFicha = new Map<string, Brand>(fichaOptions.map((f) => [f.id, f.brand]));
+  const brandForClient = (c: ClientRow): Brand =>
+    (c.location_id ? brandByFicha.get(c.location_id) : undefined) ?? brand;
 
   return (
     <>
@@ -82,6 +103,8 @@ export default async function ClientesPage() {
             salesSlug={profile.slug}
             brand={brand}
             templates={profile.message_templates}
+            crossLocation={crossLocation}
+            fichaOptions={fichaOptions}
           />
         }
       />
@@ -140,6 +163,8 @@ export default async function ClientesPage() {
               salesSlug={profile.slug}
               brand={brand}
               templates={profile.message_templates}
+              crossLocation={crossLocation}
+              fichaOptions={fichaOptions}
             />
           </Card>
         ) : (
@@ -172,7 +197,7 @@ export default async function ClientesPage() {
                 appBase={appBase}
                 salesName={profile.full_name}
                 salesSlug={profile.slug}
-                brand={brand}
+                brand={brandForClient(c)}
                 templates={profile.message_templates}
               />
             ))}

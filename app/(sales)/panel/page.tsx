@@ -31,7 +31,7 @@ import { getLeaderboard } from "@/lib/leaderboard";
 import { computePanelBadges } from "@/lib/panel-badges";
 import type { SavedTemplates } from "@/lib/messaging";
 import { CopyLinkButton } from "./CopyLinkButton";
-import { NewClientButton } from "../clientes/NewClientButton";
+import { NewClientButton, type FichaOption } from "../clientes/NewClientButton";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
 import { getMotivationSuffix } from "@/lib/panel-motivation";
@@ -63,6 +63,11 @@ type PanelData = {
   insights: PanelInsights;
   /** Plantillas de mensaje personalizadas del comercial. */
   messageTemplates: SavedTemplates;
+  /** Comercial multi-oficina ("escrituradora", mig 031): sin enlace genérico;
+   *  elige la ficha al crear cada cliente. */
+  crossLocation: boolean;
+  /** Fichas seleccionables (solo cuando crossLocation). */
+  fichaOptions: FichaOption[];
 };
 
 /** Datos del bloque "Histórico, ranking e insignias" (sección inferior). */
@@ -99,6 +104,8 @@ const DEMO_DATA: Omit<PanelData, "insights"> = {
   commissionRate: 2.5,
   commissionCap: 5,
   messageTemplates: null,
+  crossLocation: false,
+  fichaOptions: [],
 };
 
 /** Etiquetas de los últimos 6 meses terminando en el mes en curso. */
@@ -165,7 +172,7 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
 
   const profileRes = await supabase
     .from("profiles")
-    .select("id, full_name, slug, monthly_goal, commission_rate, commission_cap, director_id, message_templates")
+    .select("id, full_name, slug, monthly_goal, commission_rate, commission_cap, director_id, cross_location, message_templates")
     .eq("id", user.id)
     .maybeSingle<{
       id: string;
@@ -175,10 +182,24 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
       commission_rate: number | null;
       commission_cap: number | null;
       director_id: string | null;
+      cross_location: boolean;
       message_templates: SavedTemplates;
     }>();
 
   if (!profileRes.data) return demo();
+
+  // Comercial multi-oficina (mig 031): cargar las fichas que puede elegir por
+  // cliente (para el selector del NewClientButton del panel).
+  let fichaOptions: FichaOption[] = [];
+  if (profileRes.data.cross_location) {
+    const { data: fichas } = await supabase
+      .from("locations")
+      .select("id, name, brand")
+      .eq("escrituracion_target", true)
+      .order("name")
+      .returns<FichaOption[]>();
+    fichaOptions = fichas ?? [];
+  }
 
   // Comparativa "vs. periodo anterior": si el rango es el periodo de comisión
   // vigente → el periodo de comisión anterior; si es un mes natural completo →
@@ -245,6 +266,8 @@ async function loadPanelData(range: DateRange, now: Date): Promise<PanelData> {
     commissionCap: profileRes.data.commission_cap,
     insights,
     messageTemplates: profileRes.data.message_templates,
+    crossLocation: profileRes.data.cross_location,
+    fichaOptions,
   };
 }
 
@@ -508,6 +531,8 @@ export default async function PanelPage({
               salesSlug={data.slug}
               brand={brand}
               templates={data.messageTemplates}
+              crossLocation={data.crossLocation}
+              fichaOptions={data.fichaOptions}
             />
           </>
         }
@@ -736,6 +761,9 @@ export default async function PanelPage({
           </Link>
         </div>
 
+        {/* Enlace genérico: no aplica a multi-oficina (su /c/{slug} sin cliente
+            no resuelve ficha). Para ellos todo es por-cliente (mig 031). */}
+        {!data.crossLocation && (
         <div style={{ marginTop: 16 }}>
           <Card padding={24}>
             <div
@@ -827,6 +855,7 @@ export default async function PanelPage({
             </div>
           </Card>
         </div>
+        )}
 
         <div style={{ marginTop: 16 }}>
           <MonthlyEvolutionCard

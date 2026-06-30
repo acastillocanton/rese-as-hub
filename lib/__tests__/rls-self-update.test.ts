@@ -25,6 +25,7 @@ const FROZEN_COLUMNS = [
   "monthly_goal",
   "commission_rate",
   "commission_cap",
+  "cross_location",
   "location_id",
   "director_id",
   "department",

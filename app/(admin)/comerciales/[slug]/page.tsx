@@ -66,6 +66,7 @@ type SalesDetail = {
   joined_at: string;
   location_id: string | null;
   director_id: string | null;
+  cross_location: boolean;
   role: "sales" | "office_director";
   avatar_url: string | null;
   location: { id: string; name: string } | null;
@@ -288,7 +289,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
     supabase
       .from("profiles")
       .select(
-        "id, full_name, slug, email, phone, monthly_goal, commission_rate, commission_cap, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, role, avatar_url, location:locations(id, name)",
+        "id, full_name, slug, email, phone, monthly_goal, commission_rate, commission_cap, status, joined_at, department, language, paused_reason, notes, archived_at, location_id, director_id, cross_location, role, avatar_url, location:locations(id, name)",
       )
       .eq("slug", slug)
       .in("role", ["sales", "office_director"])
@@ -604,6 +605,7 @@ export default async function ComercialDetallePage({ params, searchParams }: Pag
             initial={{
               locationId: sales.location_id,
               directorId: sales.director_id,
+              crossLocation: sales.cross_location,
               monthlyGoal: sales.monthly_goal,
               commissionRate: sales.commission_rate,
               commissionCap: sales.commission_cap,

@@ -79,26 +79,39 @@ export async function recordOpenAndRedirect(opts: {
     sales = fallback.data;
   }
 
-  if (!sales || !sales.location_id) {
+  if (!sales) {
+    return { redirectTo: buildGoogleReviewUrl(null), recorded: false };
+  }
+
+  // Resolvemos el cliente ANTES de la ficha: un comercial multi-oficina
+  // ("escrituradora", mig 031) no tiene location_id fija — la ficha destino
+  // la guarda CADA cliente en clients.location_id. Para un comercial normal,
+  // client.location_id es null y se hereda la ficha del sales (igual que antes).
+  let clientId: string | null = null;
+  let clientLocationId: string | null = null;
+  if (opts.clientSlug) {
+    const { data: client } = await supabase
+      .from("clients")
+      .select("id, location_id")
+      .eq("sales_id", sales.id)
+      .eq("slug", opts.clientSlug)
+      .maybeSingle<{ id: string; location_id: string | null }>();
+    clientId = client?.id ?? null;
+    clientLocationId = client?.location_id ?? null;
+  }
+
+  const effectiveLocationId = clientLocationId ?? sales.location_id;
+  if (!effectiveLocationId) {
+    // Sin ficha del cliente NI del sales (p.ej. enlace genérico /c/{slug} de
+    // un comercial multi-oficina, que no tiene ficha por defecto). Maps genérico.
     return { redirectTo: buildGoogleReviewUrl(null), recorded: false };
   }
 
   const { data: loc } = await supabase
     .from("locations")
     .select("google_place_id")
-    .eq("id", sales.location_id)
+    .eq("id", effectiveLocationId)
     .maybeSingle<{ google_place_id: string | null }>();
-
-  let clientId: string | null = null;
-  if (opts.clientSlug) {
-    const { data: client } = await supabase
-      .from("clients")
-      .select("id")
-      .eq("sales_id", sales.id)
-      .eq("slug", opts.clientSlug)
-      .maybeSingle<{ id: string }>();
-    clientId = client?.id ?? null;
-  }
 
   const truncatedUA = truncate(opts.userAgent, 512);
 
@@ -134,7 +147,7 @@ export async function recordOpenAndRedirect(opts: {
   const payload = {
     sales_id: sales.id,
     client_id: clientId,
-    location_id: sales.location_id,
+    location_id: effectiveLocationId,
     link_token: linkToken,
     source,
     user_agent: truncatedUA,

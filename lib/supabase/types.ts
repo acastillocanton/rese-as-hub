@@ -80,6 +80,10 @@ export type Database = {
           average_rating: number | null;
           rating_updated_at: string | null;
           rating_source: "manual" | "google_api" | null;
+          /** Migración 031. true = ficha que un comercial multi-oficina
+           *  (escrituradora) puede elegir al crear un cliente (§4 cross_location).
+           *  Backfill: Oropesa / Castellón / Valencia. */
+          escrituracion_target: boolean;
           created_at: string;
         };
         Insert: {
@@ -91,6 +95,7 @@ export type Database = {
           google_location_resource?: string | null;
           google_account_email?: string | null;
           google_fid?: string | null;
+          escrituracion_target?: boolean;
           oauth_status?: OauthStatus;
           oauth_last_sync_at?: string | null;
           oauth_last_sync_error?: string | null;
@@ -127,6 +132,10 @@ export type Database = {
           full_name: string;
           role: Role;
           location_id: string | null;
+          /** Migración 031. true = comercial multi-oficina ("escrituradora"):
+           *  un `sales` sin ficha fija (location_id null) cuyos clientes guardan
+           *  su propia location_id. Solo lo marca admin/reviews_manager (§4). */
+          cross_location: boolean;
           /** Para `role='sales'`: id del office_director responsable (nullable —
            *  un sales sin director asignado vive en el pool del admin/reviews_manager).
            *  Para el resto de roles: NULL. */
@@ -163,6 +172,7 @@ export type Database = {
           full_name: string;
           role: Role;
           location_id?: string | null;
+          cross_location?: boolean;
           director_id?: string | null;
           slug: string;
           previous_slug?: string | null;
@@ -192,6 +202,10 @@ export type Database = {
           slug: string;
           email: string | null;
           phone: string | null;
+          /** Migración 031. Ficha destino del cliente (la elegida por un
+           *  comercial multi-oficina al crearlo). NULL = hereda la ficha del
+           *  sales (comportamiento de todos los comerciales normales). */
+          location_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -201,6 +215,7 @@ export type Database = {
           slug: string;
           email?: string | null;
           phone?: string | null;
+          location_id?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["clients"]["Insert"]>;

@@ -31,6 +31,7 @@ export type SalesEditCardProps = {
   initial: {
     locationId: string | null;
     directorId: string | null;
+    crossLocation: boolean;
     monthlyGoal: number;
     commissionRate: number | null;
     commissionCap: number | null;
@@ -65,6 +66,9 @@ export function SalesEditCard({
     initial.locationId ?? locations[0]?.id ?? "",
   );
   const [directorId, setDirectorId] = useState<string>(initial.directorId ?? "");
+  // Comercial multi-oficina ("escrituradora", mig 031): sin ficha fija. Solo
+  // admin/reviews_manager lo gestionan (lockScope=false).
+  const [crossLocation, setCrossLocation] = useState(initial.crossLocation);
   const [monthlyGoal, setMonthlyGoal] = useState(initial.monthlyGoal);
   const [commissionRate, setCommissionRate] = useState<string>(
     initial.commissionRate === null ? "" : String(initial.commissionRate),
@@ -95,11 +99,14 @@ export function SalesEditCard({
 
   const currentLocation = locations.find((l) => l.id === locationId);
   const fmtDate = formatReviewDate;
+  // Vista efectiva: en edición manda el checkbox; fuera de edición, el valor real.
+  const isCrossView = editing ? crossLocation : initial.crossLocation;
 
   function onCancel() {
     setPhone(initialPhone ?? "");
     setLocationId(initial.locationId ?? locations[0]?.id ?? "");
     setDirectorId(initial.directorId ?? "");
+    setCrossLocation(initial.crossLocation);
     setMonthlyGoal(initial.monthlyGoal);
     setCommissionRate(initial.commissionRate === null ? "" : String(initial.commissionRate));
     setCommissionCap(initial.commissionCap === null ? "" : String(initial.commissionCap));
@@ -121,13 +128,16 @@ export function SalesEditCard({
 
   function onSave() {
     setError(null);
-    if (!department) {
-      setError("Selecciona un departamento.");
-      return;
-    }
-    if (department === "internacional" && !language) {
-      setError("Selecciona el idioma del comercial internacional.");
-      return;
+    // Un comercial multi-oficina no tiene ficha ni departamento.
+    if (!crossLocation) {
+      if (!department) {
+        setError("Selecciona un departamento.");
+        return;
+      }
+      if (department === "internacional" && !language) {
+        setError("Selecciona el idioma del comercial internacional.");
+        return;
+      }
     }
     if (status === "paused" && !pausedReason) {
       setError("Selecciona el motivo de la pausa.");
@@ -136,14 +146,15 @@ export function SalesEditCard({
     const payload: UpdateSalesInput = {
       id,
       phone: phone.trim() ? phone.trim() : null,
-      locationId,
-      directorId: directorId || null,
+      crossLocation: String(crossLocation),
+      locationId: crossLocation ? null : locationId,
+      directorId: crossLocation ? null : directorId || null,
       monthlyGoal,
       commissionRate: commissionRate.trim() === "" ? null : commissionRate.trim(),
       commissionCap: commissionCap.trim() === "" ? null : commissionCap.trim(),
       status,
-      department,
-      language: department === "internacional" ? language : null,
+      department: crossLocation ? null : department || null,
+      language: crossLocation || department !== "internacional" ? null : language,
       pausedReason: status === "paused" ? pausedReason || null : null,
       joinedAt: joinedAtInput || null,
       notes: notes.trim() ? notes.trim() : null,
@@ -229,36 +240,55 @@ export function SalesEditCard({
           </dd>
         </div>
 
-        {/* Departamento */}
-        <div style={rowGrid}>
-          <dt style={dtStyle}>Departamento</dt>
-          <dd style={{ margin: 0 }}>
-            {editing ? (
-              <select
-                value={department}
-                onChange={(e) => {
-                  const v = e.target.value as SalesDepartment | "";
-                  setDepartment(v);
-                  if (v !== "internacional") setLanguage("");
-                }}
-                style={inputStyle}
-              >
-                <option value="" disabled>
-                  Selecciona…
-                </option>
-                {DEPARTMENT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
+        {/* Tipo: multi-oficina (escrituradora). Solo admin/manager (no director). */}
+        {editing && !lockScope && (
+          <div style={rowGrid}>
+            <dt style={dtStyle}>Tipo</dt>
+            <dd style={{ margin: 0 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={crossLocation}
+                  onChange={(e) => setCrossLocation(e.target.checked)}
+                />
+                Multi-oficina (escrituración)
+              </label>
+            </dd>
+          </div>
+        )}
+
+        {/* Departamento (no aplica a multi-oficina) */}
+        {!isCrossView && (
+          <div style={rowGrid}>
+            <dt style={dtStyle}>Departamento</dt>
+            <dd style={{ margin: 0 }}>
+              {editing ? (
+                <select
+                  value={department}
+                  onChange={(e) => {
+                    const v = e.target.value as SalesDepartment | "";
+                    setDepartment(v);
+                    if (v !== "internacional") setLanguage("");
+                  }}
+                  style={inputStyle}
+                >
+                  <option value="" disabled>
+                    Selecciona…
                   </option>
-                ))}
-              </select>
-            ) : (
-              <span style={{ fontSize: 13.5 }}>
-                {departmentLabel(initial.department) ?? "Sin asignar"}
-              </span>
-            )}
-          </dd>
-        </div>
+                  {DEPARTMENT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span style={{ fontSize: 13.5 }}>
+                  {departmentLabel(initial.department) ?? "Sin asignar"}
+                </span>
+              )}
+            </dd>
+          </div>
+        )}
 
         {/* Idioma (solo internacional) */}
         {(editing ? department === "internacional" : initial.department === "internacional") && (
@@ -291,7 +321,11 @@ export function SalesEditCard({
         <div style={rowGrid}>
           <dt style={dtStyle}>Ficha asignada</dt>
           <dd style={{ margin: 0 }}>
-            {editing && lockScope ? (
+            {isCrossView ? (
+              <span style={{ fontSize: 13.5, color: "var(--ink-3)" }}>
+                Multi-oficina · elige la ficha en cada cliente
+              </span>
+            ) : editing && lockScope ? (
               // Director: ficha fijada a su oficina (el backend la fuerza).
               <span style={{ fontSize: 13.5 }}>{currentLocation?.name ?? "—"}</span>
             ) : editing ? (
@@ -325,7 +359,8 @@ export function SalesEditCard({
 
         {/* Director responsable (opcional). Solo se ofrecen los de la
             misma ficha; "Sin director" deja al comercial en el pool del
-            admin/reviews_manager. */}
+            admin/reviews_manager. No aplica a multi-oficina. */}
+        {!isCrossView && (
         <div style={rowGrid}>
           <dt style={dtStyle}>Responsable</dt>
           <dd style={{ margin: 0 }}>
@@ -355,6 +390,7 @@ export function SalesEditCard({
             )}
           </dd>
         </div>
+        )}
 
         {/* Meta */}
         <div style={rowGrid}>

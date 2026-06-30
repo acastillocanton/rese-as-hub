@@ -11,6 +11,7 @@ import { stripGoogleTranslation } from "@/lib/google/strip-translation";
 import { normalizeOwnerReply } from "@/lib/google/owner-reply";
 import { decideBpEditSync } from "@/lib/cron/edit-merge";
 import { decideReconcileRemoved } from "@/lib/cron/reconcile-removed";
+import { addCrossLocationToRosters } from "@/lib/cron/cross-location-roster";
 import {
   processFreshReviews,
   flushNotifications,
@@ -118,7 +119,7 @@ export async function syncBusinessProfile(
     }[]>(),
     admin
       .from("profiles")
-      .select("id, full_name, email, status, director_id, location_id, role")
+      .select("id, full_name, email, status, director_id, location_id, cross_location, role")
       .in("role", ["sales", "office_director"])
       .returns<{
         id: string;
@@ -127,6 +128,7 @@ export async function syncBusinessProfile(
         status: string;
         director_id: string | null;
         location_id: string | null;
+        cross_location: boolean;
         role: "sales" | "office_director";
       }[]>(),
     admin
@@ -188,6 +190,11 @@ export async function syncBusinessProfile(
     arr.push({ sales_id: s.id, full_name: s.full_name, role: s.role });
     commercialsByLocation.set(s.location_id, arr);
   }
+  // Comercial multi-oficina ("escrituradora", mig 031): no tiene location_id
+  // fija, así que el loop de arriba lo salta. Lo añadimos al roster de CADA
+  // ficha donde tiene algún cliente, para que el rescate por mención (§4.38)
+  // funcione en ellas (atribución por nombre/tiempo ya va vía share_links).
+  await addCrossLocationToRosters(admin, salesRes.data ?? [], commercialsByLocation);
   const appBase =
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
 

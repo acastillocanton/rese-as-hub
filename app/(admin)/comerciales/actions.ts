@@ -123,6 +123,13 @@ const ymdSchema = z
     return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
   }, "Fecha inválida.");
 
+/** Checkbox del form → boolean robusto (FormData manda string "true"/"false").
+ *  z.coerce.boolean() trata "false" como true, así que lo hacemos a mano. */
+const crossLocationSchema = z
+  .union([z.boolean(), z.string()])
+  .optional()
+  .transform((v) => v === true || v === "true");
+
 const inviteSchema = z
   .object({
     fullName: z.string().min(2, "Nombre demasiado corto.").max(120),
@@ -136,7 +143,10 @@ const inviteSchema = z
       .optional()
       .nullable()
       .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
-    locationId: z.string().uuid("Selecciona una ficha."),
+    /** Comercial multi-oficina ("escrituradora", mig 031): sin ficha fija,
+     *  elige la ficha en cada cliente. Solo admin/reviews_manager. */
+    crossLocation: crossLocationSchema,
+    locationId: z.string().uuid("Selecciona una ficha.").optional().nullable(),
     /** Opcional. Si se asigna, el comercial pertenecerá al equipo de ese
      *  director (su `director_id`); si se deja null, queda en el pool del
      *  admin/reviews_manager. Validamos coherencia con la location en la
@@ -150,7 +160,7 @@ const inviteSchema = z
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
     commissionRate: commissionRateSchema,
     commissionCap: commissionCapSchema,
-    department: departmentSchema,
+    department: departmentSchema.optional().nullable(),
     language: z
       .string()
       .max(60)
@@ -164,6 +174,15 @@ const inviteSchema = z
       .optional()
       .nullable()
       .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
+  })
+  // Un comercial multi-oficina no tiene ficha ni departamento; el resto sí.
+  .refine((v) => v.crossLocation || !!v.locationId, {
+    message: "Selecciona una ficha.",
+    path: ["locationId"],
+  })
+  .refine((v) => v.crossLocation || !!v.department, {
+    message: "Selecciona el departamento.",
+    path: ["department"],
   })
   .refine(
     (v) => (v.department === "internacional" ? !!v.language : !v.language),
@@ -185,26 +204,40 @@ export async function inviteSales(input: InviteSalesInput): Promise<
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
-  // Director: solo puede crear sales en SU ficha y para SU equipo. La UI no
-  // expone otras locations ni otros directores, pero un POST manipulado podría.
-  if (auth.actor.role === "office_director") {
-    if (!auth.actor.locationId) {
-      return { ok: false, error: "Director sin oficina asignada." };
-    }
-    if (parsed.data.locationId !== auth.actor.locationId) {
-      return { ok: false, error: "Solo puedes crear comerciales en tu oficina." };
-    }
-    // El director siempre se auto-asigna el sales (ignoramos cualquier
-    // directorId que venga del form distinto al suyo).
-    parsed.data.directorId = auth.actor.userId;
+  const isCross = parsed.data.crossLocation === true;
+
+  // Comercial multi-oficina (mig 031): sin ficha fija ni departamento. Solo lo
+  // crea admin/reviews_manager — un director está acotado a su oficina.
+  if (isCross && auth.actor.role === "office_director") {
+    return { ok: false, error: "Un responsable no puede crear comerciales multi-oficina." };
   }
 
-  // Validar coherencia del director (si se especificó): rol, location, status.
-  const dirCheck = await assertDirectorAssignment(
-    parsed.data.directorId,
-    parsed.data.locationId,
-  );
-  if (!dirCheck.ok) return { ok: false, error: dirCheck.error };
+  if (!isCross) {
+    // Director: solo puede crear sales en SU ficha y para SU equipo. La UI no
+    // expone otras locations ni otros directores, pero un POST manipulado podría.
+    if (auth.actor.role === "office_director") {
+      if (!auth.actor.locationId) {
+        return { ok: false, error: "Director sin oficina asignada." };
+      }
+      if (parsed.data.locationId !== auth.actor.locationId) {
+        return { ok: false, error: "Solo puedes crear comerciales en tu oficina." };
+      }
+      // El director siempre se auto-asigna el sales (ignoramos cualquier
+      // directorId que venga del form distinto al suyo).
+      parsed.data.directorId = auth.actor.userId;
+    }
+
+    // No-cross: la ficha es obligatoria (el refine ya lo exige; guard para TS).
+    if (!parsed.data.locationId) {
+      return { ok: false, error: "Selecciona una ficha." };
+    }
+    // Validar coherencia del director (si se especificó): rol, location, status.
+    const dirCheck = await assertDirectorAssignment(
+      parsed.data.directorId,
+      parsed.data.locationId,
+    );
+    if (!dirCheck.ok) return { ok: false, error: dirCheck.error };
+  }
   // Slug público: el que tecleó/aceptó el admin en el modal, o la heurística
   // "nombre + primer apellido" como fallback (decisión 2026-06-11).
   const baseSlug =
@@ -227,13 +260,16 @@ export async function inviteSales(input: InviteSalesInput): Promise<
     slug: baseSlug,
     role: "sales",
     extra: {
-      location_id: parsed.data.locationId,
-      director_id: parsed.data.directorId,
+      // Multi-oficina: sin ficha, sin director, sin departamento (queda fuera
+      // del parte por departamento). Elige la ficha en cada cliente.
+      location_id: isCross ? null : parsed.data.locationId,
+      cross_location: isCross,
+      director_id: isCross ? null : parsed.data.directorId,
       monthly_goal: parsed.data.monthlyGoal,
       commission_rate: parsed.data.commissionRate,
       commission_cap: parsed.data.commissionCap,
-      department: parsed.data.department,
-      language: parsed.data.language,
+      department: isCross ? null : parsed.data.department,
+      language: isCross ? null : parsed.data.language,
       notes: parsed.data.notes,
       ...(joinedAtIso ? { joined_at: joinedAtIso } : {}),
     },
@@ -254,7 +290,8 @@ const updateSchema = z
     monthlyGoal: z.coerce.number().int().min(0).max(1000),
     commissionRate: commissionRateSchema,
     commissionCap: commissionCapSchema,
-    locationId: z.string().uuid("Selecciona una ficha."),
+    crossLocation: crossLocationSchema,
+    locationId: z.string().uuid("Selecciona una ficha.").optional().nullable(),
     directorId: z
       .string()
       .uuid()
@@ -264,7 +301,7 @@ const updateSchema = z
     // 'archived' NO se gestiona desde este formulario — solo desde
     // archiveSales/restoreSales (botones dedicados con confirmación).
     status: z.enum(["invited", "active", "paused"]),
-    department: departmentSchema,
+    department: departmentSchema.optional().nullable(),
     language: z
       .string()
       .max(60)
@@ -279,6 +316,14 @@ const updateSchema = z
       .optional()
       .nullable()
       .transform((v) => (v && v.trim() !== "" ? v.trim() : null)),
+  })
+  .refine((v) => v.crossLocation || !!v.locationId, {
+    message: "Selecciona una ficha.",
+    path: ["locationId"],
+  })
+  .refine((v) => v.crossLocation || !!v.department, {
+    message: "Selecciona el departamento.",
+    path: ["department"],
   })
   .refine(
     (v) => (v.department === "internacional" ? !!v.language : !v.language),
@@ -301,27 +346,41 @@ export async function updateSales(input: UpdateSalesInput) {
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
-  // Director: el sales target debe estar en su equipo. NO puede:
-  //  • Mover un sales a otra ficha.
-  //  • Reasignar el sales a otro director (la fila debe seguir apuntando a él).
-  // Admin/reviews_manager sí pueden cambiar director_id libremente.
-  if (auth.actor.role === "office_director") {
-    const inScope = await assertSalesInScope(auth.actor, parsed.data.id);
-    if (!inScope.ok) return { ok: false as const, error: inScope.error };
-    if (parsed.data.locationId !== auth.actor.locationId) {
-      return { ok: false as const, error: "No puedes mover un comercial fuera de tu oficina." };
-    }
-    if (parsed.data.directorId !== auth.actor.userId) {
-      return { ok: false as const, error: "No puedes reasignar el comercial a otro director." };
-    }
+  const isCross = parsed.data.crossLocation === true;
+
+  // Multi-oficina (mig 031) lo gestiona solo admin/reviews_manager. Un director
+  // no puede convertir a su comercial en multi-oficina (saldría de su equipo).
+  if (isCross && auth.actor.role === "office_director") {
+    return { ok: false as const, error: "Un responsable no puede gestionar comerciales multi-oficina." };
   }
 
-  // Validar coherencia del director nuevo (si se especifica).
-  const dirCheck = await assertDirectorAssignment(
-    parsed.data.directorId,
-    parsed.data.locationId,
-  );
-  if (!dirCheck.ok) return { ok: false as const, error: dirCheck.error };
+  if (!isCross) {
+    // Director: el sales target debe estar en su equipo. NO puede:
+    //  • Mover un sales a otra ficha.
+    //  • Reasignar el sales a otro director (la fila debe seguir apuntando a él).
+    // Admin/reviews_manager sí pueden cambiar director_id libremente.
+    if (auth.actor.role === "office_director") {
+      const inScope = await assertSalesInScope(auth.actor, parsed.data.id);
+      if (!inScope.ok) return { ok: false as const, error: inScope.error };
+      if (parsed.data.locationId !== auth.actor.locationId) {
+        return { ok: false as const, error: "No puedes mover un comercial fuera de tu oficina." };
+      }
+      if (parsed.data.directorId !== auth.actor.userId) {
+        return { ok: false as const, error: "No puedes reasignar el comercial a otro director." };
+      }
+    }
+
+    // No-cross: la ficha es obligatoria (el refine ya lo exige; guard para TS).
+    if (!parsed.data.locationId) {
+      return { ok: false as const, error: "Selecciona una ficha." };
+    }
+    // Validar coherencia del director nuevo (si se especifica).
+    const dirCheck = await assertDirectorAssignment(
+      parsed.data.directorId,
+      parsed.data.locationId,
+    );
+    if (!dirCheck.ok) return { ok: false as const, error: dirCheck.error };
+  }
 
   const supabase = await createClient();
   // RLS: pueden hacer UPDATE en filas role='sales' → admin (profiles_admin_all),
@@ -335,11 +394,12 @@ export async function updateSales(input: UpdateSalesInput) {
     monthly_goal: parsed.data.monthlyGoal,
     commission_rate: parsed.data.commissionRate,
     commission_cap: parsed.data.commissionCap,
-    location_id: parsed.data.locationId,
-    director_id: parsed.data.directorId,
+    cross_location: isCross,
+    location_id: isCross ? null : parsed.data.locationId,
+    director_id: isCross ? null : parsed.data.directorId,
     status: parsed.data.status,
-    department: parsed.data.department,
-    language: parsed.data.language,
+    department: isCross ? null : parsed.data.department,
+    language: isCross ? null : parsed.data.language,
     notes: parsed.data.notes,
     // Coherente con la check constraint paused_requires_reason: si el estado
     // no es 'paused', limpiamos el motivo para no dejarlo huérfano.

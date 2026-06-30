@@ -32,6 +32,9 @@ const createClientSchema = z.object({
     .refine((v) => v === null || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), {
       message: "Email inválido.",
     }),
+  // Ficha destino (solo comercial multi-oficina, mig 031). Para un comercial
+  // normal se ignora — la ficha se hereda de su location_id en la landing.
+  locationId: z.string().uuid().optional().nullable(),
 });
 
 export type CreateClientInput = z.input<typeof createClientSchema>;
@@ -42,6 +45,7 @@ export type ClientRow = {
   slug: string;
   email: string | null;
   phone: string | null;
+  location_id: string | null;
   created_at: string;
 };
 
@@ -59,6 +63,35 @@ export async function createClientRecord(
   } = await supabase.auth.getUser();
   if (!user) {
     return { ok: false, error: "No autenticado." };
+  }
+
+  // Comercial multi-oficina (mig 031): NO tiene ficha fija, así que CADA cliente
+  // guarda su ficha destino (clients.location_id). Para un comercial normal el
+  // cliente no lleva location_id (null → hereda la del sales en la landing).
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("cross_location")
+    .eq("id", user.id)
+    .maybeSingle<{ cross_location: boolean }>();
+  const isCrossLocation = profile?.cross_location === true;
+
+  let clientLocationId: string | null = null;
+  if (isCrossLocation) {
+    if (!parsed.data.locationId) {
+      return { ok: false, error: "Elige la oficina del cliente (a qué ficha de Google irá la reseña)." };
+    }
+    // Defensa en profundidad: la ficha debe ser una marcada como destino de
+    // escrituración (escrituracion_target). La RLS deja al sales leer locations.
+    const { data: targetLoc } = await supabase
+      .from("locations")
+      .select("id")
+      .eq("id", parsed.data.locationId)
+      .eq("escrituracion_target", true)
+      .maybeSingle<{ id: string }>();
+    if (!targetLoc) {
+      return { ok: false, error: "Oficina no válida." };
+    }
+    clientLocationId = targetLoc.id;
   }
 
   const baseSlug = slugify(parsed.data.fullName);
@@ -92,8 +125,9 @@ export async function createClientRecord(
       slug,
       email: parsed.data.email,
       phone: parsed.data.phone,
+      location_id: clientLocationId,
     } as never)
-    .select("id, full_name, slug, email, phone, created_at")
+    .select("id, full_name, slug, email, phone, location_id, created_at")
     .single<ClientRow>();
 
   if (error || !data) {

@@ -14,6 +14,7 @@ import {
 } from "@/lib/cron/process-reviews";
 import { notifyNewReview } from "@/lib/email/notify-new-review";
 import { notifyLowRating } from "@/lib/email/notify-low-rating";
+import { addCrossLocationToRosters } from "@/lib/cron/cross-location-roster";
 import {
   resolveLowRatingRecipients,
   type LowRatingAlert,
@@ -158,7 +159,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
     locationsQuery.returns<{ id: string; name: string; google_place_id: string; brand: Brand }[]>(),
     admin
       .from("profiles")
-      .select("id, full_name, email, status, director_id, location_id, role")
+      .select("id, full_name, email, status, director_id, location_id, cross_location, role")
       .in("role", ["sales", "office_director"])
       .returns<{
         id: string;
@@ -167,6 +168,7 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
         status: string;
         director_id: string | null;
         location_id: string | null;
+        cross_location: boolean;
         role: "sales" | "office_director";
       }[]>(),
     admin
@@ -226,6 +228,9 @@ export async function syncPlaces(args: SyncPlacesArgs = {}): Promise<SyncPlacesR
     arr.push({ sales_id: s.id, full_name: s.full_name, role: s.role });
     commercialsByLocation.set(s.location_id, arr);
   }
+  // Comercial multi-oficina (mig 031): añadirlo al roster de cada ficha donde
+  // tiene clientes (rescate por mención §4.38). Ver helper.
+  await addCrossLocationToRosters(admin, salesRes.data ?? [], commercialsByLocation);
   // Mapa brand por location para que flushLowRatingAlerts resuelva sin
   // queries adicionales.
   const brandByLocationId = new Map<string, Brand>();

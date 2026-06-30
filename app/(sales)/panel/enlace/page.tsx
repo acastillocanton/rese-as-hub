@@ -18,6 +18,7 @@ type SalesProfile = {
   id: string;
   full_name: string;
   slug: string;
+  cross_location: boolean;
   locations: { brand: Brand } | null;
 };
 
@@ -51,12 +52,60 @@ export default async function EnlacePage() {
 
   const profileRes = await supabase
     .from("profiles")
-    .select("id, full_name, slug, locations:locations(brand)")
+    .select("id, full_name, slug, cross_location, locations:locations(brand)")
     .eq("id", user.id)
     .maybeSingle<SalesProfile>();
 
   if (!profileRes.data) redirect("/panel");
   const profile = profileRes.data;
+
+  // Comercial multi-oficina (mig 031): NO tiene enlace genérico (su /c/{slug}
+  // sin cliente no resuelve ninguna ficha). Todos sus enlaces son por-cliente,
+  // y la ficha se elige al crear cada cliente. Le dirigimos allí.
+  if (profile.cross_location) {
+    return (
+      <>
+        <Topbar
+          title="Mi enlace"
+          subtitle="Tus enlaces se generan por cliente"
+          breadcrumb="Mi panel"
+          breadcrumbHref="/panel"
+          range={null}
+          compact
+        />
+        <div className="m-page-pad" style={{ flex: 1, padding: "24px 32px 32px", overflow: "auto" }}>
+          <Card padding={24}>
+            <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" }}>
+              Cada cliente tiene su propio enlace
+            </div>
+            <p style={{ margin: "10px 0 16px", color: "var(--ink-3)", fontSize: 13.5, lineHeight: 1.55, maxWidth: 560 }}>
+              Como pides reseñas para varias oficinas, no usas un enlace genérico:
+              al dar de alta a cada cliente eliges su oficina (Oropesa, Castellón o
+              Valencia) y se genera su enlace personalizado. Así la reseña cae en la
+              ficha de Google correcta y se te atribuye a ti.
+            </p>
+            <Link
+              href="/clientes"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "9px 14px",
+                background: "var(--ink)",
+                color: "var(--surface)",
+                borderRadius: 10,
+                fontSize: 13.5,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              <Users size={17} strokeWidth={1.9} /> Ir a Mis clientes
+            </Link>
+          </Card>
+        </div>
+      </>
+    );
+  }
 
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();

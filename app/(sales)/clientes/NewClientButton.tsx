@@ -15,19 +15,35 @@ import type { OrphanReviewCandidate } from "@/lib/clients/orphan-reviews";
 import type { SavedTemplates } from "@/lib/messaging";
 import type { Brand } from "@/lib/supabase/types";
 
+/** Ficha de Google que un comercial multi-oficina puede elegir (mig 031). */
+export type FichaOption = { id: string; name: string; brand: Brand };
+
 type NewClientButtonProps = {
   appBase: string;
   salesName: string;
   salesSlug: string;
   brand: Brand;
   templates?: SavedTemplates;
+  /** Comercial multi-oficina ("escrituradora"): pide elegir la ficha destino. */
+  crossLocation?: boolean;
+  /** Fichas seleccionables (solo cuando crossLocation). */
+  fichaOptions?: FichaOption[];
 };
 
-export function NewClientButton({ appBase, salesName, salesSlug, brand, templates }: NewClientButtonProps) {
+export function NewClientButton({
+  appBase,
+  salesName,
+  salesSlug,
+  brand,
+  templates,
+  crossLocation = false,
+  fichaOptions = [],
+}: NewClientButtonProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<ClientRow | null>(null);
+  const [pickedLocationId, setPickedLocationId] = useState<string | null>(null);
   const [orphanCandidates, setOrphanCandidates] = useState<OrphanReviewCandidate[]>([]);
   const [autoLinkedCount, setAutoLinkedCount] = useState(0);
   const [showOrphans, setShowOrphans] = useState(false);
@@ -41,6 +57,7 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
     setOpen(false);
     setError(null);
     setCreated(null);
+    setPickedLocationId(null);
     setOrphanCandidates([]);
     setAutoLinkedCount(0);
     setShowOrphans(false);
@@ -49,11 +66,13 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
 
   function handleSubmit(formData: FormData) {
     setError(null);
+    const locationId = crossLocation ? String(formData.get("locationId") ?? "") : "";
     startTransition(async () => {
       const input = {
         fullName: String(formData.get("fullName") ?? ""),
         email: String(formData.get("email") ?? ""),
         phone: String(formData.get("phone") ?? ""),
+        ...(crossLocation ? { locationId: locationId || null } : {}),
       };
       const result = await createClientRecord(input);
       if (!result.ok) {
@@ -61,6 +80,7 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
         return;
       }
       setCreated(result.client);
+      if (crossLocation) setPickedLocationId(locationId || null);
 
       // Buscar reseñas huérfanas del comercial que se parezcan al cliente
       // recién creado. Las casi-exactas (≥90) se vinculan solas dentro de
@@ -127,6 +147,23 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
                     style={inputStyle}
                   />
                 </Field>
+                {crossLocation && (
+                  <Field
+                    label="Oficina"
+                    hint="A qué ficha de Google irá la reseña del cliente (según la promoción que ha comprado)."
+                  >
+                    <select name="locationId" required defaultValue="" style={inputStyle}>
+                      <option value="" disabled>
+                        Elige la oficina…
+                      </option>
+                      {fichaOptions.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
                 <Field
                   label="Teléfono (opcional)"
                   hint="Para WhatsApp y SMS. Escribe el prefijo del país (ej. +34 España, +40 Rumanía)."
@@ -206,7 +243,13 @@ export function NewClientButton({ appBase, salesName, salesSlug, brand, template
           clientSlug={created.slug}
           clientEmail={created.email}
           clientPhone={created.phone}
-          brand={brand}
+          // Para multi-oficina, la marca del mensaje es la de la ficha elegida
+          // (cada cliente puede ser de una marca distinta), no la del perfil.
+          brand={
+            crossLocation && pickedLocationId
+              ? fichaOptions.find((f) => f.id === pickedLocationId)?.brand ?? brand
+              : brand
+          }
           templates={templates}
         />
       )}

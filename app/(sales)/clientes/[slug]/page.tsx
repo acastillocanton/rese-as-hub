@@ -25,6 +25,7 @@ type ClientDetail = {
   slug: string;
   email: string | null;
   phone: string | null;
+  location_id: string | null;
   created_at: string;
   sales_id: string;
 };
@@ -86,7 +87,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
       .maybeSingle<SalesProfile>(),
     supabase
       .from("clients")
-      .select("id, full_name, slug, email, phone, created_at, sales_id")
+      .select("id, full_name, slug, email, phone, location_id, created_at, sales_id")
       .eq("sales_id", user.id)
       .eq("slug", slug)
       .maybeSingle<ClientDetail>(),
@@ -95,6 +96,19 @@ export default async function ClienteDetallePage({ params }: PageProps) {
   const profile = profileRes.data;
   const client = clientRes.data;
   if (!profile || !client) notFound();
+
+  // Marca del mensaje: para un comercial multi-oficina (mig 031) la ficha vive
+  // en el cliente (client.location_id), que puede ser de otra marca distinta a
+  // la del perfil. Para un comercial normal (location_id null) usa la del perfil.
+  let clientBrand: Brand = profile.locations?.brand ?? DEFAULT_BRAND;
+  if (client.location_id) {
+    const { data: clientLoc } = await supabase
+      .from("locations")
+      .select("brand")
+      .eq("id", client.location_id)
+      .maybeSingle<{ brand: Brand }>();
+    if (clientLoc) clientBrand = clientLoc.brand;
+  }
 
   const [visitsRes, reviewsRes] = await Promise.all([
     supabase
@@ -235,7 +249,7 @@ export default async function ClienteDetallePage({ params }: PageProps) {
               clientSlug={client.slug}
               clientEmail={client.email}
               clientPhone={client.phone}
-              brand={profile.locations?.brand ?? DEFAULT_BRAND}
+              brand={clientBrand}
               templates={profile.message_templates}
             />
           </div>

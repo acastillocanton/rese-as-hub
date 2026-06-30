@@ -33,6 +33,9 @@ export function InviteSalesButton({
   const [copied, setCopied] = useState(false);
   const [department, setDepartment] = useState<SalesDepartment | "">("");
   const [locationId, setLocationId] = useState<string>("");
+  // Comercial multi-oficina ("escrituradora", mig 031): sin ficha fija; elige
+  // la ficha en cada cliente. Solo disponible para admin/reviews_manager.
+  const [crossLocation, setCrossLocation] = useState(false);
   // Slug público (decisión 2026-06-11: nombre + primer apellido). Se
   // auto-rellena con la heurística mientras el admin no lo toque a mano
   // (nombres de pila compuestos como "María Jesús" necesitan corrección).
@@ -60,6 +63,7 @@ export function InviteSalesButton({
     setCopied(false);
     setDepartment("");
     setLocationId("");
+    setCrossLocation(false);
     setSlug("");
     setSlugTouched(false);
   }
@@ -90,14 +94,18 @@ export function InviteSalesButton({
         slug: String(formData.get("slug") ?? "") || null,
         email: String(formData.get("email") ?? ""),
         phone: String(formData.get("phone") ?? ""),
-        locationId: String(formData.get("locationId") ?? ""),
-        directorId: String(formData.get("directorId") ?? "") || null,
+        crossLocation: String(crossLocation),
+        // Multi-oficina: sin ficha / director / departamento (la action los anula).
+        locationId: crossLocation ? null : String(formData.get("locationId") ?? ""),
+        directorId: crossLocation ? null : String(formData.get("directorId") ?? "") || null,
         monthlyGoal: String(formData.get("monthlyGoal") ?? "5"),
         commissionRate: String(formData.get("commissionRate") ?? ""),
         commissionCap: String(formData.get("commissionCap") ?? "5"),
-        department: dept,
+        department: crossLocation ? null : dept,
         language:
-          dept === "internacional" ? String(formData.get("language") ?? "") : null,
+          !crossLocation && dept === "internacional"
+            ? String(formData.get("language") ?? "")
+            : null,
         joinedAt: String(formData.get("joinedAt") ?? "") || null,
         notes: String(formData.get("notes") ?? "") || null,
       };
@@ -298,97 +306,116 @@ export function InviteSalesButton({
                   <Field label="Teléfono (opcional)">
                     <input name="phone" type="tel" maxLength={40} style={inputStyle} />
                   </Field>
-                  <Field
-                    label="Departamento"
-                    hint="Define en qué hoja del parte semanal aparece"
-                  >
-                    <select
-                      name="department"
-                      required
-                      style={inputStyle}
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value as SalesDepartment)}
+                  {!lockScope && (
+                    <Field
+                      label="Tipo de comercial"
+                      hint="Marca esto solo para la escrituradora: no se ata a una oficina y elige la ficha (Oropesa/Castellón/Valencia) en cada cliente."
                     >
-                      <option value="" disabled>
-                        Selecciona…
-                      </option>
-                      {DEPARTMENT_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  {department === "internacional" && (
-                    <Field label="Idioma" hint="Aparece como ZONA en la hoja Internacional">
-                      <select name="language" required style={inputStyle} defaultValue="">
-                        <option value="" disabled>
-                          Selecciona…
-                        </option>
-                        {SALES_LANGUAGES.map((l) => (
-                          <option key={l} value={l}>
-                            {l}
-                          </option>
-                        ))}
-                      </select>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={crossLocation}
+                          onChange={(e) => setCrossLocation(e.target.checked)}
+                        />
+                        Comercial multi-oficina (escrituración)
+                      </label>
                     </Field>
                   )}
-                  {lockScope ? (
-                    // Director: ficha fijada a su oficina (única que ve por RLS).
-                    // El director responsable lo fuerza el backend a él mismo,
-                    // así que no mostramos ese selector — solo el hidden vacío.
-                    <Field label="Ficha asignada" hint="Tu oficina (los comerciales que invitas son de tu equipo)">
-                      <div style={{ ...inputStyle, color: "var(--ink-3)", background: "var(--surface-2)" }}>
-                        {locations[0]?.name ?? "—"}
-                      </div>
-                      <input type="hidden" name="locationId" value={locations[0]?.id ?? ""} />
-                      <input type="hidden" name="directorId" value="" />
-                    </Field>
-                  ) : (
+                  {!crossLocation && (
                     <>
-                      <Field label="Ficha asignada" hint="Ficha de Google donde caen sus reseñas">
+                      <Field
+                        label="Departamento"
+                        hint="Define en qué hoja del parte semanal aparece"
+                      >
                         <select
-                          name="locationId"
+                          name="department"
                           required
                           style={inputStyle}
-                          // `key` fuerza remount cuando cambia el departamento
-                          // para que el defaultValue tome efecto.
-                          key={`loc-${department}-${defaultLocationId}`}
-                          defaultValue={defaultLocationId}
-                          onChange={(e) => setLocationId(e.target.value)}
+                          value={department}
+                          onChange={(e) => setDepartment(e.target.value as SalesDepartment)}
                         >
                           <option value="" disabled>
                             Selecciona…
                           </option>
-                          {locations.map((l) => (
-                            <option key={l.id} value={l.id}>
-                              {l.name}
+                          {DEPARTMENT_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
                             </option>
                           ))}
                         </select>
                       </Field>
-                      {/* Director responsable: opcional. Si se asigna, ese director
-                          gestionará al comercial; si se deja vacío, queda en el
-                          pool del admin/reviews_manager (sin director). Filtramos
-                          la lista por la ficha actual para no asignar un director
-                          de otra location por error. */}
-                      <Field
-                        label="Responsable (opcional)"
-                        hint={
-                          eligibleDirectors.length === 0
-                            ? "No hay responsables en esa ficha. Créalos en /directores."
-                            : "Solo se listan responsables de la ficha seleccionada."
-                        }
-                      >
-                        <select name="directorId" style={inputStyle} defaultValue="">
-                          <option value="">— Sin responsable asignado —</option>
-                          {eligibleDirectors.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.full_name}
+                      {department === "internacional" && (
+                        <Field label="Idioma" hint="Aparece como ZONA en la hoja Internacional">
+                          <select name="language" required style={inputStyle} defaultValue="">
+                            <option value="" disabled>
+                              Selecciona…
                             </option>
-                          ))}
-                        </select>
-                      </Field>
+                            {SALES_LANGUAGES.map((l) => (
+                              <option key={l} value={l}>
+                                {l}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      )}
+                      {lockScope ? (
+                        // Director: ficha fijada a su oficina (única que ve por RLS).
+                        // El director responsable lo fuerza el backend a él mismo,
+                        // así que no mostramos ese selector — solo el hidden vacío.
+                        <Field label="Ficha asignada" hint="Tu oficina (los comerciales que invitas son de tu equipo)">
+                          <div style={{ ...inputStyle, color: "var(--ink-3)", background: "var(--surface-2)" }}>
+                            {locations[0]?.name ?? "—"}
+                          </div>
+                          <input type="hidden" name="locationId" value={locations[0]?.id ?? ""} />
+                          <input type="hidden" name="directorId" value="" />
+                        </Field>
+                      ) : (
+                        <>
+                          <Field label="Ficha asignada" hint="Ficha de Google donde caen sus reseñas">
+                            <select
+                              name="locationId"
+                              required
+                              style={inputStyle}
+                              // `key` fuerza remount cuando cambia el departamento
+                              // para que el defaultValue tome efecto.
+                              key={`loc-${department}-${defaultLocationId}`}
+                              defaultValue={defaultLocationId}
+                              onChange={(e) => setLocationId(e.target.value)}
+                            >
+                              <option value="" disabled>
+                                Selecciona…
+                              </option>
+                              {locations.map((l) => (
+                                <option key={l.id} value={l.id}>
+                                  {l.name}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          {/* Director responsable: opcional. Si se asigna, ese director
+                              gestionará al comercial; si se deja vacío, queda en el
+                              pool del admin/reviews_manager (sin director). Filtramos
+                              la lista por la ficha actual para no asignar un director
+                              de otra location por error. */}
+                          <Field
+                            label="Responsable (opcional)"
+                            hint={
+                              eligibleDirectors.length === 0
+                                ? "No hay responsables en esa ficha. Créalos en /directores."
+                                : "Solo se listan responsables de la ficha seleccionada."
+                            }
+                          >
+                            <select name="directorId" style={inputStyle} defaultValue="">
+                              <option value="">— Sin responsable asignado —</option>
+                              {eligibleDirectors.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.full_name}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                        </>
+                      )}
                     </>
                   )}
                   <Field label="Fecha de incorporación">
