@@ -21,6 +21,9 @@ export const maxDuration = 60;
  *            (la ficha de su oficina).
  *   - sales: ignora body; sincroniza únicamente su `profiles.location_id`
  *            (la ficha que tiene asignada).
+ *   - sales cross_location (escrituradora, §4.60): sin ficha fija →
+ *            sincroniza las fichas de sus clientes (clients.location_id), o
+ *            todas las escrituracion_target si aún no tiene clientes.
  *   - resto: 403.
  *
  * El lock optimista de 60s ya está dentro de `syncBusinessProfile()` por
@@ -44,9 +47,13 @@ export async function POST(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, location_id")
+    .select("role, location_id, cross_location")
     .eq("id", user.id)
-    .maybeSingle<{ role: string; location_id: string | null }>();
+    .maybeSingle<{
+      role: string;
+      location_id: string | null;
+      cross_location: boolean | null;
+    }>();
   if (!profile) {
     return NextResponse.json({ error: "no_profile" }, { status: 403 });
   }
@@ -71,13 +78,41 @@ export async function POST(request: NextRequest) {
       locationIds = [body.location_id];
     } // si no, todas
   } else if (profile.role === "office_director" || profile.role === "sales") {
-    if (!profile.location_id) {
-      return NextResponse.json(
-        { error: "user_without_location" },
-        { status: 400 },
+    if (profile.cross_location) {
+      // Comercial multi-oficina ("escrituradora", §4.60): no tiene ficha fija.
+      // Sus reseñas aterrizan en las fichas de sus clientes (clients.location_id).
+      // Sincronizamos esas fichas; si aún no tiene clientes, caemos a todas las
+      // fichas destino de escrituración (escrituracion_target).
+      const { data: clientRows } = await supabase
+        .from("clients")
+        .select("location_id")
+        .eq("sales_id", user.id)
+        .not("location_id", "is", null);
+      const fromClients = Array.from(
+        new Set(
+          (clientRows ?? [])
+            .map((r) => (r as { location_id: string | null }).location_id)
+            .filter((id): id is string => typeof id === "string"),
+        ),
       );
+      if (fromClients.length > 0) {
+        locationIds = fromClients;
+      } else {
+        const { data: targets } = await supabase
+          .from("locations")
+          .select("id")
+          .eq("escrituracion_target", true);
+        locationIds = (targets ?? []).map((r) => (r as { id: string }).id);
+      }
+    } else {
+      if (!profile.location_id) {
+        return NextResponse.json(
+          { error: "user_without_location" },
+          { status: 400 },
+        );
+      }
+      locationIds = [profile.location_id];
     }
-    locationIds = [profile.location_id];
   } else {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
