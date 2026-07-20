@@ -4,12 +4,22 @@ import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { ReviewVerificationRow } from "./ReviewVerificationRow";
+import { Pagination } from "@/components/ui/Pagination";
 import { getCurrentUserBrand } from "@/lib/supabase/current-brand";
 import { getBrandBreadcrumb } from "@/lib/branding";
 import { getRoleScope } from "@/lib/auth/role-scope";
 import type { Role } from "@/lib/supabase/types";
 
-type SearchParams = Promise<{ state?: string }>;
+type SearchParams = Promise<{ state?: string; page?: string }>;
+
+/**
+ * Reseñas por página. La bandeja se pagina server-side: la pestaña
+ * "Atribuidas" puede tener cientos de reseñas y renderizarlas todas de golpe
+ * bloqueaba la navegación cliente (misma-ruta, sin loading.tsx → la
+ * transición no hacía commit y la pestaña "no abría"). Mismo patrón que
+ * /resenas/respuestas.
+ */
+const PAGE_SIZE = 25;
 
 type ReviewRow = {
   id: string;
@@ -97,6 +107,12 @@ export default async function ResenasVerificacionPage({
   const stateFilter: "pending" | "unmatched" | "removed" | "counted" =
     explicitState ?? (isSalesViewer ? "unmatched" : "pending");
 
+  // Página actual (1-based). Cambiar de pestaña omite `page` en el href → se
+  // vuelve a página 1 (los FilterChip no lo arrastran).
+  const parsedPage = Number.parseInt(params.page ?? "1", 10);
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const rangeStart = (page - 1) * PAGE_SIZE;
+
   const reviewsQueryBase = supabase
     .from("reviews")
     .select(
@@ -104,15 +120,15 @@ export default async function ResenasVerificacionPage({
     )
     .order("google_created_at", { ascending: false });
 
-  let reviewsQuery =
+  // Paginación server-side (orden por más reciente ya aplicado en la base →
+  // una reseña recién mal atribuida sale arriba). Sustituye al viejo
+  // `.limit(500)` que renderizaba cientos de tarjetas de golpe (§ bug de la
+  // pestaña Atribuidas que "no abría").
+  const reviewsQuery = (
     stateFilter === "removed"
       ? reviewsQueryBase.not("removed_at", "is", null)
-      : reviewsQueryBase.eq("match_state", stateFilter).is("removed_at", null);
-  // Las atribuidas (counted) pueden ser muchas — a diferencia de pending/
-  // unmatched que son conjuntos pequeños. Límite defensivo + orden por más
-  // reciente (ya aplicado en reviewsQueryBase) para que una reseña recién mal
-  // atribuida salga arriba.
-  if (stateFilter === "counted") reviewsQuery = reviewsQuery.limit(500);
+      : reviewsQueryBase.eq("match_state", stateFilter).is("removed_at", null)
+  ).range(rangeStart, rangeStart + PAGE_SIZE - 1);
 
   const [
     reviewsRes,
@@ -156,6 +172,18 @@ export default async function ResenasVerificacionPage({
   const removedCount = removedCountRes.count ?? 0;
   const countedCount = countedCountRes.count ?? 0;
   const allSalesOptions = salesWithClientsRes.data ?? [];
+
+  // Total de la pestaña activa (para la paginación). Los contadores ya están
+  // calculados arriba con los mismos filtros que la lista y RLS-scoped igual.
+  const stateTotal =
+    stateFilter === "pending"
+      ? pendingCount
+      : stateFilter === "unmatched"
+        ? unmatchedCount
+        : stateFilter === "counted"
+          ? countedCount
+          : removedCount;
+  const totalPages = Math.max(1, Math.ceil(stateTotal / PAGE_SIZE));
 
   // Filtrado de salesOptions según rol del viewer:
   //  • sales            → solo su propio profile (con sus clientes).
@@ -353,6 +381,21 @@ export default async function ResenasVerificacionPage({
               viewerId={viewerId}
             />
           ))
+        )}
+
+        {stateTotal > 0 && (
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={stateTotal}
+            totalPages={totalPages}
+            hrefForPage={(target) => {
+              const sp = new URLSearchParams();
+              sp.set("state", stateFilter);
+              if (target > 1) sp.set("page", String(target));
+              return `/resenas/verificacion?${sp.toString()}`;
+            }}
+          />
         )}
       </div>
     </>

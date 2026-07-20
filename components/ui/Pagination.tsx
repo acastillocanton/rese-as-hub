@@ -1,14 +1,6 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 
-type CurrentParams = {
-  tab: "pending" | "answered";
-  location_id: string | null;
-  rating_lte: number | null;
-  from: string | null;
-  to: string | null;
-};
-
 type Props = {
   /** Página actual (1-based). */
   page: number;
@@ -16,35 +8,27 @@ type Props = {
   /** Total de filas que casan con los filtros activos (no el global). */
   total: number;
   totalPages: number;
-  /** Filtros activos a preservar en los links Prev/Next. */
-  currentParams: CurrentParams;
+  /**
+   * Constructor del href para una página concreta. El caller es dueño de la
+   * ruta y de qué filtros preservar; este componente solo cambia `page`. Debe
+   * arrastrar los filtros activos y omitir `page` cuando target === 1 (para
+   * mantener URLs limpias). El reset a página 1 al cambiar de filtro lo
+   * gestiona el caller (aquí solo se generan Prev/Next).
+   */
+  hrefForPage: (target: number) => string;
 };
 
 /**
- * Paginación reutilizable para listados server-rendered. Prev/Next como `<Link>`;
- * preserva los filtros activos y SOLO cambia `page`. El reset a página 1 al
- * cambiar de filtro lo gestiona el caller (este componente no lo hace).
- * Server component (sin estado ni Supabase): recibe el total ya calculado.
+ * Paginación reutilizable para listados server-rendered. Prev/Next como `<Link>`.
+ * Agnóstica de ruta: el caller inyecta `hrefForPage`. Server component (sin
+ * estado ni Supabase): recibe el total ya calculado.
  */
-export function Pagination({ page, pageSize, total, totalPages, currentParams }: Props) {
+export function Pagination({ page, pageSize, total, totalPages, hrefForPage }: Props) {
   if (totalPages <= 1) return null;
 
   const safePage = Math.min(Math.max(page, 1), totalPages);
   const start = (safePage - 1) * pageSize + 1;
   const end = Math.min(safePage * pageSize, total);
-
-  const href = (target: number) => {
-    const sp = new URLSearchParams();
-    sp.set("tab", currentParams.tab);
-    if (currentParams.location_id) sp.set("location_id", currentParams.location_id);
-    if (currentParams.rating_lte) sp.set("rating_lte", String(currentParams.rating_lte));
-    if (currentParams.from && currentParams.to) {
-      sp.set("from", currentParams.from);
-      sp.set("to", currentParams.to);
-    }
-    if (target > 1) sp.set("page", String(target));
-    return `/resenas/respuestas?${sp.toString()}`;
-  };
 
   return (
     <div
@@ -61,8 +45,8 @@ export function Pagination({ page, pageSize, total, totalPages, currentParams }:
         {start}–{end} de {total} · Página {safePage} de {totalPages}
       </span>
       <div style={{ display: "flex", gap: 8 }}>
-        <PageLink href={href(safePage - 1)} disabled={safePage <= 1} label="← Anterior" />
-        <PageLink href={href(safePage + 1)} disabled={safePage >= totalPages} label="Siguiente →" />
+        <PageLink href={hrefForPage(safePage - 1)} disabled={safePage <= 1} label="← Anterior" />
+        <PageLink href={hrefForPage(safePage + 1)} disabled={safePage >= totalPages} label="Siguiente →" />
       </div>
     </div>
   );

@@ -401,13 +401,16 @@ export default async function RespuestasPage({
             pageSize={PAGE_SIZE}
             total={filteredTotal}
             totalPages={totalPages}
-            currentParams={{
-              tab,
-              location_id: locationId,
-              rating_lte: ratingLte,
-              from: rangeFrom,
-              to: rangeTo,
-            }}
+            hrefForPage={(target) =>
+              buildHref({
+                tab,
+                locationId,
+                ratingLte,
+                from: rangeFrom,
+                to: rangeTo,
+                page: target,
+              })
+            }
           />
         )}
       </div>
@@ -421,23 +424,29 @@ function buildHref({
   ratingLte,
   from,
   to,
+  page,
 }: {
   tab: "pending" | "answered";
   locationId: string | null;
   ratingLte: number | null;
   from?: string | null;
   to?: string | null;
+  /** Solo lo pasa la paginación (Prev/Next). Los chips de filtro lo omiten →
+   *  todo cambio de filtro resetea a página 1. */
+  page?: number;
 }): string {
   const sp = new URLSearchParams();
   sp.set("tab", tab);
   if (locationId) sp.set("location_id", locationId);
   if (ratingLte) sp.set("rating_lte", String(ratingLte));
   // El rango solo aplica en "answered"; lo arrastramos para no perder el periodo
-  // al cambiar de ficha/rating. NUNCA arrastramos `page` → todo filtro resetea a 1.
+  // al cambiar de ficha/rating. NUNCA arrastramos `page` desde los chips → todo
+  // filtro resetea a 1; solo la paginación pasa `page`.
   if (tab === "answered" && from && to) {
     sp.set("from", from);
     sp.set("to", to);
   }
+  if (page && page > 1) sp.set("page", String(page));
   return `/resenas/respuestas?${sp.toString()}`;
 }
 
