@@ -16,6 +16,13 @@ type Props = {
    * gestiona el caller (aquí solo se generan Prev/Next).
    */
   hrefForPage: (target: number) => string;
+  /**
+   * Si true, Prev/Next hacen carga completa de página (`<a>`) en vez de
+   * navegación cliente (`<Link>`). Necesario en listas pesadas del mismo
+   * segmento donde la soft-nav de Next no hacía commit en producción
+   * (bandeja de Verificación). Default false (soft-nav).
+   */
+  hardNav?: boolean;
 };
 
 /**
@@ -23,7 +30,7 @@ type Props = {
  * Agnóstica de ruta: el caller inyecta `hrefForPage`. Server component (sin
  * estado ni Supabase): recibe el total ya calculado.
  */
-export function Pagination({ page, pageSize, total, totalPages, hrefForPage }: Props) {
+export function Pagination({ page, pageSize, total, totalPages, hrefForPage, hardNav = false }: Props) {
   if (totalPages <= 1) return null;
 
   const safePage = Math.min(Math.max(page, 1), totalPages);
@@ -45,8 +52,8 @@ export function Pagination({ page, pageSize, total, totalPages, hrefForPage }: P
         {start}–{end} de {total} · Página {safePage} de {totalPages}
       </span>
       <div style={{ display: "flex", gap: 8 }}>
-        <PageLink href={hrefForPage(safePage - 1)} disabled={safePage <= 1} label="← Anterior" />
-        <PageLink href={hrefForPage(safePage + 1)} disabled={safePage >= totalPages} label="Siguiente →" />
+        <PageLink href={hrefForPage(safePage - 1)} disabled={safePage <= 1} label="← Anterior" hardNav={hardNav} />
+        <PageLink href={hrefForPage(safePage + 1)} disabled={safePage >= totalPages} label="Siguiente →" hardNav={hardNav} />
       </div>
     </div>
   );
@@ -56,10 +63,12 @@ function PageLink({
   href,
   disabled,
   label,
+  hardNav,
 }: {
   href: string;
   disabled: boolean;
   label: string;
+  hardNav: boolean;
 }) {
   const style: CSSProperties = {
     padding: "6px 12px",
@@ -78,6 +87,14 @@ function PageLink({
       <span style={style} aria-disabled="true">
         {label}
       </span>
+    );
+  // hardNav → `<a>` (carga completa): la soft-nav de Next no commitaba en
+  // listas pesadas del mismo segmento en producción. `<a>` siempre navega.
+  if (hardNav)
+    return (
+      <a href={href} style={style}>
+        {label}
+      </a>
     );
   return (
     <Link href={href} style={style}>

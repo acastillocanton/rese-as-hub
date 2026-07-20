@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Topbar } from "@/components/layout/Topbar";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/server";
@@ -10,7 +9,23 @@ import { getBrandBreadcrumb } from "@/lib/branding";
 import { getRoleScope } from "@/lib/auth/role-scope";
 import type { Role } from "@/lib/supabase/types";
 
-type SearchParams = Promise<{ state?: string; page?: string }>;
+type SearchParams = Promise<{
+  state?: string;
+  page?: string;
+  /** Búsqueda por nombre del autor de Google (ilike). */
+  q?: string;
+  location_id?: string;
+  sales_id?: string;
+  /** Valoración exacta 1-5. */
+  rating?: string;
+  /** Rango de fechas OPCIONAL (yyyy-mm-dd) sobre google_created_at. Vacío =
+   *  todas (la bandeja es histórica; no imponemos un periodo por defecto para
+   *  no ocultar reseñas antiguas). */
+  from?: string;
+  to?: string;
+}>;
+
+type LocationOption = { id: string; name: string };
 
 /**
  * Reseñas por página. La bandeja se pagina server-side: la pestaña
@@ -113,32 +128,97 @@ export default async function ResenasVerificacionPage({
   const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
   const rangeStart = (page - 1) * PAGE_SIZE;
 
-  const reviewsQueryBase = supabase
+  // --- Filtros de búsqueda (aplican DENTRO de la pestaña activa) ---
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  const q = (params.q ?? "").trim();
+  const rating =
+    params.rating && /^[1-5]$/.test(params.rating)
+      ? Number.parseInt(params.rating, 10)
+      : null;
+  const locationId =
+    params.location_id && uuidRe.test(params.location_id) ? params.location_id : null;
+  const salesId =
+    params.sales_id && uuidRe.test(params.sales_id) ? params.sales_id : null;
+  const fromDate = params.from && dateRe.test(params.from) ? params.from : null;
+  const toDate = params.to && dateRe.test(params.to) ? params.to : null;
+  const hasFilters =
+    q !== "" ||
+    rating !== null ||
+    locationId !== null ||
+    salesId !== null ||
+    fromDate !== null ||
+    toDate !== null;
+
+  // Paginación server-side + filtros. `count: "exact"` devuelve el total que
+  // casa con los filtros (ignora el .range), justo lo que necesita el
+  // paginador. Orden por más reciente → una reseña recién mal atribuida sale
+  // arriba. Sustituye al viejo `.limit(500)` que renderizaba cientos de
+  // tarjetas de golpe (§ bug de la pestaña Atribuidas que "no abría").
+  // Filtros: se aplican a la query de LISTA y a la de CONTEO (paginación).
+  // ⚠️ El conteo va en una query APARTE con `count: "exact"`. NO ponemos
+  // `count: "exact"` en la query de la lista: hacerlo rompía el commit de la
+  // navegación cliente entre páginas del mismo segmento (el RSC llega 200
+  // pero React no aplicaba el resultado → la página "no cambiaba"). Con el
+  // conteo separado, la lista vuelve a navegar al instante.
+  // Los filtros se aplican dos veces (lista + conteo): mantener en sync.
+  let listQuery = supabase
     .from("reviews")
     .select(
       "id, author_name, rating, text, google_created_at, match_state, match_confidence, match_evidence, removed_at, is_duplicate, google_maps_url, sales:profiles!reviews_sales_id_fkey(id, full_name, slug), client:clients(id, full_name), location:locations(id, name, google_place_id)",
-    )
-    .order("google_created_at", { ascending: false });
+    );
+  let countQuery = supabase
+    .from("reviews")
+    .select("id", { count: "exact", head: true });
 
-  // Paginación server-side (orden por más reciente ya aplicado en la base →
-  // una reseña recién mal atribuida sale arriba). Sustituye al viejo
-  // `.limit(500)` que renderizaba cientos de tarjetas de golpe (§ bug de la
-  // pestaña Atribuidas que "no abría").
-  const reviewsQuery = (
-    stateFilter === "removed"
-      ? reviewsQueryBase.not("removed_at", "is", null)
-      : reviewsQueryBase.eq("match_state", stateFilter).is("removed_at", null)
-  ).range(rangeStart, rangeStart + PAGE_SIZE - 1);
+  if (stateFilter === "removed") {
+    listQuery = listQuery.not("removed_at", "is", null);
+    countQuery = countQuery.not("removed_at", "is", null);
+  } else {
+    listQuery = listQuery.eq("match_state", stateFilter).is("removed_at", null);
+    countQuery = countQuery.eq("match_state", stateFilter).is("removed_at", null);
+  }
+  if (q) {
+    listQuery = listQuery.ilike("author_name", `%${q}%`);
+    countQuery = countQuery.ilike("author_name", `%${q}%`);
+  }
+  if (locationId) {
+    listQuery = listQuery.eq("location_id", locationId);
+    countQuery = countQuery.eq("location_id", locationId);
+  }
+  if (salesId) {
+    listQuery = listQuery.eq("sales_id", salesId);
+    countQuery = countQuery.eq("sales_id", salesId);
+  }
+  if (rating !== null) {
+    listQuery = listQuery.eq("rating", rating);
+    countQuery = countQuery.eq("rating", rating);
+  }
+  if (fromDate) {
+    listQuery = listQuery.gte("google_created_at", `${fromDate}T00:00:00.000Z`);
+    countQuery = countQuery.gte("google_created_at", `${fromDate}T00:00:00.000Z`);
+  }
+  if (toDate) {
+    listQuery = listQuery.lte("google_created_at", `${toDate}T23:59:59.999Z`);
+    countQuery = countQuery.lte("google_created_at", `${toDate}T23:59:59.999Z`);
+  }
+
+  const reviewsPage = listQuery
+    .order("google_created_at", { ascending: false })
+    .range(rangeStart, rangeStart + PAGE_SIZE - 1);
 
   const [
     reviewsRes,
+    filteredCountRes,
     pendingCountRes,
     unmatchedCountRes,
     removedCountRes,
     countedCountRes,
     salesWithClientsRes,
+    locationsRes,
   ] = await Promise.all([
-    reviewsQuery.returns<ReviewRow[]>(),
+    reviewsPage.returns<ReviewRow[]>(),
+    countQuery,
     supabase
       .from("reviews")
       .select("id", { count: "exact", head: true })
@@ -164,6 +244,11 @@ export default async function ResenasVerificacionPage({
       .in("role", ["sales", "office_director"])
       .order("full_name")
       .returns<SalesOptionWithDirector[]>(),
+    supabase
+      .from("locations")
+      .select("id, name")
+      .order("name")
+      .returns<LocationOption[]>(),
   ]);
 
   const reviews = reviewsRes.data ?? [];
@@ -172,18 +257,13 @@ export default async function ResenasVerificacionPage({
   const removedCount = removedCountRes.count ?? 0;
   const countedCount = countedCountRes.count ?? 0;
   const allSalesOptions = salesWithClientsRes.data ?? [];
+  const locations = locationsRes.data ?? [];
 
-  // Total de la pestaña activa (para la paginación). Los contadores ya están
-  // calculados arriba con los mismos filtros que la lista y RLS-scoped igual.
-  const stateTotal =
-    stateFilter === "pending"
-      ? pendingCount
-      : stateFilter === "unmatched"
-        ? unmatchedCount
-        : stateFilter === "counted"
-          ? countedCount
-          : removedCount;
-  const totalPages = Math.max(1, Math.ceil(stateTotal / PAGE_SIZE));
+  // Total de la pestaña activa YA filtrado (para la paginación), desde la
+  // query de conteo separada. Los contadores de las pestañas (chips) siguen
+  // siendo el total sin filtrar.
+  const filteredTotal = filteredCountRes.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
 
   // Filtrado de salesOptions según rol del viewer:
   //  • sales            → solo su propio profile (con sus clientes).
@@ -202,6 +282,22 @@ export default async function ResenasVerificacionPage({
     }
     return allSalesOptions.map(({ director_id: _, ...rest }) => rest);
   })();
+
+  // Href que preserva estado + filtros activos y solo cambia `page`. Lo usa el
+  // paginador (Prev/Next). Los FilterChip NO lo usan → cambiar de pestaña
+  // resetea los filtros (comportamiento predecible). `target === 1` omite page.
+  const buildHref = (target: number) => {
+    const sp = new URLSearchParams();
+    sp.set("state", stateFilter);
+    if (q) sp.set("q", q);
+    if (locationId) sp.set("location_id", locationId);
+    if (salesId) sp.set("sales_id", salesId);
+    if (rating !== null) sp.set("rating", String(rating));
+    if (fromDate) sp.set("from", fromDate);
+    if (toDate) sp.set("to", toDate);
+    if (target > 1) sp.set("page", String(target));
+    return `/resenas/verificacion?${sp.toString()}`;
+  };
 
   return (
     <>
@@ -305,7 +401,131 @@ export default async function ResenasVerificacionPage({
           </div>
         )}
 
-        {reviews.length === 0 ? (
+        {/* Filtros de búsqueda. Se aplican dentro de la pestaña activa; el
+            submit conserva `state` (hidden) y resetea a página 1 (no incluye
+            page). No se muestran al sales (su bandeja de huérfanas es pequeña). */}
+        {!isSalesViewer && (
+          <Card>
+            <form
+              method="GET"
+              style={{
+                display: "grid",
+                gridTemplateColumns: showsComercialFilter(stateFilter)
+                  ? "1.6fr 1fr 1fr 0.9fr 1fr 1fr auto"
+                  : "1.8fr 1fr 0.9fr 1fr 1fr auto",
+                gap: 12,
+                alignItems: "end",
+              }}
+            >
+              <input type="hidden" name="state" value={stateFilter} />
+              <FilterField label="Buscar por nombre">
+                <input
+                  type="text"
+                  name="q"
+                  defaultValue={q}
+                  placeholder="Nombre del autor en Google"
+                  style={fieldInputStyle}
+                />
+              </FilterField>
+              <FilterField label="Ficha">
+                <select name="location_id" defaultValue={locationId ?? ""} style={fieldInputStyle}>
+                  <option value="">Todas</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </FilterField>
+              {showsComercialFilter(stateFilter) && (
+                <FilterField label="Comercial">
+                  <select name="sales_id" defaultValue={salesId ?? ""} style={fieldInputStyle}>
+                    <option value="">Todos</option>
+                    {salesOptions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.role === "office_director" ? `★ ${s.full_name}` : s.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </FilterField>
+              )}
+              <FilterField label="Valoración">
+                <select
+                  name="rating"
+                  defaultValue={rating !== null ? String(rating) : ""}
+                  style={fieldInputStyle}
+                >
+                  <option value="">Todas</option>
+                  <option value="5">5 ★</option>
+                  <option value="4">4 ★</option>
+                  <option value="3">3 ★</option>
+                  <option value="2">2 ★</option>
+                  <option value="1">1 ★</option>
+                </select>
+              </FilterField>
+              <FilterField label="Desde">
+                <input type="date" name="from" defaultValue={fromDate ?? ""} style={fieldInputStyle} />
+              </FilterField>
+              <FilterField label="Hasta">
+                <input type="date" name="to" defaultValue={toDate ?? ""} style={fieldInputStyle} />
+              </FilterField>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  type="submit"
+                  style={{
+                    padding: "7px 14px",
+                    background: "var(--ink)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Filtrar
+                </button>
+                {hasFilters && (
+                  <a
+                    href={`/resenas/verificacion?state=${stateFilter}`}
+                    style={{ fontSize: 12.5, color: "var(--ink-3)", whiteSpace: "nowrap" }}
+                  >
+                    Limpiar
+                  </a>
+                )}
+              </div>
+            </form>
+          </Card>
+        )}
+
+        {reviews.length === 0 && hasFilters ? (
+          <Card padding={32}>
+            <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
+              Sin resultados
+            </div>
+            <div
+              style={{ fontSize: 20, fontWeight: 600, marginTop: 4, letterSpacing: "-0.02em" }}
+            >
+              Ninguna reseña coincide con la búsqueda
+            </div>
+            <p
+              style={{
+                margin: "10px 0 0",
+                color: "var(--ink-3)",
+                fontSize: 13.5,
+                lineHeight: 1.55,
+                maxWidth: 560,
+              }}
+            >
+              Prueba a ampliar los filtros o{" "}
+              <a href={`/resenas/verificacion?state=${stateFilter}`} style={{ color: "var(--ink)" }}>
+                límpialos
+              </a>{" "}
+              para ver todas las de esta pestaña.
+            </p>
+          </Card>
+        ) : reviews.length === 0 ? (
           <Card padding={32}>
             <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
               {stateFilter === "pending"
@@ -356,7 +576,7 @@ export default async function ResenasVerificacionPage({
                       : stateFilter === "counted"
                         ? "Todavía no hay ninguna reseña atribuida. Cuando se contabilice alguna, aparecerá aquí y podrás reasignarla si fue al comercial equivocado. De momento revisa las "
                         : "Cuando el cron de Places API note que una reseña ya no aparece en Google, se marcará aquí automáticamente. También puedes marcarla a mano desde las pestañas "}
-                  <Link
+                  <a
                     href={
                       stateFilter === "pending"
                         ? "/resenas/verificacion?state=unmatched"
@@ -365,7 +585,7 @@ export default async function ResenasVerificacionPage({
                     style={{ color: "var(--ink)" }}
                   >
                     {stateFilter === "pending" ? "sin atribuir" : "pendientes"}
-                  </Link>
+                  </a>
                   .
                 </>
               )}
@@ -383,18 +603,14 @@ export default async function ResenasVerificacionPage({
           ))
         )}
 
-        {stateTotal > 0 && (
+        {filteredTotal > 0 && (
           <Pagination
             page={page}
             pageSize={PAGE_SIZE}
-            total={stateTotal}
+            total={filteredTotal}
             totalPages={totalPages}
-            hrefForPage={(target) => {
-              const sp = new URLSearchParams();
-              sp.set("state", stateFilter);
-              if (target > 1) sp.set("page", String(target));
-              return `/resenas/verificacion?${sp.toString()}`;
-            }}
+            hrefForPage={buildHref}
+            hardNav
           />
         )}
       </div>
@@ -416,7 +632,12 @@ function FilterChip({
   const activeBg = tone === "warn" ? "var(--warn-bg)" : "rgba(0,0,0,0.05)";
   const activeColor = tone === "warn" ? "var(--warn)" : "var(--ink)";
   return (
-    <Link
+    // `<a>` (carga completa) en vez de <Link>: la navegación cliente de Next
+    // entre pestañas (misma ruta, solo cambia ?state) NO hacía commit en el
+    // build de producción con esta lista pesada → la pestaña "no abría". La
+    // carga completa siempre navega. (En dev sí commitaba, por eso no se veía
+    // en local con `npm run dev`.)
+    <a
       href={href}
       style={{
         padding: "6px 12px",
@@ -430,7 +651,7 @@ function FilterChip({
       }}
     >
       {label}
-    </Link>
+    </a>
   );
 }
 
@@ -440,4 +661,51 @@ const sectionLabel: React.CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.04em",
   fontWeight: 600,
+};
+
+/**
+ * El filtro por comercial solo aplica a reseñas que tienen comercial
+ * atribuido (counted/pending). En "unmatched" y "removed" el sales_id suele
+ * ser null, así que ocultamos ese select para no confundir.
+ */
+function showsComercialFilter(
+  state: "pending" | "unmatched" | "removed" | "counted",
+): boolean {
+  return state === "counted" || state === "pending";
+}
+
+function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span
+        style={{
+          fontSize: 11,
+          color: "var(--ink-4)",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          fontWeight: 500,
+        }}
+      >
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+const fieldInputStyle: React.CSSProperties = {
+  padding: "7px 10px",
+  border: "1px solid var(--line-strong)",
+  borderRadius: 8,
+  fontSize: 13,
+  fontFamily: "inherit",
+  background: "var(--surface)",
+  color: "var(--ink)",
+  width: "100%",
 };
