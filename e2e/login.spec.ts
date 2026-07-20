@@ -5,7 +5,7 @@ import { loginAs } from "./helpers/auth";
  * Happy paths del login.
  *
  * Datos de prueba consumidos:
- *   - alejandro.castillo@inseryal.es (admin)
+ *   - a.castillo.esv@gmail.com (admin)
  *
  * Sales nominales: por ahora la BD tiene 0 sales activos (CLAUDE.md §7), así
  * que el test de redirect sales→/panel queda pendiente hasta que haya un
@@ -13,7 +13,7 @@ import { loginAs } from "./helpers/auth";
  */
 test.describe("login", () => {
   test("admin → /dashboard tras magic-link", async ({ page }) => {
-    await loginAs(page, "alejandro.castillo@inseryal.es", "/dashboard");
+    await loginAs(page, "a.castillo.esv@gmail.com", "/dashboard");
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });

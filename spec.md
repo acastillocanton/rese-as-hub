@@ -2,7 +2,7 @@
 
 > **Fuente de verdad del producto.** Este documento define qué construimos, por qué, y cómo sabemos que está hecho. Si un cambio (de código, scope, o decisión arquitectónica) entra en conflicto con este archivo, **se actualiza la spec primero** y luego se implementa.
 >
-> Documento vivo · versión 1.0 (v1 cerrada el 2026-05-26) · última edición 2026-06-01 · responsables (rol admin): Alejandro Castillo (`alejandro.castillo@inseryal.es`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
+> Documento vivo · versión 1.0 (v1 cerrada el 2026-05-26) · última edición 2026-06-01 · responsables (rol admin): Alejandro Castillo (`a.castillo.esv@gmail.com`) y Rafael Ibáñez (`rafael.ibanez@inseryal.es`)
 >
 > 🏁 **V1 cerrada el 2026-05-26**. MVP completo, live en producción. **🎉 Google Business Profile API activada el 2026-06-10** (fuente única de reseñas going-forward; Places API apagado). **v2 (jun 2026)**: anti-fraude, verificación abierta, alertas ≤2★, plantillas de mensaje, panel "Histórico/ranking/insignias", **modelo de comisión (periodo 20→20 + tarifa €/reseña + tope de reseñas bonificables)**, soporte interno, responder reseñas de Google y endurecimiento de seguridad. Ver §9 (cerradas v2) y `CLAUDE.md` §3/§4 (§4.50 BP).
 

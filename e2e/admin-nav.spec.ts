@@ -10,7 +10,7 @@ import { loginAs } from "./helpers/auth";
  */
 test.describe("admin nav post-login", () => {
   test.beforeEach(async ({ page }) => {
-    await loginAs(page, "alejandro.castillo@inseryal.es", "/dashboard");
+    await loginAs(page, "a.castillo.esv@gmail.com", "/dashboard");
   });
 
   test("/comerciales carga lista", async ({ page }) => {
