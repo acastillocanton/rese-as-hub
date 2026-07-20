@@ -317,6 +317,7 @@ export async function processFreshReviews(
       ? await decideDuplicateForClient(admin, {
           clientId: result.client_id,
           incomingGoogleCreatedAt: fr.google_created_at,
+          incomingAuthorName: fr.author_name,
         })
       : { newIsDuplicate: false, demotedReviewId: null };
 

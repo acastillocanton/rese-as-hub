@@ -427,7 +427,9 @@ async function linkOrphanCore(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { data: review } = await admin
     .from("reviews")
-    .select("id, sales_id, match_state, client_id, removed_at, google_created_at")
+    .select(
+      "id, sales_id, match_state, client_id, removed_at, google_created_at, author_name",
+    )
     .eq("id", reviewId)
     .maybeSingle<{
       id: string;
@@ -436,6 +438,7 @@ async function linkOrphanCore(
       client_id: string | null;
       removed_at: string | null;
       google_created_at: string;
+      author_name: string | null;
     }>();
   if (!review) return { ok: false, error: "Reseña no encontrada." };
   if (review.removed_at) {
@@ -455,6 +458,7 @@ async function linkOrphanCore(
   const dup = await decideDuplicateForClient(admin, {
     clientId,
     incomingGoogleCreatedAt: review.google_created_at,
+    incomingAuthorName: review.author_name,
     excludeReviewId: review.id,
   });
 

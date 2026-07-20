@@ -32,7 +32,7 @@ npm run dev            # dev en http://localhost:3000 (Turbopack)
 npm run build          # build producción (verifica tipos)
 npm run typecheck      # tsc --noEmit — pasar antes de cerrar tarea
 npm run lint           # next lint (eslint-config-next + jsx-a11y/recommended)
-npm test               # Vitest unit tests (329 tests: matcher (incl. atribución por mención del comercial → counted) + date-range (incl. periodo comisión 20→20) + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + rls-self-update + utils (transliteración cirílico→latino) + strip-translation + owner-reply)
+npm test               # Vitest unit tests (445 tests: matcher (incl. atribución por mención del comercial → counted + sameGoogleAuthor) + date-range (incl. periodo comisión 20→20) + Places + leaderboard + branding + messaging + duplicate-detection + verification-gating + review-url + sales-report + orphan-reviews + low-rating-alerts + panel-motivation + panel-badges + sales-schemas + excel-safe + rls-self-update + utils (transliteración cirílico→latino) + strip-translation + owner-reply)
 npm run test:watch     # Vitest en modo watch
 npm run test:e2e       # Playwright happy paths (login + admin nav). Primera vez: npx playwright install --with-deps chromium
 npm run test:e2e:ui    # Playwright en modo UI interactivo
@@ -126,6 +126,7 @@ Migraciones SQL: ejecutar en Supabase Dashboard → SQL Editor en orden numéric
 | sec · Auditoría de seguridad (4 superficies): CRÍTICO `inviteReviewsManager` sin admin (escalada) corregido; SSRF en enlaces Maps, CSP sin `unsafe-eval` en prod, `/help/*` con login (PII), excelSafe/OTP/robots.txt/logs; mig 030 (trigger comisión + quitar `audit_log_self_insert`). Verificado en prod (§4.59) | ✅ (2026-06-17) |
 | feat · Comercial multi-oficina ("escrituradora", mig 031): `sales` con `cross_location` sin ficha fija; elige la ficha (Oropesa/Castellón/Valencia) por cliente (`clients.location_id`); landing+matcher usan la ficha del cliente. + mig 032: puede reclamar huérfanas multi-ficha en Verificación. mig 031+032 ✅ aplicadas (§4.60) | ✅ (2026-06-30) |
 | fix · "Sincronizar ahora" de la escrituradora daba `user_without_location`: `/api/sync/now` sincroniza ahora las fichas de sus clientes (o todas las `escrituracion_target`) cuando el perfil es `cross_location`. Verificado E2E en prod (§4.60) | ✅ (2026-07-17) |
+| feat(anti-fraude) · Dedupe de reseñas por (cliente + CUENTA de Google), no por cliente a secas: dos reseñas del mismo enlace desde cuentas distintas (p.ej. una pareja) cuentan/pagan las dos; solo se descarta la misma cuenta repetida (clon). Helper `sameGoogleAuthor` (transliteración cirílico + `nameSimilarity≥90`); backfill one-shot 3 reseñas→pagables. Sin migración (§4.61) | ✅ (2026-07-20) |
 
 ### Vista mobile (Fase 3.b + extensión director)
 Roles con vista mobile (`≤767px`): **sales** (fase 3.b) y **office_director** (extensión migración 011). Admin y reviews_manager siguen desktop-only por diseño (uso en oficina). Implementado con **CSS media queries puras** (sin hooks JS, sin route group duplicado, sin flicker SSR) con clases prefijadas `m-*` al final de [`app/globals.css`](app/globals.css).
@@ -417,24 +418,26 @@ Cuando se crea una ficha nueva, el form en `/fichas` (`AddFichaButton.tsx`) pide
 
 ⚠️ **`weekly-report.ts` sigue brand-agnóstico** — usa `profiles.department` para clasificar por hoja del Excel. Departamento y marca son ortogonales (un comercial nacional puede ser de cualquiera de las dos marcas, en la práctica todos los actuales son `inseryal`; un castellón/valencia es `marina_dor_construcciones`).
 
-### 4.23 Anti-fraude: reseñas duplicadas por `client_id` (mig 015)
+### 4.23 Anti-fraude: reseñas duplicadas por `client_id` + cuenta de Google (mig 015; regla revisada §4.61)
 
-Un cliente puede reenviar su enlace `/c/{sales-slug}/{client-slug}` a familia/amigos. Cada uno deja una reseña en Google y el matcher (ventana 48h + similitud) las atribuye al mismo `client_id`. Para evitar inflar KPIs/pagos al comercial, marcamos como duplicadas todas excepto la primera por `google_created_at` dentro de cada `client_id`.
+> ⚠️ **Regla actualizada 2026-07-20 (§4.61)**: la deduplicación es por **(mismo `client_id` + MISMA cuenta de Google)**, NO por `client_id` a secas. Dos reseñas del mismo cliente/enlace pero de **cuentas distintas** (autores distintos) son dos reseñas reales y **cuentan las dos** (p.ej. una pareja que reseña desde el mismo enlace). Solo se marca duplicada la MISMA cuenta contada dos veces (clon / edición no fusionada). Lee §4.61 para el detalle.
+
+Un cliente puede reenviar su enlace `/c/{sales-slug}/{client-slug}` a familia/amigos. Cada uno deja una reseña en Google y el matcher (ventana 48h + similitud) las atribuye al mismo `client_id`. Antes marcábamos duplicadas todas menos la primera del `client_id`; desde §4.61 solo se deduplican las de la **misma cuenta de Google** dentro de ese cliente (la igualdad de cuenta la decide `sameGoogleAuthor`: transliteración cirílico→latino + `nameSimilarity ≥ 90`; anónimos → misma cuenta = dedupe conservador).
 
 **Reglas**:
-- **Principal**: la reseña con `google_created_at` más antiguo por client_id (tie-break: `fetched_at ASC`, luego `id ASC` para determinismo).
-- **Duplicadas**: el resto. `is_duplicate=true`, siguen visibles en listados con badge ámbar pero no cuentan.
+- **Principal**: por cada **(client_id, cuenta de Google)**, la reseña con `google_created_at` más antiguo (tie-break: `fetched_at ASC`, luego `id ASC`).
+- **Duplicadas**: el resto **de la misma cuenta**. `is_duplicate=true`, siguen visibles con badge ámbar pero no cuentan. Reseñas de **otra cuenta** en el mismo cliente → cada una es su propia principal → cuentan.
 - Filas con `client_id` null (unmatched) o `removed_at != null` (soft-deleted) están fuera de la lógica.
 
-**Flujo en el cron** ([lib/cron/process-reviews.ts](lib/cron/process-reviews.ts) + helper [lib/cron/duplicate-detection.ts](lib/cron/duplicate-detection.ts)): antes de insertar consulta si ya hay principal del mismo `client_id`. Tres casos:
+**Flujo en el cron** ([lib/cron/process-reviews.ts](lib/cron/process-reviews.ts) + helper [lib/cron/duplicate-detection.ts](lib/cron/duplicate-detection.ts)): antes de insertar consulta si ya hay principal del mismo `client_id` **de la misma cuenta**. Tres casos:
 1. No hay principal → la nueva es principal.
 2. Nueva > principal existente (cronológicamente) → marca duplicada.
 3. Nueva < principal existente (Places API trae histórico) → la nueva pasa a principal, demota la antigua + entrada `audit_log` con `action='demoted_by_older_duplicate'`.
 
-**Flujo en verificación manual** ([app/(profile)/resenas/verificacion/actions.ts](app/(profile)/resenas/verificacion/actions.ts) — movido en mig 016):
-- `confirmReview`: re-aplica la regla al cambiar a `counted`.
-- `reassignReview`: idem + promueve la siguiente duplicada activa del cliente "huérfano" cuando se mueve el reviewId a otro cliente.
-- `rejectReview`: si la rechazada era principal con duplicadas activas, promueve la siguiente más antigua a principal (sin esto, todas quedarían como duplicadas y nadie cuenta).
+**Flujo en verificación manual** ([app/(profile)/resenas/verificacion/actions.ts](app/(profile)/resenas/verificacion/actions.ts) — movido en mig 016): los 4 flujos (`confirmReview`/`reassignReview`/`rejectReview`/`claimReview`) leen y pasan el `author_name` de la reseña, para que el dedupe y la promoción acoten a la cuenta correcta.
+- `confirmReview`: re-aplica la regla (misma cuenta) al cambiar a `counted`.
+- `reassignReview`: idem + promueve la siguiente duplicada activa **de la misma cuenta** del cliente "huérfano" cuando se mueve el reviewId a otro cliente.
+- `rejectReview`: si la rechazada era principal con duplicadas activas **de su cuenta**, promueve la siguiente más antigua de esa cuenta (sin esto, esa cuenta quedaría sin principal y no contaría).
 
 **Decisión consciente**: `markReviewRemoved` / `restoreReview` NO tocan `is_duplicate`. Si el admin elimina manualmente la principal, las duplicadas siguen siendo duplicadas (el filtro de KPI ya excluye `removed_at NOT NULL`). Coherente con la naturaleza ortogonal del soft-delete.
 
@@ -448,7 +451,7 @@ Un cliente puede reenviar su enlace `/c/{sales-slug}/{client-slug}` a familia/am
 
 **Componente UI**: [components/ui/DuplicateBadge.tsx](components/ui/DuplicateBadge.tsx) (pill ámbar con tooltip explicativo).
 
-**Tests** ([lib/cron/__tests__/duplicate-detection.test.ts](lib/cron/__tests__/duplicate-detection.test.ts)): 8 escenarios del helper puro `decideFromPrincipals` (incluye orden cronológico, inversión Places API, empate, estado inconsistente).
+**Tests** ([lib/cron/__tests__/duplicate-detection.test.ts](lib/cron/__tests__/duplicate-detection.test.ts)): `sameGoogleAuthor` (idéntico, cirílico=latino, nombre-de-pila≠, subconjunto, anónimo) + `decideFromPrincipals` autor-aware (misma cuenta dup/inversión/empate, cuenta distinta = pareja cuenta, clon cirílico dup, anónimo conservador, cron pareja vs misma-cuenta-3-veces).
 
 ### 4.24 Verificación de reseñas accesible a los 4 roles (mig 016)
 
@@ -1254,6 +1257,26 @@ La persona que acompaña al cliente en la firma de la escrituración pide reseñ
 - **fix "Sincronizar ahora" para la escrituradora (2026-07-17, commit `1fee9ec`)**: el botón en `/panel/resenas` devolvía `user_without_location`. La rama `sales`/`office_director` de [`/api/sync/now`](app/api/sync/now/route.ts) exigía `profiles.location_id`, que la escrituradora no tiene por diseño. Ahora, si el perfil es `cross_location`, sincroniza las **fichas de sus clientes** (`clients.location_id` distintos) o **todas las `escrituracion_target`** si aún no tiene clientes. Verificado E2E en prod (Victoria Ruano → sincroniza Oropesa, `ok:true`). Sin migración.
 
 ⚠️ **Limitaciones conocidas (aceptadas):** (a) **No aparece en el parte Excel semanal** por departamento (department null → la salta `groupActiveSalesByDepartment`; decisión de negocio). (b) Sus reseñas **no las ve el director** de la oficina (RLS por equipo), pero sí admin/gestor y sí cuentan en la valoración pública de la ficha. (c) En el ranking su `branch` sale "—".
+
+### 4.61 Dedupe por cliente + CUENTA de Google (revisión del anti-fraude, 2026-07-20)
+
+Cambio de política sobre el anti-fraude de §4.23. **Antes**: toda reseña extra bajo el mismo `client_id` se marcaba `is_duplicate=true` (solo contaba la primera). **Ahora**: se deduplica solo por **(mismo cliente + MISMA cuenta de Google)**. Dos reseñas del mismo enlace/cliente pero de **cuentas distintas** (autores distintos) son dos reseñas reales y **cuentan las dos** — caso típico: el comercial visita a **una pareja** y ambos dejan su opinión desde el mismo enlace. Solo se sigue bloqueando la **misma cuenta contada dos veces** (clon / edición no fusionada, p.ej. la misma persona con su nombre en cirílico y en latino).
+
+**Motivación (caso Patricia, gestora de comisiones):** reportó 3 reseñas "que aparecen como duplicadas pero solo encuentra una". Investigado: eran segundas reseñas de **personas distintas** bajo el mismo cliente (Úrsula→"Mª Jose Moral Valderas", Laura→"Ana Perez") que se estaban descartando indebidamente, más un clon real (Ana Prior→"Maksim"/"Максим Бутаков", misma persona) que SÍ debe descartarse.
+
+**Igualdad de cuenta** — helper puro [`sameGoogleAuthor(a, b)`](lib/matching/attribute-review.ts): transliteración cirílico→latino en ambos lados (`transliterateCyrillic`, §4.39) + `nameSimilarity ≥ 90` simétrico (`SAME_AUTHOR_THRESHOLD`). Así:
+- "Максим Бутаков" == "Maksim Butakov" → **misma cuenta** (clon) → dedupe. Sin transliterar daría 0 (⚠️ `nameSimilarity`/`normalize` conservan el cirílico tal cual).
+- "Ana Plaza" vs "Ana Perez" (solo coincide el nombre de pila → 55) → **cuentas distintas** → cuentan las dos.
+- **Anónimos / sin nombre**: no se pueden distinguir → se tratan como la MISMA cuenta = **dedupe conservador** (decisión de negocio: no inflar cuando no hay identidad verificable).
+
+**Cambios (sin migración; la columna `is_duplicate` ya existe):**
+- `decideFromPrincipals` filtra las principales a la **misma cuenta** antes de "la más antigua gana"; `decideDuplicateForClient` selecciona/pasa `author_name`; `promoteNextPrincipal` promociona la siguiente duplicada **de la misma cuenta**. ([lib/cron/duplicate-detection.ts](lib/cron/duplicate-detection.ts))
+- Callers que pasan el `author_name`: [process-reviews.ts](lib/cron/process-reviews.ts) (cron), los 4 flujos de [verificacion/actions.ts](app/(profile)/resenas/verificacion/actions.ts) (confirm/reassign/reject/claim) y `linkOrphanCore` de [clientes/actions.ts](app/(sales)/clientes/actions.ts) (vinculación de huérfanas §4.28).
+- Tests en [duplicate-detection.test.ts](lib/cron/__tests__/duplicate-detection.test.ts) (18 casos: `sameGoogleAuthor` + `decideFromPrincipals` autor-aware, incluye pareja cuenta / clon cirílico dedupe / anónimo conservador).
+
+**Backfill one-shot aplicado 2026-07-20** (`scripts/recompute-duplicates-by-author.mjs`, gitignored, dry-run + count-first + `audit_log action='duplicate_recomputed_by_author'`, reversible): reevaluó las 149 reseñas activas con `client_id`. Resultado: **3 reseñas dup→pagable, 0 pasaron a duplicadas, 0 anónimas afectadas**. Las 3: "Mª Jose Moral Valderas" (Úrsula), "Ana Perez" (Laura) y "Ivan ortega hurtado" (comercial `47b9251a`, no estaba en el email de Patricia). El clon "Maksim Butakov" se quedó `is_duplicate=true` (correcto). Verificado en BD.
+
+⚠️ **Implicación de fraude aceptada**: al pagar las de cuentas distintas, un comercial podría inducir a varias personas a reseñar desde un mismo enlace. Se acepta: son reseñas reales de cuentas reales de Google (una por persona y negocio). La única protección que queda es contra la MISMA cuenta contada dos veces, que sigue activa. Si reapareciera abuso, el lever es subir `SAME_AUTHOR_THRESHOLD` o volver al dedupe por `client_id` puro.
 
 ---
 

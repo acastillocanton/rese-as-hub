@@ -1,4 +1,5 @@
 import "server-only";
+import { transliterateCyrillic } from "@/lib/utils";
 
 /**
  * Algoritmo de atribución de reseñas a comerciales.
@@ -231,6 +232,40 @@ export function nameSimilarity(clientName: string, authorName: string): number {
   if (intersection.length > 0) return 30;
 
   return 0;
+}
+
+/** Umbral para considerar dos nombres de autor la MISMA cuenta de Google. */
+export const SAME_AUTHOR_THRESHOLD = 90;
+
+/**
+ * ¿Dos nombres de autor de Google corresponden a la MISMA cuenta?
+ *
+ * Se usa en el anti-fraude de duplicados (§4.23): dos reseñas del mismo
+ * cliente/enlace pero de cuentas DISTINTAS son dos reseñas reales y se pagan
+ * ambas (p.ej. una pareja que reseña desde el mismo enlace). Solo se deduplica
+ * cuando es la MISMA cuenta contada dos veces (clon / edición no fusionada).
+ *
+ * ⚠️ Transliteración cirílico→latino en ambos lados (§4.39): "Максим Бутаков"
+ * y "Maksim Butakov" son la MISMA cuenta. Sin transliterar, `nameSimilarity`
+ * los daría 0 porque `normalize()` conserva el cirílico tal cual.
+ *
+ * Anónimos / sin nombre: no se pueden distinguir → se tratan como la MISMA
+ * cuenta (dedupe conservador; decisión de negocio 2026-07-20, §4.61).
+ */
+export function sameGoogleAuthor(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const na = (a ?? "").trim();
+  const nb = (b ?? "").trim();
+  // Al menos uno sin nombre legible → indistinguible → dedupe conservador.
+  if (na === "" || nb === "") return true;
+  const ta = transliterateCyrillic(na);
+  const tb = transliterateCyrillic(nb);
+  // `nameSimilarity` es asimétrico (mide "tokens de A contenidos en B"); para
+  // igualdad de cuenta tomamos el máximo en ambos sentidos.
+  const score = Math.max(nameSimilarity(ta, tb), nameSimilarity(tb, ta));
+  return score >= SAME_AUTHOR_THRESHOLD;
 }
 
 /**

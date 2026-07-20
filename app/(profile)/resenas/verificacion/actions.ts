@@ -218,12 +218,13 @@ export async function confirmReview(reviewId: string) {
   const adminSrv = createServiceClient();
   const { data: current } = await adminSrv
     .from("reviews")
-    .select("client_id, google_created_at, is_duplicate")
+    .select("client_id, google_created_at, is_duplicate, author_name")
     .eq("id", parsed.data)
     .maybeSingle<{
       client_id: string | null;
       google_created_at: string;
       is_duplicate: boolean;
+      author_name: string | null;
     }>();
 
   let dup: { newIsDuplicate: boolean; demotedReviewId: string | null } = {
@@ -234,6 +235,7 @@ export async function confirmReview(reviewId: string) {
     dup = await decideDuplicateForClient(adminSrv, {
       clientId: current.client_id,
       incomingGoogleCreatedAt: current.google_created_at,
+      incomingAuthorName: current.author_name,
       excludeReviewId: parsed.data,
     });
   }
@@ -287,9 +289,13 @@ export async function rejectReview(reviewId: string) {
   const adminSrv = createServiceClient();
   const { data: current } = await adminSrv
     .from("reviews")
-    .select("client_id, is_duplicate")
+    .select("client_id, is_duplicate, author_name")
     .eq("id", parsed.data)
-    .maybeSingle<{ client_id: string | null; is_duplicate: boolean }>();
+    .maybeSingle<{
+      client_id: string | null;
+      is_duplicate: boolean;
+      author_name: string | null;
+    }>();
   const wasPrincipalOf = current && !current.is_duplicate ? current.client_id : null;
 
   const writer = await writerForActor(actor);
@@ -310,7 +316,11 @@ export async function rejectReview(reviewId: string) {
 
   let promotedId: string | null = null;
   if (wasPrincipalOf) {
-    promotedId = await promoteNextPrincipal(adminSrv, wasPrincipalOf);
+    promotedId = await promoteNextPrincipal(
+      adminSrv,
+      wasPrincipalOf,
+      current?.author_name ?? null,
+    );
   }
 
   await audit(parsed.data, "reject", {
@@ -387,12 +397,13 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
   const adminSrv = createServiceClient();
   const { data: current } = await adminSrv
     .from("reviews")
-    .select("client_id, google_created_at, is_duplicate")
+    .select("client_id, google_created_at, is_duplicate, author_name")
     .eq("id", parsed.data.reviewId)
     .maybeSingle<{
       client_id: string | null;
       google_created_at: string;
       is_duplicate: boolean;
+      author_name: string | null;
     }>();
   const previousClientId = current?.client_id ?? null;
   const wasPrincipalOf =
@@ -407,6 +418,7 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
     dup = await decideDuplicateForClient(adminSrv, {
       clientId: newClientId,
       incomingGoogleCreatedAt: current.google_created_at,
+      incomingAuthorName: current.author_name,
       excludeReviewId: parsed.data.reviewId,
     });
   }
@@ -435,7 +447,11 @@ export async function reassignReview(input: z.input<typeof reassignSchema>) {
 
   let promotedOrphanId: string | null = null;
   if (wasPrincipalOf && wasPrincipalOf !== newClientId) {
-    promotedOrphanId = await promoteNextPrincipal(adminSrv, wasPrincipalOf);
+    promotedOrphanId = await promoteNextPrincipal(
+      adminSrv,
+      wasPrincipalOf,
+      current?.author_name ?? null,
+    );
   }
 
   await audit(parsed.data.reviewId, "reassign", {
@@ -498,9 +514,13 @@ export async function claimReview(input: ClaimReviewInput) {
   const adminSrv = createServiceClient();
   const { data: current } = await adminSrv
     .from("reviews")
-    .select("google_created_at, location_id")
+    .select("google_created_at, location_id, author_name")
     .eq("id", parsed.data.reviewId)
-    .maybeSingle<{ google_created_at: string; location_id: string }>();
+    .maybeSingle<{
+      google_created_at: string;
+      location_id: string;
+      author_name: string | null;
+    }>();
   if (!current) {
     return { ok: false as const, error: "Reseña no encontrada." };
   }
@@ -531,6 +551,7 @@ export async function claimReview(input: ClaimReviewInput) {
     dup = await decideDuplicateForClient(adminSrv, {
       clientId,
       incomingGoogleCreatedAt: current.google_created_at,
+      incomingAuthorName: current.author_name,
       excludeReviewId: parsed.data.reviewId,
     });
   }

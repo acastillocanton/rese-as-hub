@@ -1,100 +1,171 @@
 import { describe, expect, it } from "vitest";
 import { decideFromPrincipals } from "@/lib/cron/duplicate-detection";
+import { sameGoogleAuthor } from "@/lib/matching/attribute-review";
 
-describe("decideFromPrincipals", () => {
-  it("returns newIsDuplicate=false when there's no principal previa", () => {
-    const r = decideFromPrincipals([], "2026-05-26T10:00:00Z");
+// Helper para construir principales con menos ruido.
+const p = (id: string, at: string, author: string | null) => ({
+  id,
+  google_created_at: at,
+  author_name: author,
+});
+
+describe("sameGoogleAuthor", () => {
+  it("nombre idéntico → misma cuenta", () => {
+    expect(sameGoogleAuthor("Maksim Butakov", "Maksim Butakov")).toBe(true);
+  });
+
+  it("cirílico vs su transliteración latina → misma cuenta (clon)", () => {
+    // Caso real Ana Prior: "Максим Бутаков" == "Maksim Butakov".
+    expect(sameGoogleAuthor("Максим Бутаков", "Maksim Butakov")).toBe(true);
+  });
+
+  it("mismo nombre de pila pero apellidos distintos → cuentas DISTINTAS", () => {
+    // Caso real Laura: "Ana Plaza" (55) vs "Ana Perez" → no es la misma cuenta.
+    expect(sameGoogleAuthor("Ana Plaza", "Ana Perez")).toBe(false);
+  });
+
+  it("personas totalmente distintas → cuentas distintas", () => {
+    expect(
+      sameGoogleAuthor("jose sanchez Garrido", "Maria Jose Moral Valderas"),
+    ).toBe(false);
+  });
+
+  it("nombre acortado en una edición (subconjunto de tokens) → misma cuenta", () => {
+    expect(sameGoogleAuthor("Maksim", "Maksim Butakov")).toBe(true);
+  });
+
+  it("anónimo / vacío en cualquier lado → indistinguible = misma cuenta (dedupe conservador)", () => {
+    expect(sameGoogleAuthor("", "Maksim Butakov")).toBe(true);
+    expect(sameGoogleAuthor("Maksim Butakov", null)).toBe(true);
+    expect(sameGoogleAuthor(null, undefined)).toBe(true);
+  });
+});
+
+describe("decideFromPrincipals (dedupe por cliente + misma cuenta)", () => {
+  it("sin principales previas → no es duplicada", () => {
+    const r = decideFromPrincipals([], "2026-05-26T10:00:00Z", "Ana Plaza");
     expect(r).toEqual({ newIsDuplicate: false, demotedReviewId: null });
   });
 
-  it("marca duplicada cuando la entrante es posterior a la principal", () => {
+  it("MISMA cuenta, entrante posterior → duplicada", () => {
     const r = decideFromPrincipals(
-      [{ id: "p1", google_created_at: "2026-05-26T10:00:00Z" }],
+      [p("p1", "2026-05-26T10:00:00Z", "Maksim Butakov")],
       "2026-05-26T11:00:00Z",
+      "Maksim Butakov",
     );
     expect(r).toEqual({ newIsDuplicate: true, demotedReviewId: null });
   });
 
-  it("invierte cuando la entrante es más antigua que la principal", () => {
+  it("MISMA cuenta, entrante más antigua → invierte (demota la vieja)", () => {
     const r = decideFromPrincipals(
-      [{ id: "p1", google_created_at: "2026-05-26T11:00:00Z" }],
+      [p("p1", "2026-05-26T11:00:00Z", "Maksim Butakov")],
       "2026-05-26T10:00:00Z",
+      "Maksim Butakov",
     );
     expect(r).toEqual({ newIsDuplicate: false, demotedReviewId: "p1" });
   });
 
-  it("empate exacto: la entrante se marca duplicada (la previa mantiene principal)", () => {
+  it("MISMA cuenta, empate exacto → la entrante se marca duplicada", () => {
     const r = decideFromPrincipals(
-      [{ id: "p1", google_created_at: "2026-05-26T10:00:00Z" }],
+      [p("p1", "2026-05-26T10:00:00Z", "Maksim Butakov")],
       "2026-05-26T10:00:00Z",
+      "Maksim Butakov",
     );
     expect(r).toEqual({ newIsDuplicate: true, demotedReviewId: null });
   });
 
-  it("estado inconsistente (varias principales): compara contra la MÁS antigua", () => {
+  it("clon cirílico/latino misma persona → duplicada (no se paga dos veces)", () => {
+    // Caso Ana Prior: principal "Максим Бутаков", entra "Maksim Butakov".
     const r = decideFromPrincipals(
-      [
-        { id: "p2", google_created_at: "2026-05-26T12:00:00Z" },
-        { id: "p1", google_created_at: "2026-05-26T08:00:00Z" },
-        { id: "p3", google_created_at: "2026-05-26T15:00:00Z" },
-      ],
-      "2026-05-26T09:00:00Z", // entre p1 y p2
+      [p("p1", "2026-06-23T09:38:44Z", "Максим Бутаков")],
+      "2026-06-23T09:38:44Z",
+      "Maksim Butakov",
     );
-    // La entrante (09:00) es posterior a la más antigua (08:00) → duplicada.
     expect(r).toEqual({ newIsDuplicate: true, demotedReviewId: null });
   });
 
-  it("estado inconsistente (varias principales): si entrante < más antigua, demota la más antigua", () => {
+  it("CUENTA DISTINTA en el mismo cliente (pareja) → NO es duplicada, cuenta", () => {
+    // Caso Laura: principal "Ana Plaza" (06-jul); entra "Ana Perez" (07-jul)
+    // en el mismo enlace/cliente. Son cuentas distintas → ambas cuentan.
     const r = decideFromPrincipals(
-      [
-        { id: "p2", google_created_at: "2026-05-26T12:00:00Z" },
-        { id: "p1", google_created_at: "2026-05-26T08:00:00Z" },
-      ],
+      [p("p1", "2026-07-06T15:02:20Z", "Ana Plaza")],
+      "2026-07-07T19:12:03Z",
+      "Ana Perez",
+    );
+    expect(r).toEqual({ newIsDuplicate: false, demotedReviewId: null });
+  });
+
+  it("caso Úrsula: dos autores distintos en cliente genérico 'jose' → NO duplicada", () => {
+    const r = decideFromPrincipals(
+      [p("p1", "2026-07-08T15:32:58Z", "jose sanchez Garrido")],
+      "2026-07-09T15:43:59Z",
+      "Maria Jose Moral Valderas",
+    );
+    expect(r).toEqual({ newIsDuplicate: false, demotedReviewId: null });
+  });
+
+  it("anónimo entrante con principal nombrada → duplicada (conservador)", () => {
+    const r = decideFromPrincipals(
+      [p("p1", "2026-05-26T10:00:00Z", "Ana Plaza")],
+      "2026-05-26T11:00:00Z",
+      "", // anónimo
+    );
+    expect(r).toEqual({ newIsDuplicate: true, demotedReviewId: null });
+  });
+
+  it("varias principales de cuentas distintas: solo compite contra la de su cuenta", () => {
+    const principals = [
+      p("otra", "2026-05-26T08:00:00Z", "Ana Perez"), // otra cuenta, se ignora
+      p("mia", "2026-05-26T12:00:00Z", "Maksim Butakov"), // mi cuenta
+    ];
+    // Entra "Maksim" posterior a "mia" (12:00) → duplicada de su cuenta,
+    // sin importar que "otra" (08:00) sea más antigua.
+    const r = decideFromPrincipals(
+      principals,
+      "2026-05-26T13:00:00Z",
+      "Maksim Butakov",
+    );
+    expect(r).toEqual({ newIsDuplicate: true, demotedReviewId: null });
+  });
+
+  it("estado inconsistente (2 principales de la MISMA cuenta): compara contra la más antigua", () => {
+    const principals = [
+      p("p2", "2026-05-26T12:00:00Z", "Maksim Butakov"),
+      p("p1", "2026-05-26T08:00:00Z", "Maksim Butakov"),
+    ];
+    const r = decideFromPrincipals(
+      principals,
       "2026-05-26T07:00:00Z",
+      "Maksim Butakov",
     );
     expect(r).toEqual({ newIsDuplicate: false, demotedReviewId: "p1" });
   });
 
-  it("flujo del cron: 3 reseñas mismo client_id en orden cronológico (simulado iterativamente)", () => {
-    // Caso real: el cron procesa 3 reseñas para Pepe (client_id="c1") con
-    // google_created_at 10:00, 11:00, 12:00. Simulamos las decisiones que
-    // tomaría process-reviews.ts antes de cada INSERT.
-    let principals: { id: string; google_created_at: string }[] = [];
+  it("flujo cron: pareja (2 cuentas) en el mismo cliente → ambas principales", () => {
+    let principals: ReturnType<typeof p>[] = [];
 
-    const r1 = decideFromPrincipals(principals, "2026-05-26T10:00:00Z");
+    // Entra ella (Ana Plaza).
+    const r1 = decideFromPrincipals(principals, "2026-07-06T15:00:00Z", "Ana Plaza");
     expect(r1.newIsDuplicate).toBe(false);
-    // Tras insertar la 1ª como principal:
-    principals = [{ id: "rev1", google_created_at: "2026-05-26T10:00:00Z" }];
+    principals = [p("rev1", "2026-07-06T15:00:00Z", "Ana Plaza")];
 
-    const r2 = decideFromPrincipals(principals, "2026-05-26T11:00:00Z");
-    expect(r2.newIsDuplicate).toBe(true);
+    // Entra él (Ana Perez) — cuenta distinta → NO duplicada, ambas cuentan.
+    const r2 = decideFromPrincipals(principals, "2026-07-07T19:00:00Z", "Ana Perez");
+    expect(r2.newIsDuplicate).toBe(false);
     expect(r2.demotedReviewId).toBeNull();
-    // La 2ª entra como duplicada — principals no cambia.
-
-    const r3 = decideFromPrincipals(principals, "2026-05-26T12:00:00Z");
-    expect(r3.newIsDuplicate).toBe(true);
-    expect(r3.demotedReviewId).toBeNull();
   });
 
-  it("flujo del cron: misma situación pero las reseñas llegan en orden inverso (Places trae histórico)", () => {
-    let principals: { id: string; google_created_at: string }[] = [];
+  it("flujo cron: MISMA cuenta 3 veces → solo la 1ª cuenta", () => {
+    let principals: ReturnType<typeof p>[] = [];
 
-    // Primero entra la más reciente (12:00) — es la única, queda principal.
-    const r1 = decideFromPrincipals(principals, "2026-05-26T12:00:00Z");
+    const r1 = decideFromPrincipals(principals, "2026-05-26T10:00:00Z", "Pepe López");
     expect(r1.newIsDuplicate).toBe(false);
-    principals = [{ id: "rev1", google_created_at: "2026-05-26T12:00:00Z" }];
+    principals = [p("rev1", "2026-05-26T10:00:00Z", "Pepe López")];
 
-    // Luego entra una de 11:00 — es más antigua → invierte: nueva principal,
-    // rev1 demotada.
-    const r2 = decideFromPrincipals(principals, "2026-05-26T11:00:00Z");
-    expect(r2.newIsDuplicate).toBe(false);
-    expect(r2.demotedReviewId).toBe("rev1");
-    // Tras aplicar el cambio (process-reviews demota rev1 y promueve rev2):
-    principals = [{ id: "rev2", google_created_at: "2026-05-26T11:00:00Z" }];
+    const r2 = decideFromPrincipals(principals, "2026-05-26T11:00:00Z", "Pepe López");
+    expect(r2.newIsDuplicate).toBe(true);
 
-    // Finalmente entra una de 10:00 — vuelve a invertir.
-    const r3 = decideFromPrincipals(principals, "2026-05-26T10:00:00Z");
-    expect(r3.newIsDuplicate).toBe(false);
-    expect(r3.demotedReviewId).toBe("rev2");
+    const r3 = decideFromPrincipals(principals, "2026-05-26T12:00:00Z", "Pepe López");
+    expect(r3.newIsDuplicate).toBe(true);
   });
 });
