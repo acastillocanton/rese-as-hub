@@ -652,3 +652,91 @@ describe("attributeReview — atribución temporal a un único comercial", () =>
     expect(r.share_link_id).toBe("c1"); // el clic más cercano
   });
 });
+
+describe("attributeReview — corroboración de pending por clic en enlace de cliente", () => {
+  // Caso real (Marisol / "luis Luisito", 2026-07): el cliente "luis marquez
+  // hermoso" abrió SU enlace específico y reseñó 87s después, pero firmó en
+  // Google como "luis Luisito" → nameSimilarity 55 (+8 temporal) = 63 → pending.
+  // El clic en su propio enlace específico dentro de la ventana corta lo
+  // corrobora → debe contar.
+  it("pending por nombre parcial + clic en el enlace del MISMO cliente en ventana corta → counted (conf. 80)", () => {
+    const opened = new Date(
+      new Date(REVIEW_AT).getTime() - 87 * 1000,
+    ).toISOString(); // 87s antes
+    const r = attributeReview(
+      review({
+        author_name: "luis Luisito",
+        text: "Atención espectacular, con información detallada. Un diez.",
+      }),
+      [
+        candidate({
+          id: "sl-luis",
+          sales_id: "marisol",
+          client_id: "cli-luis",
+          client_full_name: "luis marquez hermoso",
+          opened_at: opened,
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("counted");
+    expect(r.match_confidence).toBe(80);
+    expect(r.sales_id).toBe("marisol");
+    expect(r.client_id).toBe("cli-luis");
+    expect(r.share_link_id).toBe("sl-luis");
+    expect(r.match_evidence.reason).toBe(
+      "counted_by_pending_client_link_corroboration",
+    );
+    expect(r.match_evidence.primary_name_score).toBe(55);
+  });
+
+  it("pending por nombre parcial pero el clic del cliente fue FUERA de la ventana corta (2h antes) → sigue pending", () => {
+    // El candidate por defecto abre 2h antes → primary lo casa por nombre (55+0)
+    // y el clic queda fuera de los 30 min → no se corrobora.
+    const r = attributeReview(
+      review({ author_name: "luis Luisito" }),
+      [
+        candidate({
+          sales_id: "marisol",
+          client_id: "cli-luis",
+          client_full_name: "luis marquez hermoso",
+          // opened_at por defecto = 2h antes
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("pending");
+    expect(r.match_evidence.reason).not.toBe(
+      "counted_by_pending_client_link_corroboration",
+    );
+  });
+
+  it("pending atribuido a un cliente pero el clic en ventana corta fue de OTRO cliente → sigue pending (no corrobora)", () => {
+    const t = new Date(REVIEW_AT).getTime();
+    const r = attributeReview(
+      review({ author_name: "luis Luisito" }),
+      [
+        // Enlace del cliente que casa por nombre, pero abierto hace 2h (fuera
+        // de la ventana corta) → primary lo elige por nombre (pending).
+        candidate({
+          id: "sl-luis",
+          sales_id: "marisol",
+          client_id: "cli-luis",
+          client_full_name: "luis marquez hermoso",
+          opened_at: new Date(t - 2 * 3_600_000).toISOString(),
+        }),
+        // Clic reciente pero de OTRO cliente (nombre no casa) → no corrobora al
+        // cliente "luis".
+        candidate({
+          id: "sl-otro",
+          sales_id: "marisol",
+          client_id: "cli-otro",
+          client_full_name: "Juan Pérez",
+          opened_at: new Date(t - 60 * 1000).toISOString(),
+        }),
+      ],
+    );
+    expect(r.match_state).toBe("pending");
+    expect(r.match_evidence.reason).not.toBe(
+      "counted_by_pending_client_link_corroboration",
+    );
+  });
+});

@@ -321,6 +321,14 @@ export function attributeReview(
   // resultado por nombre+tiempo.
   const byMention = attributeByCommercialMention(review, candidates, commercials);
   if (byMention) return byMention;
+  // Corroboración de un `pending`: si el match por nombre quedó dudoso pero hubo
+  // un clic en el enlace ESPECÍFICO del MISMO cliente dentro de la ventana corta,
+  // esa es evidencia fuerte (el cliente abrió su propio enlace y reseñó a los
+  // minutos) → sube a `counted`. Ver `corroboratePendingByClientLink` y §4.47.
+  if (primary.match_state === "pending") {
+    const corroborated = corroboratePendingByClientLink(review, candidates, primary);
+    if (corroborated) return corroborated;
+  }
   // Último recurso: si seguimos en unmatched y en una ventana corta hubo clics
   // de UN único comercial, atribuir a ese comercial por proximidad temporal.
   // Solo para autores con nombre — los anónimos conservan su path dedicado
@@ -705,6 +713,76 @@ function attributeBySingleCommercialInWindow(
     // nombre (primary < PENDING_THRESHOLD) y el clic fue genérico o de varios
     // clientes, así que adivinar cliente sería arriesgado (anti-fraude mig 015).
     // Lo afina el humano al confirmar.
+    share_link_id: best.id,
+  };
+}
+
+/**
+ * Corrobora un match `pending` cuando hay un clic en el enlace ESPECÍFICO del
+ * MISMO cliente al que apunta ese pending, dentro de la ventana corta.
+ *
+ * Cierra un hueco de la lógica (§4.47): la atribución por nombre débil
+ * (p.ej. el autor de Google firma con un apodo que solo comparte el nombre de
+ * pila → `nameSimilarity` = 55 → `pending` ~63) deja fuera una señal MÁS fuerte
+ * que la del propio §4.47: el cliente abrió SU enlace específico
+ * (`/c/{comercial}/{cliente}`) y reseñó a los pocos minutos. Antes ese rescate
+ * por clic específico solo corría cuando el match por nombre quedaba en
+ * `unmatched` (nombre 0), así que un parecido parcial paradójicamente impedía
+ * que la reseña contase pese a tener evidencia más sólida.
+ *
+ * Requisitos (conservadores):
+ *   - `primary` está en `pending` y ya apunta a un comercial + cliente concretos.
+ *   - Existe un clic en un enlace ESPECÍFICO de ese MISMO cliente
+ *     (`client_id` == `primary.client_id`, mismo `sales_id`) dentro de la ventana
+ *     corta `SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS` (30 min) previa a la reseña.
+ *
+ * Si se cumple → `counted` con la misma confianza que el rescate con-cliente de
+ * §4.47 (`SINGLE_COMMERCIAL_TEMPORAL_WITH_CLIENT_CONFIDENCE`), preservando el
+ * comercial y el cliente ya atribuidos. Reversible en Verificación.
+ */
+function corroboratePendingByClientLink(
+  review: ReviewInput,
+  candidates: ShareLinkCandidate[],
+  primary: MatchResult,
+): MatchResult | null {
+  if (primary.match_state !== "pending") return null;
+  if (!primary.sales_id || !primary.client_id) return null;
+
+  const reviewMs = new Date(review.google_created_at).getTime();
+  const matching = candidates.filter((c) => {
+    if (c.client_id == null) return false;
+    if (c.sales_id !== primary.sales_id) return false;
+    if (c.client_id !== primary.client_id) return false;
+    const openedMs = new Date(c.opened_at).getTime();
+    if (openedMs > reviewMs) return false; // enlace posterior a la reseña
+    const hoursDelta = (reviewMs - openedMs) / 3_600_000;
+    return hoursDelta <= SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS;
+  });
+
+  if (matching.length === 0) return null;
+
+  const delta = (c: ShareLinkCandidate) =>
+    (reviewMs - new Date(c.opened_at).getTime()) / 3_600_000;
+  let best = matching[0]!;
+  for (const c of matching) if (delta(c) < delta(best)) best = c;
+
+  return {
+    match_state: "counted",
+    match_confidence: SINGLE_COMMERCIAL_TEMPORAL_WITH_CLIENT_CONFIDENCE,
+    match_evidence: {
+      reason: "counted_by_pending_client_link_corroboration",
+      share_link_id: best.id,
+      commercial_id: best.sales_id,
+      client_id: best.client_id,
+      review_author: review.author_name,
+      hours_delta: Number(delta(best).toFixed(2)),
+      primary_confidence: primary.match_confidence,
+      primary_name_score: primary.match_evidence.name_score ?? null,
+      candidates_considered: candidates.length,
+      window_hours: SINGLE_COMMERCIAL_TEMPORAL_WINDOW_HOURS,
+    },
+    sales_id: best.sales_id,
+    client_id: best.client_id!,
     share_link_id: best.id,
   };
 }
