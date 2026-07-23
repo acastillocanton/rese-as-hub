@@ -75,6 +75,16 @@ export const BP_GO_LIVE_AT = "2026-06-10T00:00:00.000Z";
  */
 export const AUTO_REMOVE_ENABLED = false;
 
+/**
+ * Presupuesto de tiempo del loop de fichas. El caller corre en lambdas de
+ * Vercel con maxDuration=60s (tope Hobby): si al ir a empezar una ficha ya
+ * hemos consumido este presupuesto, se salta con `skipped_time_budget` y la
+ * recoge el siguiente run (idempotente + lock optimista → seguro). Devolver
+ * 200 con resultado parcial es mejor que un 504 que no reporta nada. El margen
+ * restante (~15s) cubre el flush de notificaciones/alertas del final.
+ */
+const SYNC_TIME_BUDGET_MS = 45_000;
+
 export type SyncBusinessProfileArgs = {
   /** Si `null`/`undefined` → todas las fichas conectadas (oauth_status=connected
    *  con google_location_resource). Si array → solo esas IDs (las que no estén
@@ -95,6 +105,7 @@ export type SyncBusinessProfileResult = {
 export async function syncBusinessProfile(
   args: SyncBusinessProfileArgs = {},
 ): Promise<SyncBusinessProfileResult> {
+  const startedAt = Date.now();
   const admin = createServiceClient();
   const filter = args.locationIds ?? null;
 
@@ -226,6 +237,14 @@ export async function syncBusinessProfile(
       pending: 0,
       unmatched: 0,
     };
+
+    // Presupuesto de tiempo (ver SYNC_TIME_BUDGET_MS): va ANTES del lock para
+    // no bloquear al siguiente run sobre una ficha que no vamos a procesar.
+    if (Date.now() - startedAt > SYNC_TIME_BUDGET_MS) {
+      entry.error = "skipped_time_budget";
+      summary.push(entry);
+      continue;
+    }
 
     // Lock optimista contra solapamiento: si otro proceso (cron horario, cron
     // diario o sync manual) tocó esta location en los últimos 60s, hacemos skip.

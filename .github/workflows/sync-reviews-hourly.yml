@@ -51,14 +51,25 @@ jobs:
             echo "::error::Faltan secrets APP_URL o CRON_SECRET en GitHub."
             exit 1
           fi
-          response=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" \
-            -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/sync-google-reviews")
-          status=$(echo "$response" | tail -n1 | sed 's/HTTP_STATUS://')
-          body=$(echo "$response" | sed '$d')
-          echo "HTTP $status"
-          echo "$body" | head -c 2000
-          if [ "$status" != "200" ]; then
-            echo "::error::Endpoint devolvió $status"
-            exit 1
-          fi
+          # El endpoint es idempotente y con lock optimista de 60s por ficha:
+          # ante un 504 puntual (timeout de Vercel) reintentamos UNA vez tras
+          # 90s — margen para que los locks del intento parcial hayan expirado.
+          status=0
+          for attempt in 1 2; do
+            response=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "$APP_URL/api/cron/sync-google-reviews")
+            status=$(echo "$response" | tail -n1 | sed 's/HTTP_STATUS://')
+            body=$(echo "$response" | sed '$d')
+            echo "HTTP $status (intento $attempt)"
+            echo "$body" | head -c 2000
+            if [ "$status" = "200" ]; then
+              exit 0
+            fi
+            if [ "$attempt" = "1" ]; then
+              echo "Reintentando en 90s..."
+              sleep 90
+            fi
+          done
+          echo "::error::Endpoint devolvió $status"
+          exit 1

@@ -6,7 +6,15 @@ import { createServiceClient } from "@/lib/supabase/service";
  * acota agresivamente (cuota por minuto) y el cron corre cada 10 min: si nos
  * comemos un 429 sin reintentar, la ficha pierde la ventana. 3 intentos
  * cubren la mayoría de hiccups sin alargar el cron en exceso.
+ *
+ * El delay entre intentos se acota a MAX_RETRY_DELAY_MS aunque Google mande un
+ * `Retry-After` mayor: todo esto corre dentro de lambdas con maxDuration=60s
+ * (tope Hobby) y esperas de 30-60s por un solo 429 producían
+ * FUNCTION_INVOCATION_TIMEOUT (504) en el cron horario. Un 429 persistente lo
+ * recoge el siguiente run — no merece quemarse el presupuesto esperándolo.
  */
+const MAX_RETRY_DELAY_MS = 8_000;
+
 async function fetchWithRetry(
   url: string,
   init: RequestInit,
@@ -20,9 +28,12 @@ async function fetchWithRetry(
     if (!retriable || attempt === maxAttempts) return res;
     lastRes = res;
     const retryAfter = Number(res.headers.get("retry-after"));
-    const delay = Number.isFinite(retryAfter) && retryAfter > 0
-      ? retryAfter * 1000
-      : baseDelayMs * 2 ** (attempt - 1);
+    const delay = Math.min(
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : baseDelayMs * 2 ** (attempt - 1),
+      MAX_RETRY_DELAY_MS,
+    );
     await new Promise((r) => setTimeout(r, delay));
   }
   return lastRes as Response;
