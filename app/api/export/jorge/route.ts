@@ -294,14 +294,21 @@ function renderSheet(
 
   let row = 1;
 
-  // Fila 1: valoración acumulada de la ficha principal.
-  sheet.mergeCells(`A${row}:F${row}`);
-  const ratingCell = sheet.getCell(`A${row}`);
-  ratingCell.value = formatRatingHeader(primaryFicha);
-  ratingCell.font = { bold: true, size: 11.5, color: { argb: COLOR.brand } };
-  ratingCell.alignment = { vertical: "middle", horizontal: "left" };
-  sheet.getRow(row).height = 20;
-  row += 2; // deja una fila en blanco
+  // Fila 1: valoración acumulada de la ficha principal. Solo se pinta si la
+  // ficha tiene la valoración configurada en BD; si no, se omite (antes salía
+  // el placeholder "pendiente de configurar valoración acumulada").
+  if (
+    primaryFicha.total_review_count !== null &&
+    primaryFicha.average_rating !== null
+  ) {
+    sheet.mergeCells(`A${row}:F${row}`);
+    const ratingCell = sheet.getCell(`A${row}`);
+    ratingCell.value = formatRatingHeader(primaryFicha);
+    ratingCell.font = { bold: true, size: 11.5, color: { argb: COLOR.brand } };
+    ratingCell.alignment = { vertical: "middle", horizontal: "left" };
+    sheet.getRow(row).height = 20;
+    row += 2; // deja una fila en blanco
+  }
 
   // Departamento.
   sheet.mergeCells(`A${row}:F${row}`);
