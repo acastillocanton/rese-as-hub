@@ -15,12 +15,15 @@ import {
   groupActiveSalesByDepartment,
   inlineNote,
   locationsForDepartment,
-  zoneFor,
   type LocationForReport,
   type ReviewForReport,
   type SalesForReport,
 } from "@/lib/reports/weekly-report";
-import { jorgeReportMonths, type MonthRef } from "@/lib/reports/jorge-report";
+import {
+  jorgeReportMonths,
+  jorgeZoneFor,
+  type MonthRef,
+} from "@/lib/reports/jorge-report";
 import type ExcelJS from "exceljs";
 
 async function loadExcelJS() {
@@ -366,7 +369,7 @@ function renderSheet(
     const r = sheet.getRow(row);
     r.getCell(1).value = s.full_name;
     r.getCell(2).value = formatShortJoinedAt(s.joined_at);
-    r.getCell(3).value = zoneFor(s);
+    r.getCell(3).value = jorgeZoneFor(s);
     const prev = countedFor(reviewsPrevious, s.id);
     const curr = countedFor(reviewsCurrent, s.id);
     r.getCell(4).value = prev || null;

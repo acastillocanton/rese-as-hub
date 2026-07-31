@@ -19,6 +19,22 @@ import {
   commissionPeriodRange,
   previousCommissionPeriodRange,
 } from "@/lib/date-range";
+import { zoneFor, type SalesForReport } from "@/lib/reports/weekly-report";
+
+/**
+ * Zona para el Informe Jorge. En internacional es el idioma (igual que
+ * `zoneFor`). En el resto (nacional / castellón / valencia) devuelve el nombre
+ * CORTO de la ficha: quita el prefijo de marca hasta el separador "·", p.ej.
+ * "Inseryal by Marina d'Or · Oropesa" → "Oropesa",
+ * "Marina d'Or Construcciones · Castellón" → "Castellón".
+ * Si el nombre no lleva "·", se devuelve tal cual.
+ */
+export function jorgeZoneFor(sales: SalesForReport): string {
+  const full = zoneFor(sales);
+  if (sales.department === "internacional") return full;
+  const idx = full.lastIndexOf("·");
+  return idx >= 0 ? full.slice(idx + 1).trim() : full;
+}
 
 export type MonthRef = { year: number; monthIndex: number };
 export type MonthWindow = { startIso: string; endIso: string };

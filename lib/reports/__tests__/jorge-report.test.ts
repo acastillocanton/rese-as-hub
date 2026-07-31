@@ -1,6 +1,65 @@
 import { describe, expect, it } from "vitest";
-import { jorgeReportMonths } from "@/lib/reports/jorge-report";
+import { jorgeReportMonths, jorgeZoneFor } from "@/lib/reports/jorge-report";
 import { parseRange, commissionPeriodRange } from "@/lib/date-range";
+import type { SalesForReport } from "@/lib/reports/weekly-report";
+
+function sale(overrides: Partial<SalesForReport>): SalesForReport {
+  return {
+    id: "x",
+    full_name: "X",
+    slug: "x",
+    status: "active",
+    joined_at: "2026-01-01T00:00:00Z",
+    department: "nacional",
+    language: null,
+    paused_reason: null,
+    notes: null,
+    location_id: "loc",
+    location_name: null,
+    role: "sales",
+    ...overrides,
+  };
+}
+
+describe("jorgeZoneFor", () => {
+  it("nacional: quita el prefijo de marca y deja el nombre corto", () => {
+    expect(
+      jorgeZoneFor(
+        sale({ department: "nacional", location_name: "Inseryal by Marina d'Or · Oropesa" }),
+      ),
+    ).toBe("Oropesa");
+    expect(
+      jorgeZoneFor(
+        sale({
+          department: "nacional",
+          location_name: "Inseryal by Marina d'Or · Madrid Príncipe de Vergara",
+        }),
+      ),
+    ).toBe("Madrid Príncipe de Vergara");
+  });
+
+  it("castellón / valencia: también acorta", () => {
+    expect(
+      jorgeZoneFor(
+        sale({ department: "castellon", location_name: "Marina d'Or Construcciones · Castellón" }),
+      ),
+    ).toBe("Castellón");
+  });
+
+  it("internacional: devuelve el idioma tal cual (no acorta)", () => {
+    expect(
+      jorgeZoneFor(sale({ department: "internacional", language: "Inglés", location_name: null })),
+    ).toBe("Inglés");
+  });
+
+  it("sin separador '·' devuelve el nombre tal cual", () => {
+    expect(jorgeZoneFor(sale({ department: "nacional", location_name: "Oropesa" }))).toBe("Oropesa");
+  });
+
+  it("sin ficha asignada devuelve el placeholder de zoneFor", () => {
+    expect(jorgeZoneFor(sale({ department: "nacional", location_name: null }))).toBe("—");
+  });
+});
 
 describe("jorgeReportMonths", () => {
   it("periodo de comisión: se nombra por su mes de CIERRE (día 19)", () => {
