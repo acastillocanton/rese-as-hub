@@ -28,6 +28,14 @@ describe("jorgeZoneFor", () => {
         sale({ department: "nacional", location_name: "Inseryal by Marina d'Or · Oropesa" }),
       ),
     ).toBe("Oropesa");
+  });
+
+  it("nacional Madrid: quita también el prefijo 'Madrid '", () => {
+    expect(
+      jorgeZoneFor(
+        sale({ department: "nacional", location_name: "Inseryal by Marina d'Or · Madrid Pardiñas" }),
+      ),
+    ).toBe("Pardiñas");
     expect(
       jorgeZoneFor(
         sale({
@@ -35,7 +43,7 @@ describe("jorgeZoneFor", () => {
           location_name: "Inseryal by Marina d'Or · Madrid Príncipe de Vergara",
         }),
       ),
-    ).toBe("Madrid Príncipe de Vergara");
+    ).toBe("Príncipe de Vergara");
   });
 
   it("castellón / valencia: también acorta", () => {

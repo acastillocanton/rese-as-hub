@@ -27,13 +27,18 @@ import { zoneFor, type SalesForReport } from "@/lib/reports/weekly-report";
  * CORTO de la ficha: quita el prefijo de marca hasta el separador "·", p.ej.
  * "Inseryal by Marina d'Or · Oropesa" → "Oropesa",
  * "Marina d'Or Construcciones · Castellón" → "Castellón".
- * Si el nombre no lleva "·", se devuelve tal cual.
+ * Además quita el prefijo "Madrid " de las fichas de Madrid:
+ * "... · Madrid Pardiñas" → "Pardiñas",
+ * "... · Madrid Príncipe de Vergara" → "Príncipe de Vergara".
+ * Si el nombre no lleva "·", se devuelve (sin el "Madrid " inicial si lo lleva).
  */
 export function jorgeZoneFor(sales: SalesForReport): string {
   const full = zoneFor(sales);
   if (sales.department === "internacional") return full;
   const idx = full.lastIndexOf("·");
-  return idx >= 0 ? full.slice(idx + 1).trim() : full;
+  let short = idx >= 0 ? full.slice(idx + 1).trim() : full;
+  if (short.startsWith("Madrid ")) short = short.slice("Madrid ".length).trim();
+  return short;
 }
 
 export type MonthRef = { year: number; monthIndex: number };
