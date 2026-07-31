@@ -42,14 +42,18 @@ export type SupportCategory = "general" | "review_question" | "technical" | "bil
 export type SupportStatus = "open" | "closed";
 
 /** Lista cerrada de idiomas para comerciales internacionales. Si en el
- *  futuro hay que añadir uno (Francés, Alemán, Italiano…), basta con
- *  ampliar este array y la migración no necesita cambios — el campo en
- *  DB es text libre, esta constante solo controla la UI. */
+ *  futuro hay que añadir uno (Alemán, Italiano…), basta con ampliar este
+ *  array y la migración no necesita cambios — el campo en DB es text libre,
+ *  esta constante solo controla la UI. Aparece como ZONA en la hoja
+ *  Internacional del parte / Informe Jorge. */
 export const SALES_LANGUAGES = [
-  "Inglés/Nórdico",
+  "Inglés",
   "Rumano",
   "Polaco",
-  "Ruso/Búlgaro/Húngaro",
+  "Francés",
+  "Ruso",
+  "Búlgaro",
+  "Húngaro",
 ] as const;
 
 export type SalesLanguage = (typeof SALES_LANGUAGES)[number];

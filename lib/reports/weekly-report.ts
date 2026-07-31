@@ -97,7 +97,7 @@ export function groupActiveSalesByDepartment(
 
 /**
  * Devuelve el texto que aparece en la columna "ZONA" del parte:
- *   - internacional → idioma del comercial (Inglés/Nórdico, Rumano…)
+ *   - internacional → idioma del comercial (Inglés, Rumano, Francés…)
  *   - nacional / castellon / valencia → nombre de la ficha asignada
  */
 export function zoneFor(s: SalesForReport): string {
