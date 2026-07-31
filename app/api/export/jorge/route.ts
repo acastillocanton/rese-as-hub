@@ -372,8 +372,9 @@ function renderSheet(
     r.getCell(3).value = jorgeZoneFor(s);
     const prev = countedFor(reviewsPrevious, s.id);
     const curr = countedFor(reviewsCurrent, s.id);
-    r.getCell(4).value = prev || null;
-    r.getCell(5).value = curr || null;
+    // Mostrar 0 explícito (no celda vacía) cuando no hay reseñas en el periodo.
+    r.getCell(4).value = prev;
+    r.getCell(5).value = curr;
     r.getCell(6).value = inlineNote(s) || null;
     r.getCell(1).font = { size: 11 };
     r.getCell(1).alignment = { horizontal: "left", vertical: "middle" };
@@ -406,8 +407,8 @@ function renderSheet(
     r.getCell(1).font = { italic: true, bold: true, size: 10.5, color: { argb: COLOR.brand } };
     r.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR.archivedBg } };
     r.getCell(1).alignment = { horizontal: "left", vertical: "middle" };
-    r.getCell(4).value = archivedPrevious || null;
-    r.getCell(5).value = archivedCurrent || null;
+    r.getCell(4).value = archivedPrevious;
+    r.getCell(5).value = archivedCurrent;
     r.getCell(4).alignment = { horizontal: "center", vertical: "middle" };
     r.getCell(5).alignment = { horizontal: "center", vertical: "middle" };
     r.getCell(4).font = { bold: true, size: 10.5, color: { argb: COLOR.brand } };
