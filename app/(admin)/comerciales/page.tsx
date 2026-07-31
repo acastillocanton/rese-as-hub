@@ -21,7 +21,7 @@ import {
   type DateRange,
 } from "@/lib/date-range";
 import { RangePicker } from "@/components/ui/RangePicker";
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
 
 const DEPARTMENTS = new Set<SalesDepartment>([
   "nacional",
@@ -274,7 +274,9 @@ export default async function ComercialesPage({ searchParams }: PageProps) {
               </div>
             )}
 
-            {!showArchived && <ExportarResultadosCard range={exportRange} />}
+            {!showArchived && (
+              <ExportarResultadosCard range={exportRange} showJorge={canDelete} />
+            )}
 
             <SalesFilters
               locations={locations}
@@ -602,7 +604,13 @@ function SalesRow({
  * Para filtros avanzados (sales_id, ficha, match_state) hay un link a
  * /manager/export que ya conserva la UI completa.
  */
-function ExportarResultadosCard({ range }: { range: DateRange }) {
+function ExportarResultadosCard({
+  range,
+  showJorge,
+}: {
+  range: DateRange;
+  showJorge: boolean;
+}) {
   const shortcuts = commissionShortcuts();
   return (
     <div style={{ marginBottom: 16 }}>
@@ -666,6 +674,16 @@ function ExportarResultadosCard({ range }: { range: DateRange }) {
               <Download size={14} strokeWidth={1.75} aria-hidden="true" />
               <span>Descargar Excel</span>
             </a>
+            {showJorge && (
+              <a
+                href={`/api/export/jorge?from=${range.from}&to=${range.to}`}
+                style={exportJorgeBtn}
+                title="Parte maquetado para imprimir en A3 (4 hojas departamentales)"
+              >
+                <FileSpreadsheet size={14} strokeWidth={1.75} aria-hidden="true" />
+                <span>Informe Jorge</span>
+              </a>
+            )}
           </div>
         </div>
       </Card>
@@ -679,6 +697,21 @@ const exportPrimaryBtn: React.CSSProperties = {
   gap: 6,
   padding: "7px 12px",
   background: "var(--ink)",
+  color: "#fff",
+  borderRadius: 9,
+  fontSize: 13,
+  fontWeight: 500,
+  textDecoration: "none",
+};
+
+// Botón diferencial "Informe Jorge" — tono ámbar/dorado que hace juego con las
+// celdas amarillas del informe y lo distingue del "Descargar Excel" negro.
+const exportJorgeBtn: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "7px 12px",
+  background: "#B8860B",
   color: "#fff",
   borderRadius: 9,
   fontSize: 13,
