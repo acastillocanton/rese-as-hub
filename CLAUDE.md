@@ -1210,6 +1210,8 @@ Alertas proactivas para fallos **silenciosos** (cosas que no rompen la app pero 
 
 **Tests** [lib/monitoring/__tests__/health-checks.test.ts](lib/monitoring/__tests__/health-checks.test.ts) — los 4 checks en sus casos límite + `sortFindings`. **Ampliar a futuro**: añadir un `check*` puro nuevo + sumarlo en el route es todo lo que hace falta (la base no se toca).
 
+⚠️ **Cargadores error-aware (fix 2026-08-26, commit `7a29aee`)**: los cargadores del route devolvían solo `data`/`count` ignorando el `error` de Supabase → un blip transitorio a la hora del cron fabricaba `lastRun=null` y disparó el falso positivo "no consta ninguna ejecución del agente" (email del 26-08; el agente había corrido 19,6h antes), y un count a 0 fabricado habría SILENCIADO alertas reales. Ahora cada cargador devuelve `Loaded<T> = {ok,value}|{ok:false,error}`; si falla, su chequeo **se salta esa pasada** (se reintenta al día siguiente) y el fallo queda en `health_check_run.payload.loader_errors` + en la respuesta del `?dryRun=1` (`loaderErrors`). No repetir el patrón `const { data } = await …` en cargadores de alertas: distinguir siempre error de vacío.
+
 ### 4.58 Caducidad del token OAuth de Google + estado de error visible (2026-06-17)
 
 **Incidente:** el refresh token OAuth murió en las **7 fichas** a la vez (`invalid_grant: token expired or revoked`), 7 días exactos tras conectarlas. Causa: la app estaba en modo **"Testing"** en Google Cloud y Google **caduca los refresh tokens externos a los 7 días** en ese modo. Síntoma doble: (a) dejaron de entrar reseñas en todas las fichas; (b) la UI seguía mostrándolas "conectadas" sin botón de reconectar.
