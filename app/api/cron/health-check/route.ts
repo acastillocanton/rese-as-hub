@@ -52,11 +52,11 @@ export async function GET(request: NextRequest) {
   ).toISOString();
 
   const [
-    lastRun,
-    pendingCount,
-    locations,
-    recentUnmatchedCount,
-    failedCount,
+    lastRunRes,
+    pendingCountRes,
+    locationsRes,
+    recentUnmatchedCountRes,
+    failedCountRes,
   ] = await Promise.all([
     loadLastHarvest(admin),
     countPendingDeepLinks(admin),
@@ -65,14 +65,46 @@ export async function GET(request: NextRequest) {
     countFailedNotifications(admin),
   ]);
 
+  // Si un cargador falla (blip transitorio de red/pooler), su chequeo se SALTA
+  // en esta pasada (se reintenta mañana) en vez de evaluarse con un dato
+  // fabricado: un lastRun null falso produce "no consta ejecución del agente"
+  // (falso positivo 2026-08-26) y un count 0 falso SILENCIARÍA alertas reales.
+  const loaderErrors: string[] = [];
   const findings: HealthFinding[] = [];
-  const harvest = checkHarvestStalled({ lastRun, pendingCount, nowMs });
-  if (harvest) findings.push(harvest);
-  findings.push(...checkLocationsSyncStale({ locations, nowMs }));
-  const backlog = checkVerificationBacklog({ recentUnmatchedCount });
-  if (backlog) findings.push(backlog);
-  const failed = checkFailedNotifications({ failedCount });
-  if (failed) findings.push(failed);
+
+  if (lastRunRes.ok && pendingCountRes.ok) {
+    const harvest = checkHarvestStalled({
+      lastRun: lastRunRes.value,
+      pendingCount: pendingCountRes.value,
+      nowMs,
+    });
+    if (harvest) findings.push(harvest);
+  } else {
+    if (!lastRunRes.ok) loaderErrors.push(`lastHarvest: ${lastRunRes.error}`);
+    if (!pendingCountRes.ok) loaderErrors.push(`pendingDeepLinks: ${pendingCountRes.error}`);
+  }
+
+  if (locationsRes.ok) {
+    findings.push(...checkLocationsSyncStale({ locations: locationsRes.value, nowMs }));
+  } else {
+    loaderErrors.push(`locations: ${locationsRes.error}`);
+  }
+
+  if (recentUnmatchedCountRes.ok) {
+    const backlog = checkVerificationBacklog({
+      recentUnmatchedCount: recentUnmatchedCountRes.value,
+    });
+    if (backlog) findings.push(backlog);
+  } else {
+    loaderErrors.push(`recentUnmatched: ${recentUnmatchedCountRes.error}`);
+  }
+
+  if (failedCountRes.ok) {
+    const failed = checkFailedNotifications({ failedCount: failedCountRes.value });
+    if (failed) findings.push(failed);
+  } else {
+    loaderErrors.push(`failedNotifications: ${failedCountRes.error}`);
+  }
 
   const sorted = sortFindings(findings);
   const criticals = sorted.filter((f) => f.severity === "critical").length;
@@ -82,7 +114,13 @@ export async function GET(request: NextRequest) {
       ok: true,
       dryRun: true,
       findings: sorted,
-      inputs: { pendingCount, recentUnmatchedCount, failedCount, lastRun },
+      loaderErrors,
+      inputs: {
+        pendingCount: pendingCountRes.ok ? pendingCountRes.value : null,
+        recentUnmatchedCount: recentUnmatchedCountRes.ok ? recentUnmatchedCountRes.value : null,
+        failedCount: failedCountRes.ok ? failedCountRes.value : null,
+        lastRun: lastRunRes.ok ? lastRunRes.value : null,
+      },
     });
   }
 
@@ -90,7 +128,11 @@ export async function GET(request: NextRequest) {
     entityType: "location",
     entityId: SENTINEL,
     action: "health_check_run",
-    payload: { findings: sorted.length, critical: criticals },
+    payload: {
+      findings: sorted.length,
+      critical: criticals,
+      ...(loaderErrors.length > 0 ? { loader_errors: loaderErrors } : {}),
+    },
   });
 
   let emailSent = false;
@@ -122,33 +164,45 @@ function secretMatches(authHeader: string, secret: string): boolean {
 }
 
 // ── Cargadores (service-client) ──
+//
+// Cada cargador distingue "la query falló" (ok:false → el chequeo se salta esa
+// pasada) de "no hay filas" (ok:true con valor vacío/null → dato legítimo).
+// Antes se destructuraba solo { data } y un error transitorio se confundía con
+// "no hay latido" / "0 pendientes" (falso positivo del 2026-08-26).
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
-async function loadLastHarvest(admin: ServiceClient): Promise<HarvestHeartbeat> {
-  const { data } = await admin
+type Loaded<T> = { ok: true; value: T } | { ok: false; error: string };
+
+async function loadLastHarvest(admin: ServiceClient): Promise<Loaded<HarvestHeartbeat>> {
+  const { data, error } = await admin
     .from("audit_log")
     .select("created_at, payload")
     .eq("action", "harvest_ran")
     .order("created_at", { ascending: false })
     .limit(1)
     .returns<{ created_at: string; payload: { harvested?: number } | null }[]>();
+  if (error) return { ok: false, error: error.message };
   const row = data?.[0];
-  if (!row) return null;
-  return { createdAt: row.created_at, harvested: Number(row.payload?.harvested ?? 0) };
+  if (!row) return { ok: true, value: null };
+  return {
+    ok: true,
+    value: { createdAt: row.created_at, harvested: Number(row.payload?.harvested ?? 0) },
+  };
 }
 
-async function countPendingDeepLinks(admin: ServiceClient): Promise<number> {
-  const { count } = await admin
+async function countPendingDeepLinks(admin: ServiceClient): Promise<Loaded<number>> {
+  const { count, error } = await admin
     .from("reviews")
     .select("id", { count: "exact", head: true })
     .is("google_maps_url", null)
     .is("removed_at", null);
-  return count ?? 0;
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, value: count ?? 0 };
 }
 
-async function loadLocations(admin: ServiceClient): Promise<LocationSyncLite[]> {
-  const { data } = await admin
+async function loadLocations(admin: ServiceClient): Promise<Loaded<LocationSyncLite[]>> {
+  const { data, error } = await admin
     .from("locations")
     .select("id, name, oauth_status, oauth_last_sync_at, oauth_last_sync_error")
     .returns<
@@ -160,29 +214,37 @@ async function loadLocations(admin: ServiceClient): Promise<LocationSyncLite[]> 
         oauth_last_sync_error: string | null;
       }>
     >();
-  return (data ?? []).map((l) => ({
-    id: l.id,
-    name: l.name,
-    oauthStatus: l.oauth_status,
-    lastSyncAt: l.oauth_last_sync_at,
-    lastSyncError: l.oauth_last_sync_error,
-  }));
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    value: (data ?? []).map((l) => ({
+      id: l.id,
+      name: l.name,
+      oauthStatus: l.oauth_status,
+      lastSyncAt: l.oauth_last_sync_at,
+      lastSyncError: l.oauth_last_sync_error,
+    })),
+  };
 }
 
-async function countRecentUnmatched(admin: ServiceClient, cutoffIso: string): Promise<number> {
-  const { count } = await admin
+async function countRecentUnmatched(
+  admin: ServiceClient,
+  cutoffIso: string,
+): Promise<Loaded<number>> {
+  const { count, error } = await admin
     .from("reviews")
     .select("id", { count: "exact", head: true })
     .eq("match_state", "unmatched")
     .is("removed_at", null)
     .gte("google_created_at", cutoffIso);
-  return count ?? 0;
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, value: count ?? 0 };
 }
 
 /** notify_failed (reseña) sin un notify_retry_ok posterior. Misma lógica que
  *  loadPending de /api/admin/notify-failed pero devolviendo solo el conteo. */
-async function countFailedNotifications(admin: ServiceClient): Promise<number> {
-  const { data: failed } = await admin
+async function countFailedNotifications(admin: ServiceClient): Promise<Loaded<number>> {
+  const { data: failed, error: failedError } = await admin
     .from("audit_log")
     .select("entity_id")
     .eq("entity_type", "review")
@@ -190,17 +252,22 @@ async function countFailedNotifications(admin: ServiceClient): Promise<number> {
     .order("created_at", { ascending: false })
     .limit(500)
     .returns<{ entity_id: string }[]>();
-  if (!failed || failed.length === 0) return 0;
+  if (failedError) return { ok: false, error: failedError.message };
+  if (!failed || failed.length === 0) return { ok: true, value: 0 };
   const reviewIds = failed.map((f) => f.entity_id);
-  const { data: ok } = await admin
+  const { data: ok, error: okError } = await admin
     .from("audit_log")
     .select("entity_id")
     .eq("entity_type", "review")
     .eq("action", "notify_retry_ok")
     .in("entity_id", reviewIds)
     .returns<{ entity_id: string }[]>();
+  if (okError) return { ok: false, error: okError.message };
   const okSet = new Set((ok ?? []).map((s) => s.entity_id));
-  return new Set(failed.filter((f) => !okSet.has(f.entity_id)).map((f) => f.entity_id)).size;
+  return {
+    ok: true,
+    value: new Set(failed.filter((f) => !okSet.has(f.entity_id)).map((f) => f.entity_id)).size,
+  };
 }
 
 /** Emails de admins activos. Lee profiles.email con fallback a auth.users
