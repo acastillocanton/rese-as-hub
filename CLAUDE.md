@@ -1390,7 +1390,7 @@ Segundo botón de exportación (junto al "Descargar Excel" negro), **ámbar/dora
 - **Email Templates**: Magic Link con `type=email`, Invite con `type=invite` (ver §4.1).
 - **Storage**: bucket público `avatars` con 3 policies (insert/update/delete propio en `{user_id}/`). Avatar upload vía server action con service-role en [`(profile)/perfil/actions.ts`](app/(profile)/perfil/actions.ts) (bypasea RLS por simplicidad).
 - **Usuarios (estado 2026-05-25 — alta masiva de comerciales y directores reales)**:
-  - 2 admins activos: Alejandro Castillo (`a.castillo.esv@gmail.com` desde 2026-07-20) + Rafael Ibáñez (`rafael.ibanez@inseryal.es`).
+  - 3 admins: Alejandro Castillo (`a.castillo.esv@gmail.com` desde 2026-07-20) + Rafael Ibáñez (`rafael.ibanez@inseryal.es`) activos; Juan Ruiz (`juan.ruiz@inseryal.es`, alta 2026-09-02, `invited` hasta su primer login).
   - 2 gestores activos: Bel (`bel.bernete@inseryal.es`) + José González Pérez (`jose.gonzalez@inseryal.es`).
   - **11 directores de oficina** (1 activo: Roberto García Cuellar; 10 invitados — María Jesús Lozano, Carmen Lopez, Fernando Taño, Korina Unguryanu, Almudena Martinez, Jose Rubio Mateos, Adriana Mihalascu, Georgina Lawless, Monika Kubiak, Pavel Kurlaev).
   - **40 comerciales invitados** distribuidos por departamento: nacional 19, internacional 14, castellón 5, valencia 6. Status `invited` hasta que cada uno confirme su magic-link → flip automático a `active`.
