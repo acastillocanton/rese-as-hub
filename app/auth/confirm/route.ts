@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { buildAuthConfirmationPage } from "@/lib/auth/confirm-page";
 import { createClient } from "@/lib/supabase/server";
 import { isSafeNext } from "@/lib/url-validation";
 
@@ -36,6 +37,52 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  return new NextResponse(
+    buildAuthConfirmationPage({
+      tokenHash,
+      type,
+      next: safeNext,
+    }),
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+      },
+    },
+  );
+}
+
+export async function POST(request: NextRequest) {
+  const url = new URL(request.url);
+  const loginUrl = new URL("/login", url.origin);
+  let formData: FormData;
+
+  try {
+    formData = await request.formData();
+  } catch {
+    loginUrl.searchParams.set("error", "invalid-link");
+    return NextResponse.redirect(loginUrl, 303);
+  }
+
+  const tokenHash = formData.get("token_hash");
+  const type = formData.get("type");
+  const rawNext = formData.get("next");
+
+  if (
+    typeof tokenHash !== "string" ||
+    typeof type !== "string" ||
+    !ALLOWED_TYPES.has(type)
+  ) {
+    loginUrl.searchParams.set("error", "invalid-link");
+    return NextResponse.redirect(loginUrl, 303);
+  }
+
+  const safeNext = isSafeNext(typeof rawNext === "string" ? rawNext : null)
+    ? (rawNext as string)
+    : "/";
+
   const supabase = await createClient();
   const { data, error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
@@ -45,7 +92,7 @@ export async function GET(request: NextRequest) {
   if (error) {
     console.error("[auth/confirm] verifyOtp failed:", error);
     loginUrl.searchParams.set("error", "verify-failed");
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(loginUrl, 303);
   }
 
   // First successful auth → flip status invited → active. Paused stays paused
@@ -60,5 +107,5 @@ export async function GET(request: NextRequest) {
       .eq("status", "invited");
   }
 
-  return NextResponse.redirect(new URL(safeNext, url.origin));
+  return NextResponse.redirect(new URL(safeNext, url.origin), 303);
 }
